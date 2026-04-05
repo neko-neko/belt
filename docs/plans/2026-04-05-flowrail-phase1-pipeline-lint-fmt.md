@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **⚠ 2026-04-05 更新 v2 (rename + repo split + workspace + layer 撤回 + Tech Stack 再調査)**: 本 plan は以下の 6 変更を反映するために全体が更新された。実装時は**必ず spec の最新セクションを優先**すること。本 plan 本文中のファイルパス参照 (`tools/flowrail/src/yaml/` 等) は実装時に **Cargo workspace 構造 (`crates/flowrail-core/src/yaml/`)** に読み替える。詳細な plan 全面書き換えは次セッションの plan フェーズで実施される (本書は過渡期の状態)。
+> **⚠ 2026-04-05 更新 v3 (rename + repo split + workspace + layer 撤回 + Tech Stack 再調査 + path 全面書き換え)**: 本 plan は以下の 6 変更を反映して全体が更新された。実装時は**必ず spec の最新セクションを優先**すること。本 plan 本文中のファイルパス参照は **Cargo workspace 構造** に全面書き換え済み (2026-04-05 plan フェーズ): library module は `crates/flowrail-core/src/*`、agent binary は `crates/flowrail/src/*`、test fixtures は `crates/flowrail-core/tests/fixtures/` に集約されている。
 >
 > **主要変更点** (spec を正とする):
 > 1. **CLI rename**: `jig` → **`flowrail`**、バイナリ名 / 設定ディレクトリ `.flowrail/` / 環境変数 `FLOWRAIL_*`
 > 2. **Layer 機構撤回**: Rule Set Schema から `layer: primitive|recipe|pipeline-local` フィールド削除、cycle detection は実装しない (実行時の `max_depth` 超過で検出)。詳細は spec の "Conventions & Best Practices" と "YAML Universe (Future)" セクション参照
 > 3. **Repository split (Pattern B)**: dotfiles から独立リポジトリ `~/go/src/github.com/neko-neko/flowrail/` へ分離
-> 4. **Cargo workspace 化 (3 crates)**: `flowrail-core` (library) + `flowrail` (agent CLI bin) + `flowrail-tui` (human TUI bin, Phase 3)。原則 8 "Separation by Audience" により agent CLI と TUI CLI を依存関係レベルで分離。本 plan 本文中の `tools/flowrail/src/*` は `crates/flowrail-core/src/*` (lib の module) または `crates/flowrail/src/*` (binary) に読み替え
+> 4. **Cargo workspace 化 (3 crates)**: `flowrail-core` (library) + `flowrail` (agent CLI bin) + `flowrail-tui` (human TUI bin, Phase 3)。原則 8 "Separation by Audience" により agent CLI と TUI CLI を依存関係レベルで分離。本 plan 本文中のパス参照は **Cargo workspace 構造に全面書き換え済み** (library module は `crates/flowrail-core/src/*`、agent binary は `crates/flowrail/src/*`、test fixtures は `crates/flowrail-core/tests/fixtures/` に配置)
 > 5. **5 リソース体系**: `flowrail tui` サブコマンドは廃止、TUI は別バイナリ `flowrail-tui` として Phase 3 で提供。6 リソース → **5 リソース** (`pipeline` / `run` / `state` / `snapshot` / `help`)
 > 6. **Technology Stack 再調査 (Rust 1.94.1 stable 時代)**:
 >    - **MSRV**: `1.85` → **`1.86`** (ratatui 0.30 要求、workspace 統一のため)
@@ -48,10 +48,10 @@
 - uuid **1.23** (run.id 生成用、`v4`, `v7`, `v5`, `serde` features)
 
 **Related:**
-- Spec: `docs/superpowers/specs/2026-04-05-flowrail-cli-rule-set-architecture-design.md` (**2026-04-05 spec-review で大幅更新済み**)
+- Spec: `docs/specs/2026-04-05-flowrail-cli-rule-set-architecture-design.md` (**2026-04-05 spec-review で大幅更新済み + 2026-04-05 plan フェーズで Feasibility Mapping / Impact Analysis を完全版に**)
 - Linear: [CLA-5](https://linear.app/neko-neko/issue/CLA-5) (Phase 1 実装 tracking)
 - Linear (ブレインストーミング履歴): [CLA-19](https://linear.app/neko-neko/issue/CLA-19) (Done)
-- 旧 plan (3 層モデル版、参照用): `docs/superpowers/plans/2026-04-05-flowrail-phase1-lint-fmt.md`
+- 旧 plan (3 層モデル版、参照用): dotfiles レポ `docs/superpowers/plans/2026-04-05-flowrail-phase1-lint-fmt.md` (commit 履歴参照)
 
 ---
 
@@ -166,7 +166,7 @@ Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flow
 - `lint/rules/` は各ルールが自己完結。ルール追加時は `rules/mod.rs` に 1 行追加するだけで済む
 - `fmt/` は `pipeline/model.rs` と `ruleset/model.rs` を読むが書かない (出力は正規化 YAML のみ)
 - `event/` と `determinism/` はトップレベルの cross-cutting concern、flowrail-core から export され binary から呼ばれる
-- **以下の本 plan 本文中のパス参照** (`tools/flowrail/src/*`, `src/yaml/`, `src/lint/` 等) **は Cargo workspace 構造に読み替える**: library module は `crates/flowrail-core/src/*`、binary は `crates/flowrail/src/*`、詳細は次セッションの plan フェーズで書き換え
+- **Cargo workspace 構造に全面書き換え済み** (2026-04-05 plan フェーズ): library module は `crates/flowrail-core/src/*`、agent binary は `crates/flowrail/src/*`、test fixtures は `crates/flowrail-core/tests/fixtures/` に集約。`cargo test -p flowrail-core --test <name>` で library crate のテスト、`cargo test -p flowrail --test <name>` で binary crate のテストを実行する
 
 ---
 
@@ -395,12 +395,12 @@ git commit -m "feat: initialize Cargo workspace (flowrail-core + flowrail + flow
 ## Task 2: エラー型定義 (thiserror 統一)
 
 **Files:**
-- Create: `tools/flowrail/src/error.rs`
-- Modify: `tools/flowrail/src/main.rs`
+- Create: `crates/flowrail-core/src/error.rs`
+- Modify: `crates/flowrail/src/main.rs`
 
 - [ ] **Step 1: error.rs を作成**
 
-`tools/flowrail/src/error.rs`:
+`crates/flowrail-core/src/error.rs`:
 
 ```rust
 use std::path::PathBuf;
@@ -446,7 +446,7 @@ pub enum FlowrailError {
 
 - [ ] **Step 2: main.rs で error モジュールを読み込む**
 
-`tools/flowrail/src/main.rs`:
+`crates/flowrail/src/main.rs`:
 
 ```rust
 mod error;
@@ -461,13 +461,13 @@ fn main() -> Result<()> {
 
 - [ ] **Step 3: ビルド確認**
 
-Run: `cd tools/flowrail && cargo build 2>&1 | tail -10`
+Run: `cargo build --workspace 2>&1 | tail -10`
 Expected: ビルド成功。警告なし (unused variant 警告は Task 3 以降で解消)。
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/flowrail/src/error.rs tools/flowrail/src/main.rs
+git add crates/flowrail-core/src/error.rs crates/flowrail/src/main.rs
 git commit -m "feat(flowrail): add unified error type with thiserror"
 ```
 
@@ -476,13 +476,13 @@ git commit -m "feat(flowrail): add unified error type with thiserror"
 ## Task 3: CLI スケルトン (clap, pipeline サブコマンド)
 
 **Files:**
-- Create: `tools/flowrail/src/cli.rs`
-- Modify: `tools/flowrail/src/main.rs`
-- Test: `tools/flowrail/tests/cli_test.rs`
+- Create: `crates/flowrail/src/cli.rs`
+- Modify: `crates/flowrail/src/main.rs`
+- Test: `crates/flowrail/tests/cli_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/cli_test.rs`:
+`crates/flowrail/tests/cli_test.rs`:
 
 ```rust
 use std::process::Command;
@@ -523,12 +523,12 @@ fn cli_pipeline_fmt_subcommand_is_recognized() {
 
 - [ ] **Step 2: 実行してテスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test cli_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail --test cli_test 2>&1 | tail -20`
 Expected: FAIL — `Usage:` or `pipeline` が存在しない。
 
 - [ ] **Step 3: cli.rs を実装**
 
-`tools/flowrail/src/cli.rs`:
+`crates/flowrail/src/cli.rs`:
 
 ```rust
 use clap::{Args, Parser, Subcommand};
@@ -579,7 +579,7 @@ pub enum PipelineVerb {
 
 - [ ] **Step 4: main.rs で CLI を配線**
 
-`tools/flowrail/src/main.rs`:
+`crates/flowrail/src/main.rs`:
 
 ```rust
 mod cli;
@@ -609,15 +609,15 @@ fn main() -> Result<()> {
 
 Run:
 ```bash
-cd tools/flowrail && cargo test --test cli_test 2>&1 | tail -20
-cd tools/flowrail && cargo run -- pipeline lint --help 2>&1 | head -20
+cargo test -p flowrail --test cli_test 2>&1 | tail -20
+cargo run --bin flowrail -- pipeline lint --help 2>&1 | head -20
 ```
 Expected: 全テスト PASS。`pipeline lint --help` がヘルプを表示。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/flowrail/src/cli.rs tools/flowrail/src/main.rs tools/flowrail/tests/cli_test.rs
+git add crates/flowrail/src/cli.rs crates/flowrail/src/main.rs crates/flowrail/tests/cli_test.rs
 git commit -m "feat(flowrail): add CLI skeleton with pipeline lint/fmt subcommands"
 ```
 
@@ -626,14 +626,14 @@ git commit -m "feat(flowrail): add CLI skeleton with pipeline lint/fmt subcomman
 ## Task 4: pipeline.yml モデル定義
 
 **Files:**
-- Create: `tools/flowrail/src/pipeline/mod.rs`
-- Create: `tools/flowrail/src/pipeline/model.rs`
-- Modify: `tools/flowrail/src/main.rs`
-- Test: `tools/flowrail/tests/pipeline_model_test.rs`
+- Create: `crates/flowrail-core/src/pipeline/mod.rs`
+- Create: `crates/flowrail-core/src/pipeline/model.rs`
+- Modify: `crates/flowrail/src/main.rs`
+- Test: `crates/flowrail-core/tests/pipeline_model_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/pipeline_model_test.rs`:
+`crates/flowrail-core/tests/pipeline_model_test.rs`:
 
 ```rust
 use flowrail::pipeline::model::{Pipeline, PipelineKind};
@@ -691,37 +691,44 @@ phases:
 
 - [ ] **Step 2: 実行してテスト失敗を確認**
 
-First expose `flowrail` as a library. Edit `tools/flowrail/Cargo.toml` to add:
+Cargo workspace 構造では `flowrail-core` (library crate) と `flowrail` (binary crate) は Task 1 で既に分離済み。ここでは `crates/flowrail-core/Cargo.toml` の `[lib]` セクションが以下の形で定義されていることを確認する:
 
 ```toml
+# crates/flowrail-core/Cargo.toml
+[package]
+name = "flowrail-core"
+version = "0.1.0"
+edition = "2024"
+
 [lib]
-name = "flowrail"
+name = "flowrail_core"
 path = "src/lib.rs"
 
-[[bin]]
-name = "flowrail"
-path = "src/main.rs"
+[dependencies]
+# workspace dependencies は [workspace.dependencies] を参照
 ```
 
-Create `tools/flowrail/src/lib.rs`:
+binary crate (`crates/flowrail/Cargo.toml`) は library に依存する形で Task 1 で設定済み (`flowrail-core = { path = "../flowrail-core" }`)。
+
+Create `crates/flowrail-core/src/lib.rs`:
 
 ```rust
 pub mod error;
 pub mod pipeline;
 ```
 
-Run: `cd tools/flowrail && cargo test --test pipeline_model_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test pipeline_model_test 2>&1 | tail -20`
 Expected: FAIL — `flowrail::pipeline::model` が存在しない。
 
 - [ ] **Step 3: pipeline/mod.rs と model.rs を実装**
 
-`tools/flowrail/src/pipeline/mod.rs`:
+`crates/flowrail-core/src/pipeline/mod.rs`:
 
 ```rust
 pub mod model;
 ```
 
-`tools/flowrail/src/pipeline/model.rs`:
+`crates/flowrail-core/src/pipeline/model.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -823,13 +830,13 @@ pub struct PrePipelineStart {
 
 - [ ] **Step 4: lib.rs 経由でモジュール露出、テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test pipeline_model_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test pipeline_model_test 2>&1 | tail -20`
 Expected: 2 tests passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/flowrail/Cargo.toml tools/flowrail/src/lib.rs tools/flowrail/src/pipeline tools/flowrail/tests/pipeline_model_test.rs
+git add crates/flowrail-core/Cargo.toml crates/flowrail-core/src/lib.rs crates/flowrail-core/src/pipeline crates/flowrail-core/tests/pipeline_model_test.rs
 git commit -m "feat(flowrail): add pipeline.yml model with serde types"
 ```
 
@@ -838,14 +845,14 @@ git commit -m "feat(flowrail): add pipeline.yml model with serde types"
 ## Task 5: rule-set.yml モデル定義
 
 **Files:**
-- Create: `tools/flowrail/src/ruleset/mod.rs`
-- Create: `tools/flowrail/src/ruleset/model.rs`
-- Modify: `tools/flowrail/src/lib.rs`
-- Test: `tools/flowrail/tests/ruleset_model_test.rs`
+- Create: `crates/flowrail-core/src/ruleset/mod.rs`
+- Create: `crates/flowrail-core/src/ruleset/model.rs`
+- Modify: `crates/flowrail-core/src/lib.rs`
+- Test: `crates/flowrail-core/tests/ruleset_model_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/ruleset_model_test.rs`:
+`crates/flowrail-core/tests/ruleset_model_test.rs`:
 
 ```rust
 use flowrail::ruleset::model::{RuleSet, RuleSetKind, ParamType};
@@ -932,18 +939,18 @@ tests:
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test ruleset_model_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test ruleset_model_test 2>&1 | tail -20`
 Expected: FAIL — `flowrail::ruleset` が存在しない。
 
 - [ ] **Step 3: ruleset/mod.rs と model.rs を実装**
 
-`tools/flowrail/src/ruleset/mod.rs`:
+`crates/flowrail-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod model;
 ```
 
-`tools/flowrail/src/ruleset/model.rs`:
+`crates/flowrail-core/src/ruleset/model.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1067,7 +1074,7 @@ pub enum TestVerdict {
 
 - [ ] **Step 4: lib.rs に ruleset を追加**
 
-`tools/flowrail/src/lib.rs`:
+`crates/flowrail-core/src/lib.rs`:
 
 ```rust
 pub mod error;
@@ -1077,13 +1084,13 @@ pub mod ruleset;
 
 - [ ] **Step 5: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test ruleset_model_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test ruleset_model_test 2>&1 | tail -20`
 Expected: 3 tests passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/flowrail/src/ruleset tools/flowrail/src/lib.rs tools/flowrail/tests/ruleset_model_test.rs
+git add crates/flowrail-core/src/ruleset crates/flowrail-core/src/lib.rs crates/flowrail-core/tests/ruleset_model_test.rs
 git commit -m "feat(flowrail): add rule-set.yml model with serde types including tests section"
 ```
 
@@ -1092,12 +1099,12 @@ git commit -m "feat(flowrail): add rule-set.yml model with serde types including
 ## Task 6: JSON Schema ファイル作成
 
 **Files:**
-- Create: `tools/flowrail/schema/pipeline.schema.json`
-- Create: `tools/flowrail/schema/rule-set.schema.json`
+- Create: `schema/pipeline.schema.json`
+- Create: `schema/rule-set.schema.json`
 
 - [ ] **Step 1: pipeline.schema.json を作成**
 
-`tools/flowrail/schema/pipeline.schema.json`:
+`schema/pipeline.schema.json`:
 
 ```json
 {
@@ -1200,7 +1207,7 @@ git commit -m "feat(flowrail): add rule-set.yml model with serde types including
 
 - [ ] **Step 2: rule-set.schema.json を作成**
 
-`tools/flowrail/schema/rule-set.schema.json`:
+`schema/rule-set.schema.json`:
 
 ```json
 {
@@ -1292,13 +1299,13 @@ git commit -m "feat(flowrail): add rule-set.yml model with serde types including
 
 - [ ] **Step 3: スキーマファイルを JSON として妥当か確認**
 
-Run: `python3 -m json.tool tools/flowrail/schema/pipeline.schema.json > /dev/null && python3 -m json.tool tools/flowrail/schema/rule-set.schema.json > /dev/null && echo OK`
+Run: `python3 -m json.tool schema/pipeline.schema.json > /dev/null && python3 -m json.tool schema/rule-set.schema.json > /dev/null && echo OK`
 Expected: `OK`
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/flowrail/schema/
+git add schema/
 git commit -m "feat(flowrail): add JSON Schema for pipeline.yml and rule-set.yml"
 ```
 
@@ -1307,16 +1314,16 @@ git commit -m "feat(flowrail): add JSON Schema for pipeline.yml and rule-set.yml
 ## Task 7: YAML ローダーと schema 検証
 
 **Files:**
-- Create: `tools/flowrail/src/pipeline/loader.rs`
-- Create: `tools/flowrail/src/ruleset/loader.rs`
-- Modify: `tools/flowrail/src/pipeline/mod.rs`
-- Modify: `tools/flowrail/src/ruleset/mod.rs`
-- Test: `tools/flowrail/tests/loader_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`, `tools/flowrail/tests/fixtures/valid/rules/primitives/check-file-exists.yml`, `tools/flowrail/tests/fixtures/invalid/missing-kind.yml`
+- Create: `crates/flowrail-core/src/pipeline/loader.rs`
+- Create: `crates/flowrail-core/src/ruleset/loader.rs`
+- Modify: `crates/flowrail-core/src/pipeline/mod.rs`
+- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
+- Test: `crates/flowrail-core/tests/loader_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`, `crates/flowrail-core/tests/fixtures/valid/rules/primitives/check-file-exists.yml`, `crates/flowrail-core/tests/fixtures/invalid/missing-kind.yml`
 
 - [ ] **Step 1: 有効な fixture を作成**
 
-`tools/flowrail/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`:
+`crates/flowrail-core/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`:
 
 ```yaml
 kind: pipeline
@@ -1330,7 +1337,7 @@ phases:
   - id: plan
 ```
 
-`tools/flowrail/tests/fixtures/valid/rules/primitives/check-file-exists.yml`:
+`crates/flowrail-core/tests/fixtures/valid/rules/primitives/check-file-exists.yml`:
 
 ```yaml
 kind: rule-set
@@ -1347,7 +1354,7 @@ checks:
       path: "{{ path }}"
 ```
 
-`tools/flowrail/tests/fixtures/invalid/missing-kind.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/missing-kind.yml`:
 
 ```yaml
 name: broken
@@ -1358,7 +1365,7 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/loader_test.rs`:
+`crates/flowrail-core/tests/loader_test.rs`:
 
 ```rust
 use flowrail::pipeline::loader as pipeline_loader;
@@ -1397,12 +1404,12 @@ fn load_invalid_missing_kind_fails_schema() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test loader_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test loader_test 2>&1 | tail -20`
 Expected: FAIL — `loader` モジュール未実装。
 
 - [ ] **Step 4: pipeline loader を実装**
 
-`tools/flowrail/src/pipeline/loader.rs`:
+`crates/flowrail-core/src/pipeline/loader.rs`:
 
 ```rust
 use crate::error::{FlowrailError, Result};
@@ -1456,7 +1463,7 @@ fn yaml_to_json(value: &serde_yml::Value) -> serde_json::Value {
 
 - [ ] **Step 5: ruleset loader を実装**
 
-`tools/flowrail/src/ruleset/loader.rs`:
+`crates/flowrail-core/src/ruleset/loader.rs`:
 
 ```rust
 use crate::error::{FlowrailError, Result};
@@ -1505,14 +1512,14 @@ pub fn load(path: &Path) -> Result<RuleSet> {
 
 - [ ] **Step 6: mod.rs に loader を公開**
 
-Edit `tools/flowrail/src/pipeline/mod.rs`:
+Edit `crates/flowrail-core/src/pipeline/mod.rs`:
 
 ```rust
 pub mod loader;
 pub mod model;
 ```
 
-Edit `tools/flowrail/src/ruleset/mod.rs`:
+Edit `crates/flowrail-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -1521,13 +1528,13 @@ pub mod model;
 
 - [ ] **Step 7: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test loader_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test loader_test 2>&1 | tail -20`
 Expected: 3 tests passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tools/flowrail/src/pipeline/loader.rs tools/flowrail/src/ruleset/loader.rs tools/flowrail/src/pipeline/mod.rs tools/flowrail/src/ruleset/mod.rs tools/flowrail/tests/loader_test.rs tools/flowrail/tests/fixtures/
+git add crates/flowrail-core/src/pipeline/loader.rs crates/flowrail-core/src/ruleset/loader.rs crates/flowrail-core/src/pipeline/mod.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/loader_test.rs crates/flowrail-core/tests/fixtures/
 git commit -m "feat(flowrail): add YAML loader with schema validation"
 ```
 
@@ -1536,14 +1543,14 @@ git commit -m "feat(flowrail): add YAML loader with schema validation"
 ## Task 8: Import resolver - 再帰読み込み
 
 **Files:**
-- Create: `tools/flowrail/src/ruleset/resolver.rs`
-- Modify: `tools/flowrail/src/ruleset/mod.rs`
-- Test: `tools/flowrail/tests/resolver_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/valid/rules/recipes/audit-gate.yml`
+- Create: `crates/flowrail-core/src/ruleset/resolver.rs`
+- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
+- Test: `crates/flowrail-core/tests/resolver_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/valid/rules/recipes/audit-gate.yml`
 
 - [ ] **Step 1: recipe fixture を作成 (imports を持つ)**
 
-`tools/flowrail/tests/fixtures/valid/rules/recipes/audit-gate.yml`:
+`crates/flowrail-core/tests/fixtures/valid/rules/recipes/audit-gate.yml`:
 
 ```yaml
 kind: rule-set
@@ -1562,7 +1569,7 @@ uses:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/resolver_test.rs`:
+`crates/flowrail-core/tests/resolver_test.rs`:
 
 ```rust
 use flowrail::ruleset::resolver::{ResolvedGraph, resolve_from_entry};
@@ -1586,12 +1593,12 @@ fn resolver_loads_entry_and_transitive_imports() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test resolver_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
 Expected: FAIL — resolver モジュール未実装。
 
 - [ ] **Step 4: resolver を実装 (循環検出は次タスク)**
 
-`tools/flowrail/src/ruleset/resolver.rs`:
+`crates/flowrail-core/src/ruleset/resolver.rs`:
 
 ```rust
 use crate::error::Result;
@@ -1655,7 +1662,7 @@ fn canonicalize(path: &Path) -> Result<PathBuf> {
 
 - [ ] **Step 5: mod.rs に resolver を追加**
 
-Edit `tools/flowrail/src/ruleset/mod.rs`:
+Edit `crates/flowrail-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -1665,13 +1672,13 @@ pub mod resolver;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test resolver_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/flowrail/src/ruleset/resolver.rs tools/flowrail/src/ruleset/mod.rs tools/flowrail/tests/resolver_test.rs tools/flowrail/tests/fixtures/valid/rules/recipes/audit-gate.yml
+git add crates/flowrail-core/src/ruleset/resolver.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/resolver_test.rs crates/flowrail-core/tests/fixtures/valid/rules/recipes/audit-gate.yml
 git commit -m "feat(flowrail): add rule set import resolver with transitive loading"
 ```
 
@@ -1680,13 +1687,13 @@ git commit -m "feat(flowrail): add rule set import resolver with transitive load
 ## Task 9: 循環 import 検出
 
 **Files:**
-- Modify: `tools/flowrail/src/ruleset/resolver.rs`
-- Test: `tools/flowrail/tests/resolver_test.rs` (追加ケース)
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/circular-a.yml`, `tools/flowrail/tests/fixtures/invalid/circular-b.yml`
+- Modify: `crates/flowrail-core/src/ruleset/resolver.rs`
+- Test: `crates/flowrail-core/tests/resolver_test.rs` (追加ケース)
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/circular-a.yml`, `crates/flowrail-core/tests/fixtures/invalid/circular-b.yml`
 
 - [ ] **Step 1: 循環 fixture を作成**
 
-`tools/flowrail/tests/fixtures/invalid/circular-a.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/circular-a.yml`:
 
 ```yaml
 kind: rule-set
@@ -1696,7 +1703,7 @@ imports:
   - circular-b.yml
 ```
 
-`tools/flowrail/tests/fixtures/invalid/circular-b.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/circular-b.yml`:
 
 ```yaml
 kind: rule-set
@@ -1708,7 +1715,7 @@ imports:
 
 - [ ] **Step 2: 失敗テストを追記**
 
-Append to `tools/flowrail/tests/resolver_test.rs`:
+Append to `crates/flowrail-core/tests/resolver_test.rs`:
 
 ```rust
 #[test]
@@ -1725,12 +1732,12 @@ fn resolver_detects_circular_import() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test resolver_test resolver_detects_circular_import 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test resolver_test resolver_detects_circular_import 2>&1 | tail -20`
 Expected: FAIL — 循環が検出されず stack overflow または rule_sets が無限に増える、あるいは既訪問パスでスキップされて循環が報告されない。
 
 - [ ] **Step 4: resolver を DFS + recursion stack に書き換え**
 
-Replace `tools/flowrail/src/ruleset/resolver.rs`:
+Replace `crates/flowrail-core/src/ruleset/resolver.rs`:
 
 ```rust
 use crate::error::{FlowrailError, Result};
@@ -1821,13 +1828,13 @@ fn canonicalize(path: &Path) -> Result<PathBuf> {
 
 - [ ] **Step 5: 既存 + 新テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test resolver_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
 Expected: 2 tests passed (loads entry + transitive, detects circular).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/flowrail/src/ruleset/resolver.rs tools/flowrail/tests/resolver_test.rs tools/flowrail/tests/fixtures/invalid/circular-a.yml tools/flowrail/tests/fixtures/invalid/circular-b.yml
+git add crates/flowrail-core/src/ruleset/resolver.rs crates/flowrail-core/tests/resolver_test.rs crates/flowrail-core/tests/fixtures/invalid/circular-a.yml crates/flowrail-core/tests/fixtures/invalid/circular-b.yml
 git commit -m "feat(flowrail): detect circular imports in rule set resolver (E002)"
 ```
 
@@ -1836,14 +1843,14 @@ git commit -m "feat(flowrail): detect circular imports in rule set resolver (E00
 ## Task 10: Param 型整合検証 (uses バインディング)
 
 **Files:**
-- Create: `tools/flowrail/src/ruleset/param_check.rs`
-- Modify: `tools/flowrail/src/ruleset/mod.rs`
-- Test: `tools/flowrail/tests/param_check_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`, `tools/flowrail/tests/fixtures/invalid/param-type-mismatch-rule.yml`
+- Create: `crates/flowrail-core/src/ruleset/param_check.rs`
+- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
+- Test: `crates/flowrail-core/tests/param_check_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`, `crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-rule.yml`
 
 - [ ] **Step 1: 不整合 fixture を作成**
 
-`tools/flowrail/tests/fixtures/invalid/param-type-mismatch-rule.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-rule.yml`:
 
 ```yaml
 kind: rule-set
@@ -1855,7 +1862,7 @@ params:
     required: true
 ```
 
-`tools/flowrail/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`:
 
 ```yaml
 kind: pipeline
@@ -1872,7 +1879,7 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/param_check_test.rs`:
+`crates/flowrail-core/tests/param_check_test.rs`:
 
 ```rust
 use flowrail::pipeline::loader as pipeline_loader;
@@ -1908,12 +1915,12 @@ fn integer_param_rejects_string_value() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test param_check_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test param_check_test 2>&1 | tail -20`
 Expected: FAIL — `param_check` モジュール未実装。
 
 - [ ] **Step 4: param_check を実装**
 
-`tools/flowrail/src/ruleset/param_check.rs`:
+`crates/flowrail-core/src/ruleset/param_check.rs`:
 
 ```rust
 use crate::pipeline::model::Pipeline;
@@ -2041,7 +2048,7 @@ fn describe_value(v: &serde_yml::Value) -> &'static str {
 
 - [ ] **Step 5: mod.rs に追加**
 
-Edit `tools/flowrail/src/ruleset/mod.rs`:
+Edit `crates/flowrail-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -2052,13 +2059,13 @@ pub mod resolver;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test param_check_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test param_check_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/flowrail/src/ruleset/param_check.rs tools/flowrail/src/ruleset/mod.rs tools/flowrail/tests/param_check_test.rs tools/flowrail/tests/fixtures/invalid/param-type-mismatch-*.yml
+git add crates/flowrail-core/src/ruleset/param_check.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/param_check_test.rs crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-*.yml
 git commit -m "feat(flowrail): validate uses parameter types against rule set schema (E003)"
 ```
 
@@ -2067,13 +2074,13 @@ git commit -m "feat(flowrail): validate uses parameter types against rule set sc
 ## Task 11: Template 静的解析 (minijinja)
 
 **Files:**
-- Create: `tools/flowrail/src/ruleset/template.rs`
-- Modify: `tools/flowrail/src/ruleset/mod.rs`
-- Test: `tools/flowrail/tests/template_test.rs`
+- Create: `crates/flowrail-core/src/ruleset/template.rs`
+- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
+- Test: `crates/flowrail-core/tests/template_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/template_test.rs`:
+`crates/flowrail-core/tests/template_test.rs`:
 
 ```rust
 use flowrail::ruleset::template::{collect_references, extract_templates};
@@ -2116,14 +2123,14 @@ fn invalid_template_is_an_error() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test template_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test template_test 2>&1 | tail -20`
 Expected: FAIL — `template` モジュール未実装。
 
 > **設計判断:** Phase 1 の template 解析に必要な情報は「`{{ ... }}` の中の top-level 識別子 (dotted access を含む)」のみ。minijinja の公開 API (`Environment::compile_expression`) は式評価には優れるが、静的参照抽出には regex 1.11 の方が単純で依存が薄い。Phase 2 で実 template 評価を実装する際には minijinja の公開 API に切り替える。
 
 - [ ] **Step 3: template を regex 1.11 で実装**
 
-`tools/flowrail/src/ruleset/template.rs`:
+`crates/flowrail-core/src/ruleset/template.rs`:
 
 ```rust
 use crate::error::{FlowrailError, Result};
@@ -2224,7 +2231,7 @@ fn walk(value: &serde_yml::Value, path: &mut String, out: &mut Vec<(String, Stri
 
 - [ ] **Step 4: mod.rs に template を追加**
 
-Edit `tools/flowrail/src/ruleset/mod.rs`:
+Edit `crates/flowrail-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -2236,13 +2243,13 @@ pub mod template;
 
 - [ ] **Step 5: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test template_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test template_test 2>&1 | tail -20`
 Expected: 4 tests passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/flowrail/src/ruleset/template.rs tools/flowrail/src/ruleset/mod.rs tools/flowrail/tests/template_test.rs
+git add crates/flowrail-core/src/ruleset/template.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/template_test.rs
 git commit -m "feat(flowrail): add template reference extractor (regex-based, Phase 1)"
 ```
 
@@ -2251,17 +2258,17 @@ git commit -m "feat(flowrail): add template reference extractor (regex-based, Ph
 ## Task 12: Lint rule — unknown rule set in `uses` (E001)
 
 **Files:**
-- Create: `tools/flowrail/src/lint/mod.rs`
-- Create: `tools/flowrail/src/lint/diagnostic.rs`
-- Create: `tools/flowrail/src/lint/rules/mod.rs`
-- Create: `tools/flowrail/src/lint/rules/unknown_rule_set.rs`
-- Modify: `tools/flowrail/src/lib.rs`
-- Test: `tools/flowrail/tests/lint_unknown_rule_set_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`
+- Create: `crates/flowrail-core/src/lint/mod.rs`
+- Create: `crates/flowrail-core/src/lint/diagnostic.rs`
+- Create: `crates/flowrail-core/src/lint/rules/mod.rs`
+- Create: `crates/flowrail-core/src/lint/rules/unknown_rule_set.rs`
+- Modify: `crates/flowrail-core/src/lib.rs`
+- Test: `crates/flowrail-core/tests/lint_unknown_rule_set_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`
 
 - [ ] **Step 1: Fixture を作成**
 
-`tools/flowrail/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`:
 
 ```yaml
 kind: pipeline
@@ -2277,7 +2284,7 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/lint_unknown_rule_set_test.rs`:
+`crates/flowrail-core/tests/lint_unknown_rule_set_test.rs`:
 
 ```rust
 use flowrail::lint::diagnostic::{DiagnosticKind, Severity};
@@ -2306,19 +2313,19 @@ fn detects_unknown_rule_set_name() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test lint_unknown_rule_set_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_unknown_rule_set_test 2>&1 | tail -20`
 Expected: FAIL — lint モジュール未実装。
 
 - [ ] **Step 4: 共通診断型を実装**
 
-`tools/flowrail/src/lint/mod.rs`:
+`crates/flowrail-core/src/lint/mod.rs`:
 
 ```rust
 pub mod diagnostic;
 pub mod rules;
 ```
 
-`tools/flowrail/src/lint/diagnostic.rs`:
+`crates/flowrail-core/src/lint/diagnostic.rs`:
 
 ```rust
 use std::path::PathBuf;
@@ -2403,13 +2410,13 @@ impl Diagnostic {
 
 - [ ] **Step 5: unknown_rule_set ルールを実装**
 
-`tools/flowrail/src/lint/rules/mod.rs`:
+`crates/flowrail-core/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod unknown_rule_set;
 ```
 
-`tools/flowrail/src/lint/rules/unknown_rule_set.rs`:
+`crates/flowrail-core/src/lint/rules/unknown_rule_set.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2476,7 +2483,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 
 - [ ] **Step 6: lib.rs に lint を追加**
 
-`tools/flowrail/src/lib.rs`:
+`crates/flowrail-core/src/lib.rs`:
 
 ```rust
 pub mod error;
@@ -2487,13 +2494,13 @@ pub mod ruleset;
 
 - [ ] **Step 7: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test lint_unknown_rule_set_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_unknown_rule_set_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tools/flowrail/src/lint/ tools/flowrail/src/lib.rs tools/flowrail/tests/lint_unknown_rule_set_test.rs tools/flowrail/tests/fixtures/invalid/unknown-rule-set-in-uses.yml
+git add crates/flowrail-core/src/lint/ crates/flowrail-core/src/lib.rs crates/flowrail-core/tests/lint_unknown_rule_set_test.rs crates/flowrail-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml
 git commit -m "feat(flowrail): add lint rule for unknown rule set in uses (E001)"
 ```
 
@@ -2502,14 +2509,14 @@ git commit -m "feat(flowrail): add lint rule for unknown rule set in uses (E001)
 ## Task 13: Lint rule — invalid produced_by / consumed_by (E005)
 
 **Files:**
-- Create: `tools/flowrail/src/lint/rules/invalid_produced_consumed.rs`
-- Modify: `tools/flowrail/src/lint/rules/mod.rs`
-- Test: `tools/flowrail/tests/lint_produced_consumed_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/invalid-produced-consumed.yml`
+- Create: `crates/flowrail-core/src/lint/rules/invalid_produced_consumed.rs`
+- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
+- Test: `crates/flowrail-core/tests/lint_produced_consumed_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/invalid-produced-consumed.yml`
 
 - [ ] **Step 1: Fixture**
 
-`tools/flowrail/tests/fixtures/invalid/invalid-produced-consumed.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/invalid-produced-consumed.yml`:
 
 ```yaml
 kind: pipeline
@@ -2528,7 +2535,7 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/lint_produced_consumed_test.rs`:
+`crates/flowrail-core/tests/lint_produced_consumed_test.rs`:
 
 ```rust
 use flowrail::lint::diagnostic::{DiagnosticKind, Severity};
@@ -2554,12 +2561,12 @@ fn detects_produced_by_nonexistent_phase() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test lint_produced_consumed_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_produced_consumed_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`tools/flowrail/src/lint/rules/invalid_produced_consumed.rs`:
+`crates/flowrail-core/src/lint/rules/invalid_produced_consumed.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2602,7 +2609,7 @@ pub fn check_produced_consumed(pipeline: &Pipeline) -> Vec<Diagnostic> {
 
 - [ ] **Step 5: rules/mod.rs に追加**
 
-Edit `tools/flowrail/src/lint/rules/mod.rs`:
+Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_produced_consumed;
@@ -2611,13 +2618,13 @@ pub mod unknown_rule_set;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test lint_produced_consumed_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_produced_consumed_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/flowrail/src/lint/rules/invalid_produced_consumed.rs tools/flowrail/src/lint/rules/mod.rs tools/flowrail/tests/lint_produced_consumed_test.rs tools/flowrail/tests/fixtures/invalid/invalid-produced-consumed.yml
+git add crates/flowrail-core/src/lint/rules/invalid_produced_consumed.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_produced_consumed_test.rs crates/flowrail-core/tests/fixtures/invalid/invalid-produced-consumed.yml
 git commit -m "feat(flowrail): add lint rule for invalid produced_by/consumed_by (E005)"
 ```
 
@@ -2626,14 +2633,14 @@ git commit -m "feat(flowrail): add lint rule for invalid produced_by/consumed_by
 ## Task 14: Lint rule — invalid triggers.rewind_to (E006)
 
 **Files:**
-- Create: `tools/flowrail/src/lint/rules/invalid_trigger_rewind.rs`
-- Modify: `tools/flowrail/src/lint/rules/mod.rs`
-- Test: `tools/flowrail/tests/lint_trigger_rewind_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/invalid-trigger-rewind.yml`
+- Create: `crates/flowrail-core/src/lint/rules/invalid_trigger_rewind.rs`
+- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
+- Test: `crates/flowrail-core/tests/lint_trigger_rewind_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/invalid-trigger-rewind.yml`
 
 - [ ] **Step 1: Fixture**
 
-`tools/flowrail/tests/fixtures/invalid/invalid-trigger-rewind.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/invalid-trigger-rewind.yml`:
 
 ```yaml
 kind: rule-set
@@ -2648,7 +2655,7 @@ triggers:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/lint_trigger_rewind_test.rs`:
+`crates/flowrail-core/tests/lint_trigger_rewind_test.rs`:
 
 ```rust
 use flowrail::lint::diagnostic::DiagnosticKind;
@@ -2677,12 +2684,12 @@ fn detects_trigger_rewind_to_nonexistent_phase() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test lint_trigger_rewind_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_trigger_rewind_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`tools/flowrail/src/lint/rules/invalid_trigger_rewind.rs`:
+`crates/flowrail-core/src/lint/rules/invalid_trigger_rewind.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2713,7 +2720,7 @@ pub fn check_trigger_rewind(
 
 - [ ] **Step 5: rules/mod.rs に追加**
 
-Edit `tools/flowrail/src/lint/rules/mod.rs`:
+Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_produced_consumed;
@@ -2723,11 +2730,11 @@ pub mod unknown_rule_set;
 
 - [ ] **Step 6: テスト再実行 + Commit**
 
-Run: `cd tools/flowrail && cargo test --test lint_trigger_rewind_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_trigger_rewind_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 ```bash
-git add tools/flowrail/src/lint/rules/invalid_trigger_rewind.rs tools/flowrail/src/lint/rules/mod.rs tools/flowrail/tests/lint_trigger_rewind_test.rs tools/flowrail/tests/fixtures/invalid/invalid-trigger-rewind.yml
+git add crates/flowrail-core/src/lint/rules/invalid_trigger_rewind.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_trigger_rewind_test.rs crates/flowrail-core/tests/fixtures/invalid/invalid-trigger-rewind.yml
 git commit -m "feat(flowrail): add lint rule for invalid triggers.rewind_to (E006)"
 ```
 
@@ -2736,14 +2743,14 @@ git commit -m "feat(flowrail): add lint rule for invalid triggers.rewind_to (E00
 ## Task 15: Lint rule — invalid integrations.hooks event name (E007)
 
 **Files:**
-- Create: `tools/flowrail/src/lint/rules/invalid_hook_event.rs`
-- Modify: `tools/flowrail/src/lint/rules/mod.rs`
-- Test: `tools/flowrail/tests/lint_hook_event_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/invalid-hook-event.yml`
+- Create: `crates/flowrail-core/src/lint/rules/invalid_hook_event.rs`
+- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
+- Test: `crates/flowrail-core/tests/lint_hook_event_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/invalid-hook-event.yml`
 
 - [ ] **Step 1: Fixture**
 
-`tools/flowrail/tests/fixtures/invalid/invalid-hook-event.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/invalid-hook-event.yml`:
 
 ```yaml
 kind: pipeline
@@ -2761,7 +2768,7 @@ integrations:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/lint_hook_event_test.rs`:
+`crates/flowrail-core/tests/lint_hook_event_test.rs`:
 
 ```rust
 use flowrail::lint::diagnostic::DiagnosticKind;
@@ -2790,12 +2797,12 @@ fn detects_renamed_and_unknown_hook_events() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test lint_hook_event_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_hook_event_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`tools/flowrail/src/lint/rules/invalid_hook_event.rs`:
+`crates/flowrail-core/src/lint/rules/invalid_hook_event.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2856,7 +2863,7 @@ pub fn check_hook_events(pipeline: &Pipeline) -> Vec<Diagnostic> {
 
 - [ ] **Step 5: rules/mod.rs に追加**
 
-Edit `tools/flowrail/src/lint/rules/mod.rs`:
+Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_hook_event;
@@ -2867,11 +2874,11 @@ pub mod unknown_rule_set;
 
 - [ ] **Step 6: テスト再実行 + Commit**
 
-Run: `cd tools/flowrail && cargo test --test lint_hook_event_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_hook_event_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 ```bash
-git add tools/flowrail/src/lint/rules/invalid_hook_event.rs tools/flowrail/src/lint/rules/mod.rs tools/flowrail/tests/lint_hook_event_test.rs tools/flowrail/tests/fixtures/invalid/invalid-hook-event.yml
+git add crates/flowrail-core/src/lint/rules/invalid_hook_event.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_hook_event_test.rs crates/flowrail-core/tests/fixtures/invalid/invalid-hook-event.yml
 git commit -m "feat(flowrail): add lint rule for invalid integrations.hooks event (E007)"
 ```
 
@@ -2880,14 +2887,14 @@ git commit -m "feat(flowrail): add lint rule for invalid integrations.hooks even
 ## Task 16: Lint rule — unused param warning (W001)
 
 **Files:**
-- Create: `tools/flowrail/src/lint/rules/unused_param.rs`
-- Modify: `tools/flowrail/src/lint/rules/mod.rs`
-- Test: `tools/flowrail/tests/lint_unused_param_test.rs`
-- Test fixtures: `tools/flowrail/tests/fixtures/invalid/unused-param.yml`
+- Create: `crates/flowrail-core/src/lint/rules/unused_param.rs`
+- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
+- Test: `crates/flowrail-core/tests/lint_unused_param_test.rs`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/unused-param.yml`
 
 - [ ] **Step 1: Fixture**
 
-`tools/flowrail/tests/fixtures/invalid/unused-param.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/unused-param.yml`:
 
 ```yaml
 kind: rule-set
@@ -2908,7 +2915,7 @@ checks:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`tools/flowrail/tests/lint_unused_param_test.rs`:
+`crates/flowrail-core/tests/lint_unused_param_test.rs`:
 
 ```rust
 use flowrail::lint::diagnostic::{DiagnosticKind, Severity};
@@ -2934,12 +2941,12 @@ fn detects_declared_but_unused_param() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test lint_unused_param_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_unused_param_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`tools/flowrail/src/lint/rules/unused_param.rs`:
+`crates/flowrail-core/src/lint/rules/unused_param.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2984,7 +2991,7 @@ pub fn check_unused_params(rule_set: &RuleSet) -> Vec<Diagnostic> {
 
 - [ ] **Step 5: rules/mod.rs に追加 + テスト**
 
-Edit `tools/flowrail/src/lint/rules/mod.rs`:
+Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_hook_event;
@@ -2994,13 +3001,13 @@ pub mod unknown_rule_set;
 pub mod unused_param;
 ```
 
-Run: `cd tools/flowrail && cargo test --test lint_unused_param_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test lint_unused_param_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/flowrail/src/lint/rules/unused_param.rs tools/flowrail/src/lint/rules/mod.rs tools/flowrail/tests/lint_unused_param_test.rs tools/flowrail/tests/fixtures/invalid/unused-param.yml
+git add crates/flowrail-core/src/lint/rules/unused_param.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_unused_param_test.rs crates/flowrail-core/tests/fixtures/invalid/unused-param.yml
 git commit -m "feat(flowrail): add lint rule for unused param warning (W001)"
 ```
 
@@ -3009,14 +3016,14 @@ git commit -m "feat(flowrail): add lint rule for unused param warning (W001)"
 ## Task 17: Lint driver — 全ルール集約と CLI 統合
 
 **Files:**
-- Create: `tools/flowrail/src/lint/driver.rs`
-- Modify: `tools/flowrail/src/lint/mod.rs`
-- Modify: `tools/flowrail/src/main.rs`
-- Test: `tools/flowrail/tests/lint_cli_test.rs`
+- Create: `crates/flowrail-core/src/lint/driver.rs`
+- Modify: `crates/flowrail-core/src/lint/mod.rs`
+- Modify: `crates/flowrail/src/main.rs`
+- Test: `crates/flowrail/tests/lint_cli_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/lint_cli_test.rs`:
+`crates/flowrail/tests/lint_cli_test.rs`:
 
 ```rust
 use std::path::PathBuf;
@@ -3069,12 +3076,12 @@ fn lint_exits_1_on_warnings_only() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test lint_cli_test 2>&1 | tail -30`
+Run: `cargo test -p flowrail --test lint_cli_test 2>&1 | tail -30`
 Expected: FAIL — lint サブコマンドが stub 出力のみ。
 
 - [ ] **Step 3: lint driver を実装**
 
-`tools/flowrail/src/lint/driver.rs`:
+`crates/flowrail-core/src/lint/driver.rs`:
 
 ```rust
 use crate::error::{FlowrailError, Result};
@@ -3248,7 +3255,7 @@ fn schema_error_diagnostic(err: &FlowrailError, path: &Path) -> Diagnostic {
 
 - [ ] **Step 4: lint/mod.rs に driver を公開**
 
-Edit `tools/flowrail/src/lint/mod.rs`:
+Edit `crates/flowrail-core/src/lint/mod.rs`:
 
 ```rust
 pub mod diagnostic;
@@ -3258,7 +3265,7 @@ pub mod rules;
 
 - [ ] **Step 5: main.rs で lint を配線**
 
-Edit `tools/flowrail/src/main.rs`:
+Edit `crates/flowrail/src/main.rs`:
 
 ```rust
 mod cli;
@@ -3339,13 +3346,13 @@ fn real_main() -> Result<ExitCode> {
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test lint_cli_test 2>&1 | tail -30`
+Run: `cargo test -p flowrail --test lint_cli_test 2>&1 | tail -30`
 Expected: 3 tests passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/flowrail/src/lint/driver.rs tools/flowrail/src/lint/mod.rs tools/flowrail/src/main.rs tools/flowrail/tests/lint_cli_test.rs
+git add crates/flowrail-core/src/lint/driver.rs crates/flowrail-core/src/lint/mod.rs crates/flowrail/src/main.rs crates/flowrail/tests/lint_cli_test.rs
 git commit -m "feat(flowrail): wire lint driver with all rules and exit codes"
 ```
 
@@ -3354,14 +3361,14 @@ git commit -m "feat(flowrail): wire lint driver with all rules and exit codes"
 ## Task 18: YAML フォーマッタ — key ordering
 
 **Files:**
-- Create: `tools/flowrail/src/fmt/mod.rs`
-- Create: `tools/flowrail/src/fmt/key_order.rs`
-- Modify: `tools/flowrail/src/lib.rs`
-- Test: `tools/flowrail/tests/fmt_test.rs`
+- Create: `crates/flowrail-core/src/fmt/mod.rs`
+- Create: `crates/flowrail-core/src/fmt/key_order.rs`
+- Modify: `crates/flowrail-core/src/lib.rs`
+- Test: `crates/flowrail-core/tests/fmt_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/fmt_test.rs`:
+`crates/flowrail-core/tests/fmt_test.rs`:
 
 ```rust
 use flowrail::fmt::format_yaml;
@@ -3429,12 +3436,12 @@ phases:
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test fmt_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test fmt_test 2>&1 | tail -20`
 Expected: FAIL — fmt モジュール未実装。
 
 - [ ] **Step 3: key_order.rs を実装**
 
-`tools/flowrail/src/fmt/key_order.rs`:
+`crates/flowrail-core/src/fmt/key_order.rs`:
 
 ```rust
 /// Canonical key order for top-level fields in a pipeline YAML.
@@ -3502,7 +3509,7 @@ fn fxhash_u32(s: &str) -> u32 {
 
 - [ ] **Step 4: fmt/mod.rs を実装**
 
-`tools/flowrail/src/fmt/mod.rs`:
+`crates/flowrail-core/src/fmt/mod.rs`:
 
 ```rust
 pub mod key_order;
@@ -3560,7 +3567,7 @@ fn reorder(value: Value, top_order: &[&str]) -> Value {
 
 - [ ] **Step 5: lib.rs に fmt を追加**
 
-Edit `tools/flowrail/src/lib.rs`:
+Edit `crates/flowrail-core/src/lib.rs`:
 
 ```rust
 pub mod error;
@@ -3572,13 +3579,13 @@ pub mod ruleset;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test fmt_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail-core --test fmt_test 2>&1 | tail -20`
 Expected: 3 tests passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/flowrail/src/fmt/ tools/flowrail/src/lib.rs tools/flowrail/tests/fmt_test.rs
+git add crates/flowrail-core/src/fmt/ crates/flowrail-core/src/lib.rs crates/flowrail-core/tests/fmt_test.rs
 git commit -m "feat(flowrail): add YAML formatter with canonical key ordering"
 ```
 
@@ -3587,12 +3594,12 @@ git commit -m "feat(flowrail): add YAML formatter with canonical key ordering"
 ## Task 19: `flowrail pipeline fmt` CLI 統合 (--check, --diff)
 
 **Files:**
-- Modify: `tools/flowrail/src/main.rs`
-- Test: `tools/flowrail/tests/fmt_cli_test.rs`
+- Modify: `crates/flowrail/src/main.rs`
+- Test: `crates/flowrail/tests/fmt_cli_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/fmt_cli_test.rs`:
+`crates/flowrail/tests/fmt_cli_test.rs`:
 
 ```rust
 use std::path::PathBuf;
@@ -3668,12 +3675,12 @@ fn fmt_diff_prints_diff_to_stdout() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test fmt_cli_test 2>&1 | tail -30`
+Run: `cargo test -p flowrail --test fmt_cli_test 2>&1 | tail -30`
 Expected: FAIL — fmt CLI stub だけ。
 
 - [ ] **Step 3: main.rs で fmt を配線**
 
-Replace the `PipelineVerb::Fmt { .. }` branch in `tools/flowrail/src/main.rs`:
+Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
 
 ```rust
             PipelineVerb::Fmt { paths, check, diff } => {
@@ -3716,7 +3723,7 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `tools/flowrail/src/main.rs`:
             }
 ```
 
-Add the helper at the bottom of `tools/flowrail/src/main.rs`:
+Add the helper at the bottom of `crates/flowrail/src/main.rs`:
 
 ```rust
 fn print_unified_diff(old: &str, new: &str, path: &std::path::Path) {
@@ -3741,13 +3748,13 @@ fn print_unified_diff(old: &str, new: &str, path: &std::path::Path) {
 
 - [ ] **Step 4: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test fmt_cli_test 2>&1 | tail -30`
+Run: `cargo test -p flowrail --test fmt_cli_test 2>&1 | tail -30`
 Expected: 3 tests passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/flowrail/src/main.rs tools/flowrail/tests/fmt_cli_test.rs
+git add crates/flowrail/src/main.rs crates/flowrail/tests/fmt_cli_test.rs
 git commit -m "feat(flowrail): wire pipeline fmt CLI with --check and --diff flags"
 ```
 
@@ -3756,15 +3763,15 @@ git commit -m "feat(flowrail): wire pipeline fmt CLI with --check and --diff fla
 ## Task 20: Event Stream 基盤 (run.id + command.invoked/completed)
 
 **Files:**
-- Create: `tools/flowrail/src/event/mod.rs`
-- Create: `tools/flowrail/src/event/logger.rs`
-- Modify: `tools/flowrail/src/lib.rs`
-- Modify: `tools/flowrail/src/main.rs`
-- Test: `tools/flowrail/tests/event_stream_test.rs`
+- Create: `crates/flowrail-core/src/event/mod.rs`
+- Create: `crates/flowrail-core/src/event/logger.rs`
+- Modify: `crates/flowrail-core/src/lib.rs`
+- Modify: `crates/flowrail/src/main.rs`
+- Test: `crates/flowrail/tests/event_stream_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/event_stream_test.rs`:
+`crates/flowrail/tests/event_stream_test.rs`:
 
 ```rust
 use std::process::Command;
@@ -3804,18 +3811,18 @@ fn emits_command_invoked_and_completed_with_run_id() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test event_stream_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail --test event_stream_test 2>&1 | tail -20`
 Expected: FAIL — event ファイルが存在しない。
 
 - [ ] **Step 3: event/logger.rs を実装**
 
-`tools/flowrail/src/event/mod.rs`:
+`crates/flowrail-core/src/event/mod.rs`:
 
 ```rust
 pub mod logger;
 ```
 
-`tools/flowrail/src/event/logger.rs`:
+`crates/flowrail-core/src/event/logger.rs`:
 
 ```rust
 use serde::Serialize;
@@ -3885,7 +3892,7 @@ pub fn emit(event_name: &str, payload: serde_json::Value) {
 
 - [ ] **Step 4: determinism スタブを先出し (now_iso)**
 
-`tools/flowrail/src/determinism/mod.rs`:
+`crates/flowrail-core/src/determinism/mod.rs`:
 
 ```rust
 pub fn now_iso() -> String {
@@ -3903,7 +3910,7 @@ pub fn now_iso() -> String {
 
 - [ ] **Step 5: lib.rs に event + determinism を追加**
 
-Edit `tools/flowrail/src/lib.rs`:
+Edit `crates/flowrail-core/src/lib.rs`:
 
 ```rust
 pub mod determinism;
@@ -3917,7 +3924,7 @@ pub mod ruleset;
 
 - [ ] **Step 6: main.rs で emit を呼ぶ**
 
-Add at the top of `real_main()` in `tools/flowrail/src/main.rs`:
+Add at the top of `real_main()` in `crates/flowrail/src/main.rs`:
 
 ```rust
     flowrail::event::logger::emit(
@@ -3951,13 +3958,13 @@ fn run_cli() -> Result<ExitCode> {
 
 - [ ] **Step 7: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test event_stream_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail --test event_stream_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tools/flowrail/src/event/ tools/flowrail/src/determinism/ tools/flowrail/src/lib.rs tools/flowrail/src/main.rs tools/flowrail/tests/event_stream_test.rs
+git add crates/flowrail-core/src/event/ crates/flowrail-core/src/determinism/ crates/flowrail-core/src/lib.rs crates/flowrail/src/main.rs crates/flowrail/tests/event_stream_test.rs
 git commit -m "feat(flowrail): emit command.invoked/completed events with stable run.id"
 ```
 
@@ -3966,15 +3973,15 @@ git commit -m "feat(flowrail): emit command.invoked/completed events with stable
 ## Task 21: Deterministic Mode (FLOWRAIL_NOW + JSON 正規化)
 
 **Files:**
-- Modify: `tools/flowrail/src/determinism/mod.rs`
-- Create: `tools/flowrail/src/output/mod.rs`
-- Create: `tools/flowrail/src/output/json.rs`
-- Modify: `tools/flowrail/src/lib.rs`
-- Test: `tools/flowrail/tests/deterministic_test.rs`
+- Modify: `crates/flowrail-core/src/determinism/mod.rs`
+- Create: `crates/flowrail-core/src/output/mod.rs`
+- Create: `crates/flowrail-core/src/output/json.rs`
+- Modify: `crates/flowrail-core/src/lib.rs`
+- Test: `crates/flowrail/tests/deterministic_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`tools/flowrail/tests/deterministic_test.rs`:
+`crates/flowrail/tests/deterministic_test.rs`:
 
 ```rust
 use std::process::Command;
@@ -4013,12 +4020,12 @@ fn deterministic_mode_produces_byte_identical_events() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cd tools/flowrail && cargo test --test deterministic_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail --test deterministic_test 2>&1 | tail -20`
 Expected: FAIL — run.id が uuid_v4 ランダムで非決定。
 
 - [ ] **Step 3: determinism/mod.rs を拡張**
 
-Replace `tools/flowrail/src/determinism/mod.rs`:
+Replace `crates/flowrail-core/src/determinism/mod.rs`:
 
 ```rust
 pub fn now_iso() -> String {
@@ -4046,7 +4053,7 @@ pub fn is_deterministic() -> bool {
 
 - [ ] **Step 4: event/logger.rs の run_id 生成を `determinism::run_id` に差し替え**
 
-Replace in `tools/flowrail/src/event/logger.rs`:
+Replace in `crates/flowrail-core/src/event/logger.rs`:
 
 ```rust
     fn new() -> Self {
@@ -4057,13 +4064,13 @@ And remove the `use uuid::Uuid;` import at the top.
 
 - [ ] **Step 5: JSON 正規化出力 (output/json.rs)**
 
-`tools/flowrail/src/output/mod.rs`:
+`crates/flowrail-core/src/output/mod.rs`:
 
 ```rust
 pub mod json;
 ```
 
-`tools/flowrail/src/output/json.rs`:
+`crates/flowrail-core/src/output/json.rs`:
 
 ```rust
 use serde::Serialize;
@@ -4095,7 +4102,7 @@ fn sort_value(v: serde_json::Value) -> serde_json::Value {
 
 - [ ] **Step 6: lib.rs に output を追加**
 
-Edit `tools/flowrail/src/lib.rs`:
+Edit `crates/flowrail-core/src/lib.rs`:
 
 ```rust
 pub mod determinism;
@@ -4133,13 +4140,13 @@ Edit the `emit` method of `EventLogger`:
 
 - [ ] **Step 8: テスト再実行**
 
-Run: `cd tools/flowrail && cargo test --test deterministic_test 2>&1 | tail -20`
+Run: `cargo test -p flowrail --test deterministic_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add tools/flowrail/src/determinism/ tools/flowrail/src/output/ tools/flowrail/src/event/logger.rs tools/flowrail/src/lib.rs tools/flowrail/tests/deterministic_test.rs
+git add crates/flowrail-core/src/determinism/ crates/flowrail-core/src/output/ crates/flowrail-core/src/event/logger.rs crates/flowrail-core/src/lib.rs crates/flowrail/tests/deterministic_test.rs
 git commit -m "feat(flowrail): add deterministic mode (FLOWRAIL_NOW/FLOWRAIL_SEED) with canonical JSON"
 ```
 
@@ -4148,16 +4155,16 @@ git commit -m "feat(flowrail): add deterministic mode (FLOWRAIL_NOW/FLOWRAIL_SEE
 ## Task 22: 実パイプライン統合検証 (feature-dev / debug-flow 試作 fixture)
 
 **Files:**
-- Create: `tools/flowrail/tests/fixtures/integration/pipelines/feature-dev.yml`
-- Create: `tools/flowrail/tests/fixtures/integration/pipelines/debug-flow.yml`
-- Create: `tools/flowrail/tests/fixtures/integration/rules/primitives/check-file-exists.yml`
-- Create: `tools/flowrail/tests/fixtures/integration/rules/primitives/check-command.yml`
-- Create: `tools/flowrail/tests/fixtures/integration/rules/recipes/audit-gate.yml`
-- Test: `tools/flowrail/tests/integration_test.rs`
+- Create: `crates/flowrail-core/tests/fixtures/integration/pipelines/feature-dev.yml`
+- Create: `crates/flowrail-core/tests/fixtures/integration/pipelines/debug-flow.yml`
+- Create: `crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-file-exists.yml`
+- Create: `crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-command.yml`
+- Create: `crates/flowrail-core/tests/fixtures/integration/rules/recipes/audit-gate.yml`
+- Test: `crates/flowrail/tests/integration_test.rs`
 
 - [ ] **Step 1: 統合 fixture を作成**
 
-`tools/flowrail/tests/fixtures/integration/rules/primitives/check-file-exists.yml`:
+`crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-file-exists.yml`:
 
 ```yaml
 kind: rule-set
@@ -4174,7 +4181,7 @@ checks:
       path: "{{ path }}"
 ```
 
-`tools/flowrail/tests/fixtures/integration/rules/primitives/check-command.yml`:
+`crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-command.yml`:
 
 ```yaml
 kind: rule-set
@@ -4194,7 +4201,7 @@ checks:
       expected: "{{ expected_exit }}"
 ```
 
-`tools/flowrail/tests/fixtures/integration/rules/recipes/audit-gate.yml`:
+`crates/flowrail-core/tests/fixtures/integration/rules/recipes/audit-gate.yml`:
 
 ```yaml
 kind: rule-set
@@ -4212,7 +4219,7 @@ uses:
       path: "{{ artifact_path }}"
 ```
 
-`tools/flowrail/tests/fixtures/integration/pipelines/feature-dev.yml`:
+`crates/flowrail-core/tests/fixtures/integration/pipelines/feature-dev.yml`:
 
 ```yaml
 kind: pipeline
@@ -4248,7 +4255,7 @@ integrations:
       on_snapshot_created: "linear-sync snapshot"
 ```
 
-`tools/flowrail/tests/fixtures/integration/pipelines/debug-flow.yml`:
+`crates/flowrail-core/tests/fixtures/integration/pipelines/debug-flow.yml`:
 
 ```yaml
 kind: pipeline
@@ -4267,7 +4274,7 @@ phases:
 
 - [ ] **Step 2: 統合テストを書く**
 
-`tools/flowrail/tests/integration_test.rs`:
+`crates/flowrail/tests/integration_test.rs`:
 
 ```rust
 use std::path::PathBuf;
@@ -4333,47 +4340,55 @@ fn feature_dev_pipeline_is_already_fmt_clean_after_first_fmt() {
 
 - [ ] **Step 3: テスト実行**
 
-Run: `cd tools/flowrail && cargo test --test integration_test 2>&1 | tail -30`
+Run: `cargo test -p flowrail --test integration_test 2>&1 | tail -30`
 Expected: 3 tests passed.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/flowrail/tests/fixtures/integration/ tools/flowrail/tests/integration_test.rs
+git add crates/flowrail-core/tests/fixtures/integration/ crates/flowrail/tests/integration_test.rs
 git commit -m "test(flowrail): add integration fixtures for feature-dev and debug-flow pipelines"
 ```
 
 ---
 
-## Task 23: dotfiles bin への symlink 設置 + 全体 smoke
+## Task 23: workspace root bin/ symlink 設置 + 全体 smoke
 
 **Files:**
-- Create: `bin/flowrail` (symlink)
-- Modify: `tools/flowrail/Cargo.toml` (必要なら release profile 調整)
+- Create: `bin/flowrail` (symlink, workspace root 基準)
+- Modify: `Cargo.toml` (workspace root、必要なら `[profile.release]` 調整)
+
+> **注**: 独立レポジトリ化後 (2026-04-05) は dotfiles 側への symlink ではなく、flowrail workspace root 内に `bin/flowrail → ../target/release/flowrail` を設置する。ユーザーは `export PATH="<workspace-root>/bin:$PATH"` または `cargo install --path crates/flowrail` で `$HOME/.cargo/bin/flowrail` にインストールする運用。
 
 - [ ] **Step 1: release ビルド**
 
 Run:
 ```bash
-cd /Users/nishikataseiichi/.dotfiles/tools/flowrail && cargo build --release 2>&1 | tail -10
-ls -lh tools/flowrail/target/release/flowrail
+cargo build --workspace --release 2>&1 | tail -10
+ls -lh target/release/flowrail
 ```
-Expected: ビルド成功、バイナリが生成される。
+Expected: ビルド成功、`target/release/flowrail` バイナリが生成される。
 
 - [ ] **Step 2: バイナリサイズ確認 (20MB 以下)**
 
-Run: `stat -f %z tools/flowrail/target/release/flowrail 2>/dev/null || stat -c %s tools/flowrail/target/release/flowrail`
+Run: `stat -f %z target/release/flowrail 2>/dev/null || stat -c %s target/release/flowrail`
 Expected: 20 * 1024 * 1024 = 20971520 以下。
 
-> **NOTE:** もし 20MB を超えた場合、`Cargo.toml` の `[profile.release]` に `opt-level = "z"` を追加して再ビルドを検討。
+> **NOTE:** もし 20MB を超えた場合、workspace root の `Cargo.toml` に以下を追加して再ビルドを検討:
+> ```toml
+> [profile.release]
+> opt-level = "z"
+> lto = "thin"
+> codegen-units = 1
+> strip = true
+> ```
 
 - [ ] **Step 3: bin/flowrail symlink を作成**
 
 Run:
 ```bash
-cd /Users/nishikataseiichi/.dotfiles
-ls bin 2>/dev/null || mkdir -p bin
-ln -sfn ../tools/flowrail/target/release/flowrail bin/flowrail
+mkdir -p bin
+ln -sfn ../target/release/flowrail bin/flowrail
 ls -l bin/flowrail
 ```
 Expected: symlink が作成される。
@@ -4382,36 +4397,40 @@ Expected: symlink が作成される。
 
 Run:
 ```bash
-export PATH="/Users/nishikataseiichi/.dotfiles/bin:$PATH"
+export PATH="$(pwd)/bin:$PATH"
 which flowrail
 flowrail --version
 flowrail pipeline lint --help
-flowrail pipeline lint /Users/nishikataseiichi/.dotfiles/tools/flowrail/tests/fixtures/integration/pipelines/feature-dev.yml
+flowrail pipeline lint crates/flowrail-core/tests/fixtures/integration/pipelines/feature-dev.yml
 ```
 Expected: コマンドが解決し、lint が clean で exit 0。
 
 - [ ] **Step 5: 全テスト再実行 (regression guard)**
 
-Run: `cd tools/flowrail && cargo test 2>&1 | tail -20`
+Run: `cargo test --workspace 2>&1 | tail -20`
 Expected: 全テスト PASS。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add bin/flowrail tools/flowrail/Cargo.toml
+git add bin/flowrail Cargo.toml .gitignore
 git commit -m "feat(flowrail): add bin/flowrail symlink to release binary"
 ```
+
+> **注**: `target/` は `.gitignore` で除外されているため、`bin/flowrail → ../target/release/flowrail` の symlink リンク先はユーザー毎にローカルビルドで生成される。clone 直後は `cargo build --workspace --release` が必要。
 
 ---
 
 ## Task 24: Phase 1 完了マニフェスト + ドキュメント
 
 **Files:**
-- Create: `tools/flowrail/README.md`
+- Modify: `README.md` (workspace root、initial commit で既に作成済み)
 
-- [ ] **Step 1: README.md を作成**
+> **注**: 独立レポジトリ化により workspace root に `README.md` は既に存在する (commit 86c7e92)。Task 24 では Phase 1 の成果物情報を追記する形で更新する。
 
-`tools/flowrail/README.md`:
+- [ ] **Step 1: README.md を更新**
+
+`README.md` (workspace root、Phase 1 セクションを追記):
 
 ```markdown
 # flowrail — Tiny Workflow Engine CLI for LLM
@@ -4421,8 +4440,9 @@ Phase 1 MVP — `flowrail pipeline lint` + `flowrail pipeline fmt`.
 ## Build
 
 \`\`\`bash
-cd tools/flowrail
-cargo build --release
+# workspace root で実行
+cargo build --workspace --release
+# バイナリは target/release/flowrail に生成される
 \`\`\`
 
 ## Usage
@@ -4480,21 +4500,21 @@ event streams.
 
 ## Related Docs
 
-- Spec: \`docs/superpowers/specs/2026-04-05-flowrail-cli-rule-set-architecture-design.md\`
-- Phase 1 Plan: \`docs/superpowers/plans/2026-04-05-flowrail-phase1-pipeline-lint-fmt.md\`
+- Spec: \`docs/specs/2026-04-05-flowrail-cli-rule-set-architecture-design.md\`
+- Phase 1 Plan: \`docs/plans/2026-04-05-flowrail-phase1-pipeline-lint-fmt.md\`
 ```
 
 - [ ] **Step 2: 最終ビルド + 全テスト + コミット**
 
 Run:
 ```bash
-cd tools/flowrail && cargo build --release 2>&1 | tail -5
-cd tools/flowrail && cargo test 2>&1 | tail -5
+cargo build --workspace --release 2>&1 | tail -5
+cargo test --workspace 2>&1 | tail -5
 ```
 Expected: 全 PASS。
 
 ```bash
-git add tools/flowrail/README.md
+git add README.md
 git commit -m "docs(flowrail): add Phase 1 README with usage and diagnostics"
 ```
 

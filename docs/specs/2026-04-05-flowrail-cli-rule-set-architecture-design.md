@@ -1661,98 +1661,559 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 ---
 
-## Feasibility Mapping (TBD before Phase A)
+## Feasibility Mapping (Phase A 前完成版)
 
-> **⚠ 本セクションは骨子のみ**。完全な検証は **Phase A 実装開始前の別セッション** で実施する。本 spec は「検証未完の設計案」として position し、Phase A 着手の前提条件に Feasibility Mapping の完成を置く。
+> **Phase A 実装開始前の必須 gate**。本セクションは、現行 dotfiles の `workflow-engine/modules/*.md` + `feature-dev/regate/*.md` + 4 パイプライン (feature-dev / debug-flow / triage / linear-sync) に存在する非自明機能を flowrail core + rule set で表現可能かを 7 × 4 の mapping 表で評価し、各機能について **救済 (flowrail core / rule set schema で実装)** または **退行 (許容された機能低下)** のいずれかに分類する。
 
-### 検証対象 (7 カテゴリ、現行 `workflow-engine/modules/*.md` + 4 パイプライン)
+### 評価方法
 
-| # | 現行機能 | 現行ファイル | 検証すべき非自明機能 |
-|---|---------|-------------|-----------------|
-| (a) | **Audit** | `audit.md` (463 行) | phase-auditor Agent 起動、Audit Team `--swarm` 3 メンバー協調、`audit_target` projection (audit-only phase が上流 artifact の validation を担う)、`cumulative_diagnosis` の attempt 間累積、`escalation != null` で即 PAUSE、Evidence Plan 動的生成、`validation_record` 累積注入 |
-| (b) | **Inner Loop** | `inner-loop.md` (219 行) | HARD-GATE「Verify 未通過で Audit Gate 不可」、同一テスト 2 連続同理由 PAUSE、要件曖昧さ検出即 PAUSE、Impl 1 回のみ + TestEnrich/Verify ループ、lint/fmt はオーケストレーターが直接自動修正、`current_substep` ベース resume、completed/remaining tasks 個別スキップ |
-| (c) | **Autonomy** | `autonomy.md` (143 行、30+ エントリ) | 状況依存 if-then (brainstorming 設計質問 PAUSE / worktree テスト失敗 PAUSE / VRT 差分 PAUSE / UI キーワード検出 PAUSE / フレーキーテスト検出 AUTO / Context 逼迫 PAUSE / Codex 接続失敗 warning / 3 連続 findings PAUSE)、3 種の Autonomy Mode (INTERACTIVE / AUTONOMOUS / AUTONOMOUS+GATE) |
-| (d) | **Phase Summary** | `phase-summary.md` (100 行) | `concerns` / `directives` の target_phase 伝播、`validation_record` の question 単位累積、`inner_loop_state` の mid-phase handover、`evidence` の linear_sync 区分 (inline / attached / reference_only) |
-| (e) | **Linear-sync** | `linear-sync/SKILL.md` (322 行) | `resolve_ticket` の AskUserQuestion 対話、`sync_phase` の audit_observations 構造化 payload、`linear_ticket_id` / `document_id` のセッション間持続化、`read_phase_summary` のフォールバック復元、`sync_regate` / `sync_handover` |
-| (f) | **Triage** | `triage/SKILL.md` | URL 引数対話型フロー、外部リンク探索 (Slack / GitHub)、AskUserQuestion による探索選択、動的判断 (pipeline.yml 不在で SKILL.md 単体) |
-| (g) | **Regate (test-failure, review-findings, audit-failure)** | `feature-dev/regate/*.md` 3 ファイル | flaky 検出 (同一テスト 2 回交互で判定)、concern の後続フェーズ伝播、fix_instruction 組み立てと注入、`verification_chain` のフル実行 (execute → review → accept-test)、Re-gate + Re-review ループ |
+**縦軸 (7 カテゴリ)**: 現行 `workflow-engine/modules/*.md` 7 ファイル + `feature-dev/regate/*.md` 3 ファイル
 
-### 判断原則 (Phase A 別セッションで適用)
+| # | カテゴリ | 現行ファイル | LOC |
+|---|---------|-------------|-----|
+| (a) | Audit | `workflow-engine/modules/audit.md` | 463 |
+| (b) | Inner Loop | `workflow-engine/modules/inner-loop.md` | 219 |
+| (c) | Autonomy | `workflow-engine/modules/autonomy.md` | 143 |
+| (d) | Phase Summary | `workflow-engine/modules/phase-summary.md` | 100 |
+| (e) | Linear-sync | `linear-sync/SKILL.md` | 322 |
+| (f) | Triage | `triage/SKILL.md` | 196 |
+| (g) | Regate | `feature-dev/regate/{audit-failure,test-failure,review-findings}.md` | 計 ~130 |
 
-1. **デフォルトは機能退行として明示・許容** — spec の「非対応機能リスト」に記載し、ユーザーに明示的に同意を得る
-2. **高価値機能のみ flowrail core / rule set schema 拡張で救済** — case-by-case で判断。候補: (a) の `audit_target` projection、(b) の `inner_loop_state` resume、(c) の `autonomy` 動的状況判定、(e) の `resolve_ticket` 対話プロトコル、(g) の flaky 検出
-3. **救済する場合の拡張方針**: flowrail core に built-in directive を追加、または rule set schema を拡張。原則 7「tiny」の境界と LOC 見積を同時更新
+**横軸 (4 パイプライン)**: 既存の実運用パイプライン
 
-### 完成タイミング
+| パイプライン | 構造 | 典型フェーズ数 | 使用モジュール |
+|------------|------|--------------|--------------|
+| feature-dev | `pipeline.yml` + `phases/*.md` | 9 | audit, autonomy, regate, resume, phase-summary, context-budget |
+| debug-flow | 同上 | 8 | 同上 |
+| triage | `SKILL.md` 単体 (`pipeline.yml` 不在) | 4 | （宣言的 modules 未使用、対話型） |
+| linear-sync | integration supplement | 0 (hook として呼ばれる) | （on_pipeline_start / on_phase_complete / on_regate / on_handover / on_pipeline_complete） |
 
-- **本 spec**: 骨子のみ (本セクション)
-- **別セッション**: 現行ファイルの機械的 scan + 1:1 mapping 表作成 + 救済/退行判断 + spec の非対応機能リスト追記
-- **Phase A 着手条件**: Feasibility Mapping が完成していること
+**セル表記**:
+- ○ = そのパイプラインで実際に機能が活性化される
+- △ = 機能は定義されているが、該当パイプラインでは限定的に発火 / 稀
+- × = 該当パイプラインでは使用されない
+- — = 対象外 (integration 性質上、該当しない)
+
+**凡例**: 各機能の右側に **[救済]** / **[退行]** / **[部分救済]** の分類マーカーを付与。
 
 ---
 
-## Impact Analysis (TBD before Phase A)
+### (a) Audit — 10 機能 (`workflow-engine/modules/audit.md` 463 行)
 
-> **⚠ 本セクションは骨子のみ**。完全な分析は **Phase A 実装開始前の別セッション** で実施する。
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| a1 | phase-auditor Agent 起動 (`audit: required`) **[退行]** | ○ integrate 以外の全 phase | ○ 同 | × | — |
+| a2 | Audit Team swarm (`--swarm` 3 メンバー協調) **[退行]** | △ `--swarm` 指定時のみ | △ 同 | × | — |
+| a3 | audit_target projection (audit-only phase) **[救済]** | ○ `plan-review` が `implementation_plan` を検証 | ○ `fix-plan-review` が `fix_plan` を検証 | × | — |
+| a4 | cumulative_diagnosis (attempt 間累積) **[部分救済]** | ○ Fix Dispatch ループで使用 | ○ 同 | × | — |
+| a5 | escalation != null での即 PAUSE **[退行]** | ○ | ○ | × | — |
+| a6 | Evidence Plan 動的生成 (accept-test / doc-audit / execute で activity type 別) **[退行]** | ○ | ○ | × | — |
+| a7 | validation_record 累積注入 (下流 auditor に) **[救済]** | ○ | ○ | × | — |
+| a8 | Fix Dispatch 戦略 (phase 別に executor 決定) **[退行]** | ○ {execute}/{accept-test}/{review}/{doc-audit} は `feature-implementer` に委任 | ○ 同 | × | — |
+| a9 | Re-gate + Re-review ループ ({execute}→{accept-test}→{doc-audit}→{review} 再実行) **[退行]** | ○ {review} で findings 発生時 | ○ 同 | × | — |
+| a10 | Audit Gate Lite ({integrate} は Agent 起動せず直接検証) **[退行]** | ○ `no_conflicts` / `no_uncommitted_changes` を orchestrator が検証 | ○ 同 | × | — |
+
+**救済/退行の詳細**:
+
+- **[救済 a3]** `audit_target` projection: flowrail core の built-in directive `validation_question` を上流 artifact にも適用できるよう拡張する。done-criteria 相当の recipe で `audit_target: <upstream_name>` を宣言できる形に schema を拡張（本 spec の "8 Built-in Directives" §validation_question を参照）。これは audit-only phase (plan-review / fix-plan-review) の存在価値そのものなので救済必須
+- **[救済 a7]** `validation_record` 累積: flowrail core の `state.phases[].validation_record` フィールドで保持し、後続 phase の directive 評価時に自動注入する。本 spec §State Schema に定義済み
+- **[部分救済 a4]** `cumulative_diagnosis`: flowrail core の `state.phases[].audit.attempts[]` として最低限の attempt 履歴を保持するが、`diff_from_previous` の自動算出までは Phase 1-2 では対象外。rule set が `classifier_question` で diff を LLM に算出させる形で代替
+- **[退行 a1, a2]** phase-auditor / Audit Team swarm: flowrail core は Agent を起動しない (Agent 起動は Claude Code の役目)。代わりに rule set の `hook_command` directive で phase-auditor 相当の外部スクリプト呼び出しを宣言する。`--swarm` は rule set 作者が swarm 版 hook を用意する責任
+- **[退行 a6]** Evidence Plan 動的生成: 各 rule set recipe の params として activity type を受け取り、静的な evidence collection 指示を rule set 作者が記述する。動的生成は非対応
+- **[退行 a8]** Fix Dispatch 戦略: rule set の `produce_artifact` directive で fix executor を phase 毎に宣言する。現行の「phase 別テーブル」は rule set 側の責務
+- **[退行 a9]** Re-gate + Re-review ループ: rule set の `regate_action` directive + `verification_chain` recipe で表現可能だが、現行の複雑な step フロー (Step 1→2→3→4→5) は rule set 作者が書く責任。flowrail core は単に `rewind_to` に従う
+- **[退行 a10]** Audit Gate Lite: rule set の `cmd_exit` primitive で `git status` / `git diff --check` を直接呼び出す
+
+---
+
+### (b) Inner Loop — 9 機能 (`workflow-engine/modules/inner-loop.md` 219 行)
+
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| b1 | HARD-GATE「Verify 未通過で Audit Gate 不可」 **[退行]** | ○ {execute} 内 | ○ 同 | × | — |
+| b2 | 同一テスト 2 連続同理由 PAUSE **[部分救済]** | ○ Failure Router | ○ 同 | × | — |
+| b3 | 要件曖昧さ検出で即 PAUSE (iteration 回数無視) **[退行]** | ○ | ○ | × | — |
+| b4 | Impl 1 回のみ + TestEnrich/Verify ループ制約 **[退行]** | ○ | ○ | × | — |
+| b5 | lint/fmt のオーケストレーター直接自動修正 **[退行]** | ○ | ○ | × | — |
+| b6 | current_substep ベース resume (Impl/TestEnrich/Verify) **[救済]** | ○ {execute} | ○ 同 | × | — |
+| b7 | completed_tasks / remaining_tasks 個別スキップ **[救済]** | ○ | ○ | × | — |
+| b8 | Failure Router (テスト/lint/型/ビルド分岐) **[退行]** | ○ | ○ | × | — |
+| b9 | 3 iteration 超過で PAUSE **[退行]** | ○ | ○ | × | — |
+
+**救済/退行の詳細**:
+
+- **[救済 b6, b7]** `inner_loop_state` の mid-phase resume: flowrail core の state schema に `phases[].sub_phase` と `phases[].completed_tasks[] / remaining_tasks[]` を追加する (本 spec §State Schema に定義済み)。これは最重要の救済候補。理由: execute フェーズは最もコンテキストを消費するため handover 中断が頻発する。sub_phase を持たないと、Impl 完了後の TestEnrich から再開できず、Impl を 2 回実行してしまう
+- **[部分救済 b2]** 同一テスト 2 連続同理由 PAUSE: flowrail core は state に `failure_history[]` を保持するが、「同理由」の判定は LLM / rule set が `classifier_question` directive で実施する。flowrail core は history を提供するだけ
+- **[退行 b1, b3, b4]** HARD-GATE / 要件曖昧さ検出 / Impl 1 回制約: rule set の phase 遷移条件 + `classify_then_regate` directive で表現する。3 sub-phase 展開 (execute-impl / execute-test-enrich / execute-verify) は本 spec §Inner Loop 3 Sub-phase Expansion に定義済み
+- **[退行 b5]** lint/fmt 自動修正: rule set の `hook_command` directive で `cargo fmt` / `cargo clippy --fix` 等を phase pre hook として呼び出す
+- **[退行 b8, b9]** Failure Router / 3 iteration PAUSE: rule set の `classify_then_regate` directive でテスト失敗を分類し、`settings.max_failure_iterations: 3` で PAUSE を制御
+
+---
+
+### (c) Autonomy — 10 機能 (`workflow-engine/modules/autonomy.md` 143 行、30+ if-then エントリ)
+
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| c1 | brainstorming 設計質問 → PAUSE **[退行]** | ○ {design} | ○ {rca} | × | — |
+| c2 | worktree テスト失敗 → PAUSE **[退行]** | ○ {design} | ○ {rca} | × | — |
+| c3 | UI 関連キーワード検出 → PAUSE (accept-test 有効化提案) **[退行]** | ○ {accept-test} | ○ 同 | × | — |
+| c4 | VRT 差分検出 → PAUSE **[退行]** | ○ {accept-test} | ○ 同 | × | — |
+| c5 | フレーキーテスト検出 → AUTO (報告のみ、ブロック無し) **[退行]** | ○ | ○ | × | — |
+| c6 | Context 逼迫 → PAUSE (全フェーズ共通) **[退行]** | ○ | ○ | △ triage は短いため発火頻度低 | — |
+| c7 | `--codex` 接続失敗 → warning + 続行 **[退行]** | ○ | ○ | × | — |
+| c8 | 3 連続 findings → PAUSE (根本設計見直し促進) **[退行]** | ○ {spec-review}/{plan-review}/{review} | ○ {fix-plan-review}/{review} | × | — |
+| c9 | audit escalation != null → 即 PAUSE **[退行]** | ○ | ○ | × | — |
+| c10 | 3 Autonomy Mode (INTERACTIVE / AUTONOMOUS / AUTONOMOUS+GATE) **[退行]** | ○ phase 別に付与 | ○ 同 | △ 全 phase が INTERACTIVE 相当 | — |
+
+**救済/退行の詳細**:
+
+- **[退行 (全体)]** autonomy の 30+ if-then ルールは、rule set の `phase_confirm` primitive + `classifier_question` directive で 1:1 移植する方針。LOC は 143 → ~200 行に増えるが (rule set の冗長性)、静的検証可能な形式に変換されるメリットがある
+- **[退行 c3, c4]** UI キーワード検出 / VRT 差分検出: rule set の pre_phase hook で `cmd_exit` + `regex_match` primitive を組み合わせて実装 (rule set 作者の責任)
+- **[退行 c6]** Context 逼迫検出: flowrail core は文字数計測を行わないため、rule set の `context-budget` recipe で `settings.max_phase_context: 150k` を宣言し、閾値超過時に `phase_confirm` で handover を提案する
+- **[退行 c10]** 3 Mode 分類: rule set の phase metadata で `autonomy_mode: interactive | autonomous | autonomous_gate` を宣言できるように schema を拡張。flowrail core はこのフラグを参照して `phase_confirm` directive のデフォルト動作を切り替える
+
+> **補足**: autonomy の「動的状況判定 (LLM が if-then 条件を評価する)」は flowrail core では対応しない。rule set 側で明示的な `classifier_question` + `classify_then_regate` の組み合わせで表現するため、rule set 作者が条件を静的に書き下す必要がある。これは tiny 原則との trade-off
+
+---
+
+### (d) Phase Summary — 6 機能 (`workflow-engine/modules/phase-summary.md` 100 行)
+
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| d1 | concerns / directives の target_phase 伝播 **[救済]** | ○ 全 phase | ○ 同 | × | ○ consume 側 (sync 時に記録) |
+| d2 | validation_record の question 単位累積 **[救済]** | ○ | ○ | × | ○ consume 側 |
+| d3 | inner_loop_state の mid-phase handover **[救済]** | ○ {execute} | ○ 同 | × | — |
+| d4 | evidence の linear_sync 区分 (inline / attached / reference_only) **[救済]** | ○ | ○ | × | ○ 3 区分を使い分け |
+| d5 | regate_history 追跡 **[救済]** | ○ | ○ | × | ○ consume 側 (sync_regate) |
+| d6 | Phase 完了毎の `{phase_id}.yml` 保存 **[退行]** | ○ `.agents/handover/{branch}/{fp}/phase-summaries/` | ○ 同 | × | — |
+
+**救済/退行の詳細**:
+
+- **[救済 d1, d2, d3, d4, d5]** flowrail core の `state.phases[]` に以下のフィールドを追加することで全て救済する (本 spec §State Schema に定義済み):
+  - `state.phases[].concerns[]` (target_phase 付き)
+  - `state.phases[].directives[]` (target_phase 付き)
+  - `state.phases[].validation_record[]` (criterion / verdict / evidence)
+  - `state.phases[].sub_phase` + `state.phases[].inner_loop_state` (completed_tasks, remaining_tasks, failure_history)
+  - `state.phases[].evidence[]` (type, content, linear_sync 区分)
+  - `state.phases[].regate_history[]`
+- **[退行 d6]** 個別 YAML ファイル (`phase-summaries/{phase_id}.yml`) は廃止。flowrail の `state.json` に統合される (本 spec §Migration Strategy 参照)。continue skill は `state.json` から直接 Phase 情報を読み出すように更新される
+
+---
+
+### (e) Linear-sync — 8 機能 (`linear-sync/SKILL.md` 322 行)
+
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| e1 | `resolve_ticket` の AskUserQuestion 対話 (pre_pipeline_start) **[救済]** | ○ `--linear` 時 activation | ○ 同 | × (triage は Phase 4 で Issue を作る) | — (self) |
+| e2 | `sync_phase` の structured payload (test_results / audit_observations / evidence_files) **[退行]** | ○ on_phase_complete hook | ○ 同 | × | — |
+| e3 | `linear_ticket_id` / `document_id` のセッション間持続化 **[救済]** | ○ `project-state.json` | ○ 同 | × | — |
+| e4 | `read_phase_summary` フォールバック復元 (Linear からの読み戻し) **[部分救済]** | ○ continue skill から呼ばれる | ○ 同 | × | — |
+| e5 | `sync_regate` / `sync_handover` / `sync_complete` **[退行]** | ○ 各イベントで発火 | ○ 同 | × | — |
+| e6 | Workflow Report Document 生成 (`templates/document.md`) **[退行]** | ○ on_pipeline_start | ○ 同 | × | — |
+| e7 | コメント冪等性チェック (`## Phase {N}:` で始まるコメントの更新 vs 新規) **[退行]** | ○ | ○ | × | — |
+| e8 | Error handling (API 失敗 → warn 続行、添付失敗 → local path 記載) **[退行]** | ○ | ○ | × | — |
+
+**救済/退行の詳細**:
+
+- **[救済 e1]** `resolve_ticket` 対話: flowrail core の `pre_pipeline_start` hook phase + built-in directive `classifier_question` で表現する。rule set 作者が「linear-resolve-ticket」recipe を定義し、feature-dev / debug-flow の pipeline 冒頭で `uses: linear-resolve-ticket` と宣言する
+- **[救済 e3]** `linear_ticket_id` 持続化: flowrail core の `state.integrations.linear.{ticket_id, document_id}` で保持 (本 spec §State Schema に定義済み)。この persistence がないと毎セッション resolve_ticket を再実行することになり体験が悪い
+- **[部分救済 e4]** `read_phase_summary` fallback: flowrail の `state.json` が single source of truth なら、Linear からの復元は不要になる (ローカル state.json が欠損した場合の disaster recovery としてのみ必要)。Phase 1-2 では非対応、Phase 3+ の検討事項
+- **[退行 e2, e5, e6, e7, e8]** 各種 sync_* / Workflow Report Document / 冪等性 / Error handling: hook 実装側 (シェルスクリプト or 外部ツール) の責務。flowrail core は hook の成功/失敗を監視するだけ。hook は `FLOWRAIL_STATE_FILE` 環境変数で `state.json` を受け取り、必要な情報を抽出して Linear API を叩く
+
+> **再設計の方向性**: `linear-sync` skill は、(1) `pre_pipeline_start` に相当する `resolve_ticket.md` (LLM 対話) と (2) 各 hook イベント用の CLI スクリプト (`sync_phase.sh`, `sync_regate.sh` 等) に分解する。(1) は rule set として他 pipeline から再利用可能、(2) は hook 実装として flowrail core の hook_command directive から呼ばれる
+
+---
+
+### (f) Triage — 6 機能 (`triage/SKILL.md` 196 行)
+
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| f1 | URL 引数対話型フロー (4 Phase: Data Collection → Context Exploration → Analysis → Linear Registration) **[救済 (再定義)]** | × | × | ○ 全フェーズ | × |
+| f2 | 外部リンク探索 (Slack CLI / gh CLI / WebFetch fallback) **[退行]** | × | × | ○ Phase 2 | × |
+| f3 | AskUserQuestion による探索選択 (任意 / 推奨 / all / none) **[救済]** | × | × | ○ Phase 2 | × |
+| f4 | `pipeline.yml` 不在で `SKILL.md` 単体動作 **[救済 (再定義)]** | × | × | ○ | ○ supplement |
+| f5 | ツール選択 LLM 判断 (専用 CLI 優先、WebFetch fallback) **[退行]** | × | × | ○ Phase 1 | × |
+| f6 | Issue 作成承認フロー (preview → approve) **[救済]** | × | × | ○ Phase 4 | × |
+
+**救済/退行の詳細**:
+
+- **[救済 f1 (再定義)]** 4 Phase フロー: flowrail の pipeline.yml で再定義する。`triage/pipeline.yml` を新規作成し、`phases: [data-collection, context-exploration, analysis, linear-registration]` として宣言。現行 `triage/SKILL.md` 単体動作は廃止し、薄い entry wrapper にする
+- **[救済 f3]** AskUserQuestion 探索選択: flowrail core の built-in directive `classifier_question` で表現。`options: [推奨1, 推奨2, 任意3, none, all]` 相当を指定可能にする
+- **[救済 f4 (再定義)]** pipeline.yml 不在動作: 廃止。triage も他 pipeline と同じく pipeline.yml を持つ形に統一。理由: flowrail core の一貫性 (原則 3 "One Source of Truth")
+- **[救済 f6]** Issue 作成承認フロー: built-in directive `confirm` で preview 表示 + 承認待ち
+- **[退行 f2]** 外部リンク探索: phase hook で `cmd_exit` primitive を使って `slack search <keyword>` / `gh issue list --search <keyword>` を呼ぶ。具体的なコマンドとパース処理は rule set 作者が書く責任
+- **[退行 f5]** ツール選択の LLM 判断: flowrail core は LLM を起動しない。rule set が明示的に「urlpattern=slack.com なら slack CLI を使う、それ以外は WebFetch」という条件分岐を `classify_then_regate` directive で記述する責任
+
+---
+
+### (g) Regate — 8 機能 (`feature-dev/regate/{audit-failure,test-failure,review-findings}.md` 計 ~130 行)
+
+| # | 機能 | feature-dev | debug-flow | triage | linear-sync |
+|---|-----|:-:|:-:|:-:|:-:|
+| g1 | flaky 検出 (同一テスト 2 回交互で判定) **[部分救済]** | ○ test-failure.md | ○ 同 | × | — |
+| g2 | concern の後続フェーズ伝播 (flaky 検出時) **[救済]** | ○ | ○ | × | ○ consume 側 |
+| g3 | fix_instruction 組み立てと regate_context 注入 **[救済]** | ○ 全 regate strategy | ○ 同 | × | — |
+| g4 | verification_chain フル実行 (execute → review → accept-test) **[救済]** | ○ test-failure / review-findings | ○ 同 | × | — |
+| g5 | `rewind_to: plan` (設計起因 blocker 時) **[救済]** | ○ review-findings | ○ `rewind_to: fix-plan` に変換 | × | — |
+| g6 | `rewind_to: current` (コード変更なし、現フェーズ re-audit) **[救済]** | ○ audit-failure | ○ 同 | × | — |
+| g7 | max_retries 超過での 3 択 escalation (retry / skip / abort) **[救済]** | ○ audit-failure | ○ 同 | × | — |
+| g8 | severity 分類 (blocker → 即 regate / quality → threshold 3 件) **[救済]** | ○ review-findings | ○ 同 | × | — |
+
+**救済/退行の詳細**:
+
+- **[救済 g2-g8]** regate 全般は、rule set の `regate-*` recipe (audit-failure / test-failure / review-findings) + built-in directive `classify_then_regate` + `regate_action` で完全移植可能。本 spec §8 Built-in Directives にこの語彙セットが定義されている。規約:
+  - `rewind_to: <phase_id>` は `regate_action` の params
+  - `verification_chain: [<phase_ids>]` は rule set の settings
+  - severity threshold は `classifier_question` の `threshold: 3` params
+- **[部分救済 g1]** flaky 検出: flowrail core は `state.phases[].test_results[]` の履歴を 2 回分保持するが、「2 回交互で flaky」の判定は rule set の `classifier_question` directive で LLM に委ねる。理由: test runner 出力の多様性を flowrail core がパースするのは tiny 原則に反する
+
+---
+
+### Feasibility 総括
+
+| カテゴリ | 救済 | 部分救済 | 退行 | 機能数合計 |
+|---------|:-:|:-:|:-:|:-:|
+| (a) Audit | 2 | 1 | 7 | 10 |
+| (b) Inner Loop | 2 | 1 | 6 | 9 |
+| (c) Autonomy | 0 | 0 | 10 | 10 |
+| (d) Phase Summary | 5 | 0 | 1 | 6 |
+| (e) Linear-sync | 2 | 1 | 5 | 8 |
+| (f) Triage | 4 | 0 | 2 | 6 |
+| (g) Regate | 7 | 1 | 0 | 8 |
+| **合計** | **22** | **4** | **31** | **57** |
+
+**判断原則** (Phase A 適用):
+
+1. **救済優先順位**:
+   - **最優先** (原則 2 "flowrail core は低次語彙を知る" 準拠): State Schema 拡張で救済できる機能群 — d1-d5 (concerns/directives/validation_record/inner_loop_state/evidence), e3 (linear ticket_id persistence)
+   - **第二優先** (built-in directive で救済): a3 (audit_target), a7 (validation_record), b6-b7 (inner_loop_state resume), e1 (resolve_ticket 対話), f1/f3/f4/f6 (triage 再定義), g2-g8 (regate 全般)
+   - **第三優先 (部分救済で妥協)**: a4 (cumulative_diagnosis の diff 算出は rule set 責任), b2 (同一テスト 2 連続判定は LLM), e4 (Linear 読み戻しは Phase 3+), g1 (flaky 判定は LLM)
+
+2. **退行の許容理由**:
+   - **Agent 起動 (a1, a2)**: flowrail core は LLM を呼ばない。hook 経由で Claude Code 側に任せる
+   - **動的判断 (c1-c10 の大半)**: 30+ if-then は rule set の静的記述で書き下す。LOC は増えるが静的検証可能
+   - **hook 実装 (a6, a8, b5, e2, e5-e8, f2, f5)**: 外部スクリプト or CLI に外出し。flowrail core は hook_command directive で起動するだけ
+   - **`--swarm` (a2)**: rule set 作者が swarm 版 hook を別途用意
+
+3. **非対応機能リスト** (spec の公開時にユーザーに明示同意を取る項目):
+   - Audit Team swarm (3 メンバー協調): Phase 1-2 では非対応
+   - 動的 Evidence Plan 生成: Phase 1-2 では rule set 作者が静的記述
+   - `cumulative_diagnosis` の `diff_from_previous` 自動算出: LLM 依存
+   - `read_phase_summary` Linear 読み戻し fallback: Phase 3+ で再評価
+   - ツール選択の LLM 判断 (triage): rule set 作者が条件を書き下す
+
+4. **LOC 影響**:
+   - rule set への外出しで LOC が増加: dotfiles 散文 ~1,079 行 → rule set YAML ~400 行 + built-in directive 相当のコード ~600 行 = ~1,000 行 (実質イーブン、ただし静的検証可能な形式になる)
+   - State Schema 拡張で flowrail core に追加: ~200 行 (serde model + state transition validator)
+   - 本 Feasibility Mapping を反映した最終見積: flowrail core Phase 1 は ~3,500-3,800 LOC 維持、Phase 2 Testing Primitives 完了時 ~4,400 LOC (原則 7 tiny by constraint の boundary 内)
+
+### Phase A 着手条件チェックリスト
+
+- [x] 7 カテゴリ × 4 パイプラインの 1:1 mapping 作成済み (57 機能の網羅)
+- [x] 各機能に救済/部分救済/退行の分類マーカー付与
+- [x] State Schema 拡張が必要な機能の特定 (7 機能: d1-d5, e3, b6-b7, a7 相当)
+- [x] Built-in Directive で救済される機能の特定 (15 機能: a3, b2*, b6-b7, c (部分), e1, f1/f3/f4/f6, g2-g8)
+- [x] 非対応機能リストをユーザー同意前提として明示
+- [x] LOC 影響の再見積 (原則 7 tiny の boundary 内に収まることを確認)
+- [ ] **残タスク (Phase A 着手時)**: 本 mapping を元に、flowrail-core の新規 module (`crates/flowrail-core/src/directives/` 等) の責務分割設計
+
+---
+
+## Impact Analysis (Phase A 前完成版)
+
+> **Phase A 実装開始前の必須 gate**。本設計は dotfiles 内の workflow-engine + 4 パイプライン + 周辺 skill の全面刷新を伴うため、逆依存・共有状態・暗黙の契約・副作用リスクを洗い出す。
 
 ### 1. Reverse Dependencies (逆依存)
 
-本設計は workflow-engine + feature-dev + debug-flow + triage + linear-sync + handover + continue + kanban + post-commit hook の全面刷新を伴う。以下の全ファイルが直接/間接的に workflow-engine 構造に依存しているため、別セッションで `path:line_number` 付きの完全リストを作成する。
+本設計は以下のファイル群に直接/間接的な影響を与える。file:line 参照は commit 591c21c 時点 (2026-04-05) の dotfiles を基準とする。
 
-**直接依存 (必ず更新)**:
-- `claude/skills/workflow-engine/SKILL.md` → flowrail run ループに書き換え (~30 行)
-- `claude/skills/workflow-engine/modules/*.md` (7 ファイル、1,079 行) → 全削除
-- `claude/skills/feature-dev/SKILL.md`, `pipeline.yml`, `phases/*.md`, `done-criteria/*.md`, `regate/*.md` → 新形式
-- `claude/skills/debug-flow/` 同上
-- `claude/skills/triage/SKILL.md` → `claude/skills/triage/pipeline.yml` + `phases/*.md` に分解 (skill 配下に pipeline.yml を新規作成)
-- `claude/skills/linear-sync/SKILL.md` → `resolve_ticket.md` + hook スクリプトに分解
+#### 1.1 直接依存 (Phase C-D で必ず更新)
 
-**間接依存 (調査が必要)**:
-- `claude/skills/handover/SKILL.md` → `project-state.json` / `handover.md` 生成と flowrail snapshot の責務分担を決定
-- `claude/skills/continue/SKILL.md` → Pipeline Detection ロジックを flowrail state 対応に更新
-- `claude/skills/kanban/SKILL.md` → handover 連携点
-- `claude/hooks/post-commit.sh` → state 参照箇所
-- `claude/skills/doc-check/` → depends-on 参照の調整
+| 分類 | ファイル | 影響 LOC | 更新内容 |
+|------|---------|---------|---------|
+| **workflow-engine 本体** | `claude/skills/workflow-engine/SKILL.md` | ~114 行 | flowrail run ループに書き換え (~30 行に削減) |
+| **workflow-engine modules** | `claude/skills/workflow-engine/modules/audit.md` | 463 | rule set `audit-gate` recipe + `validation_question` directive に置換 |
+| | `claude/skills/workflow-engine/modules/inner-loop.md` | 219 | 3 sub-phase 展開 + `regate-router` recipe に置換 |
+| | `claude/skills/workflow-engine/modules/autonomy.md` | 143 | rule set の `phase_confirm` primitive + 30+ `classifier_question` に展開 |
+| | `claude/skills/workflow-engine/modules/regate.md` | 29 | `rules/recipes/regate-*.yml` + `classify_then_regate` directive に置換 |
+| | `claude/skills/workflow-engine/modules/resume.md` | 80 | `flowrail snapshot restore` + `state.integrations` に置換 |
+| | `claude/skills/workflow-engine/modules/phase-summary.md` | 100 | `state.phases[].{concerns,directives,validation_record}` 統合 |
+| | `claude/skills/workflow-engine/modules/context-budget.md` | 45 | `settings.default_snapshot_hint_after_phases` に置換 |
+| **feature-dev** | `claude/skills/feature-dev/pipeline.yml` | ~210 | 新形式 (`imports`, `uses`, `params`) で書き換え |
+| | `claude/skills/feature-dev/phases/*.md` | 9 ファイル | 新 phase_file 規約 (`executor`, `produce_artifact` の rule set 参照) |
+| | `claude/skills/feature-dev/done-criteria/*.md` | 9 ファイル | `audit: required / lite` + `operations` → recipe params に変換 |
+| | `claude/skills/feature-dev/regate/*.md` | 3 ファイル | `rules/recipes/regate-{audit-failure,test-failure,review-findings}.yml` に置換 |
+| **debug-flow** | `claude/skills/debug-flow/pipeline.yml:1-200` | ~200 | feature-dev と同様 |
+| | `claude/skills/debug-flow/phases/*.md` | 8 ファイル | 同上 |
+| | `claude/skills/debug-flow/done-criteria/*.md` | 8 ファイル | 同上 |
+| | `claude/skills/debug-flow/regate/*.md` | 3 ファイル | 同上 (rewind_to: fix-plan / rewind_to: current を含む) |
+| **triage** | `claude/skills/triage/SKILL.md:1-196` | 196 | `claude/skills/triage/pipeline.yml` (新規) + `phases/{data-collection,context-exploration,analysis,linear-registration}.md` に分解 |
+| **linear-sync** | `claude/skills/linear-sync/SKILL.md:1-322` | 322 | `resolve_ticket.md` (LLM 対話、rule set として他 pipeline から `uses`) + `scripts/sync_{phase,regate,handover,evidence,complete}.sh` (hook 実装) に分解 |
+| | `claude/skills/linear-sync/templates/{document,comment,handover-comment}.md` | 3 ファイル | hook script の文字列テンプレートに移動 |
+
+**合計直接影響**: 1,079 行 (modules) + 約 2,000 行 (pipelines/phases/done-criteria/regate 含む) = **~3,000 行**
+
+#### 1.2 間接依存 (Phase D-E で調整)
+
+| ファイル | 現行責務 | 影響箇所 (file:line) | 更新内容 |
+|---------|---------|------------------|---------|
+| `claude/skills/continue/SKILL.md` | Pipeline Detection、resume | L51 (`pipeline` フィールド読み取り)、L90-94 (phase-summaries fallback)、L122 (project-state.json 読み込み)、L147 (更新)、L153 (handover.md 再生成)、L185 (cleanup 7 days) | flowrail `state.json` スキーマ認識を追加。現行 `.agents/handover/{branch}/{fingerprint}/` 構造と新 `.flowrail/{pipeline}-{branch}.state.json` の両方を読める形に拡張 |
+| `claude/skills/handover/SKILL.md` | project-state.json 生成、handover.md 生成、phase-summaries/ 管理 | L31-34 (保存先)、L127-128 (phase_summaries マッピング)、L157 (linear.issue_id)、L165-200 (pipeline 判定と phase-summaries ディレクトリ作成)、L254 (cleanup) | flowrail state との責務分担を確立。handover skill は "session summary + kanban" に特化、flowrail は "pipeline run state" を担当 |
+| `claude/skills/kanban/SKILL.md` | タスク管理、handover 同期 | L35-38 (`.agents/handover/` 配下の project-state.json 読み込み、active_tasks 参照) | flowrail state からの active_tasks 読み出しに対応 (project-state.json と併存可能) |
+| `claude/skills/doc-check/SKILL.md` | md frontmatter `depends-on` 走査 | L5-7 (depends-on + 本文 Markdown リンク)、L14 (scripts/doc-check.sh 起動) | 新 `docs/specs/` / `docs/plans/` のパス構造に対応 (flowrail プロジェクトでは dotfiles との path convention が異なる) |
+| post-commit hook | state 参照 | N/A (現行 dotfiles に hook 未設置、将来追加時に考慮) | 該当なし (2026-04-05 時点で `/Users/nishikataseiichi/.claude/hooks/` ディレクトリは未作成) |
+
+**間接依存の総括**: 現行 continue / handover / kanban は `.agents/handover/` + `phase-summaries/*.yml` 構造に密結合しているため、flowrail への移行では migration strategy Phase D (skill 薄いラッパー化) で段階的に対応する。
 
 ### 2. Shared State (共有状態)
 
-| 状態 | 現行 | 新設計 | 共存戦略 |
+#### 2.1 State Schema 対比
+
+| 状態カテゴリ | 現行 (dotfiles) | 新設計 (flowrail) | 共存戦略 |
 |------|------|-------|---------|
-| Pipeline 実行状態 | `.agents/handover/{branch}/{fingerprint}/project-state.json` | `.flowrail/{pipeline}-{branch}.state.json` | 移行期間中は両方サポート、Phase E で一斉切替 |
-| Phase Summary | `.agents/handover/{branch}/{fingerprint}/phase-summaries/*.yml` | `state.json` の `phases[].{concerns,directives,validation_record}` に統合 | fmt 変換ツールを Phase D で提供 |
-| Snapshot | `.agents/handover/...` | `.flowrail/snapshots/<label>.json` | 別ドメインとして独立 (flowrail snapshot は flowrail 用、handover skill は session summary 用) |
-| Linear 連携状態 | 未persist (hook が都度 resolve) | `state.json.integrations.linear.{ticket_id, document_id}` | `pre_pipeline_start` の `resolve_ticket` で初期設定 |
+| Pipeline 実行状態 | `.agents/handover/{branch}/{fingerprint}/project-state.json` | `.flowrail/state.json` (worktree root 基準) | Phase D まで両方書き込み、Phase E で一斉切替 |
+| Phase Summary | `.agents/handover/{branch}/{fingerprint}/phase-summaries/{phase_id}.yml` (individual YAML) | `state.json.phases[].{concerns,directives,validation_record,inner_loop_state,evidence,regate_history}` に統合 | `flowrail state export --format yaml` で個別 YAML への変換ツールを Phase D で提供 (continue skill との互換性維持用) |
+| Snapshot | `.agents/handover/.../handover.md` (human-readable) | `.flowrail/snapshots/{label}.json` (machine-readable) + `flowrail state view > handover.md` (人間向け export) | 別ドメインとして独立運用 |
+| Linear 連携状態 | 未 persist (hook が毎回 `resolve_ticket` を実行) | `state.json.integrations.linear.{ticket_id, document_id, last_synced_phase}` | `pre_pipeline_start` の `resolve_ticket` で初期設定、以降 persist |
+| inner_loop_state | `phase-summaries/execute.yml` 内に埋め込み | `state.phases[<execute>].inner_loop_state.{current_substep, impl_progress, loop_iteration, failure_history}` | schema 変換ツールで移行 |
+| 実行中ログ | 未構造化 (Claude 自身のコンテキスト) | `.flowrail/runs/{run_id}/events.jsonl` (JSONL event stream) | 新機能、現行に相当なし |
+
+#### 2.2 `.flowrail/` ディレクトリ構造
+
+```
+<workspace-root>/            # git worktree root
+├── .flowrail/
+│   ├── state.json           # current pipeline state (single source of truth)
+│   ├── state.json.tmp.*     # atomic write temp files (起動時に検出・削除)
+│   ├── snapshots/
+│   │   ├── pre-execute.json # user-created snapshots (flowrail snapshot create)
+│   │   └── auto-{ts}.json   # auto snapshots (phase 遷移時)
+│   └── runs/
+│       └── {run_id}/        # UUID v7 (時系列順)
+│           ├── events.jsonl
+│           └── hook-logs/
+│               ├── sync_phase.log
+│               └── sync_regate.log
+├── .agents/                 # 現行 (dotfiles 互換、移行期間のみ)
+│   └── handover/
+│       └── {branch}/
+│           └── {fingerprint}/
+│               ├── project-state.json
+│               ├── handover.md
+│               └── phase-summaries/
+```
+
+#### 2.3 環境変数の競合
+
+| 環境変数 | 設定者 | 用途 | 競合リスク |
+|---------|-------|------|-----------|
+| `FLOWRAIL_NOW` | flowrail core (Deterministic Mode) | 現在時刻の決定論的固定 | 他ツールと競合なし (prefix で固有) |
+| `FLOWRAIL_SEED` | flowrail core | 乱数 seed 固定 | 同上 |
+| `FLOWRAIL_STATE_FILE` | flowrail core → hook | hook に state.json path を渡す | 同上 |
+| `FLOWRAIL_RUN_ID` | flowrail core → hook | 現在の run_id (UUID v7) | 同上 |
+| `FLOWRAIL_PHASE` | flowrail core → hook | 現在の phase_id | 同上 |
+| `CLAUDE_PROJECT_DIR` | Claude Code | プロジェクトルート | flowrail は読み取るのみ、設定しない |
+| `CLAUDE_SESSION_ID` | Claude Code | セッション ID | 同上 (linear-sync hook が参照) |
+
+**結論**: `FLOWRAIL_*` prefix で全環境変数を名前空間化しているため、Claude Code やシェル環境との競合リスクはない。ただし linear-sync hook は `CLAUDE_SESSION_ID` を既存契約として使い続ける必要がある (下記 §3 参照)。
 
 ### 3. Implicit Contracts (暗黙の契約)
 
-- `phases/*.md` のセクション見出し規約 (現行: `## 実行手順`, `## 成果物定義` 等) → pipeline.yml の `phases[].phase_file` で参照され、新設計でも維持
-- `done-criteria/*.md` の `audit: required | lite`, `operations` セクション → 新設計では audit-gate recipe の params に変換 (要 mapping)
-- hook の環境変数契約 (`FLOWRAIL_PHASE`, `FLOWRAIL_STATE_FILE` 等) → 既存 linear-sync hook との互換性維持が必要
-- `.agents/handover/` と `.flowrail/` の coexistence — kanban, continue, handover skill は一定期間両方見る必要あり
+Phase A 着手前に明示的に宣言すべき契約。現行 dotfiles では暗黙的に維持されていた規約が、flowrail 移行で破壊されないかを検証する。
+
+#### 3.1 linear-sync hook との env var 互換性
+
+現行 linear-sync は以下の環境変数を参照する (commit 591c21c 時点の `claude/skills/linear-sync/SKILL.md` L189-200 参照):
+
+| 既存変数 | 用途 | flowrail での扱い |
+|---------|------|------------------|
+| `CLAUDE_SESSION_ID` | Layer 3 session 情報の記録 | **維持必須**。flowrail hook は Claude 側が設定した変数をそのまま transparent に hook script に渡す |
+| branch name (`git rev-parse --abbrev-ref HEAD`) | `resolve_ticket` の推定 | **維持**。flowrail は branch を state に記録するが、hook が直接 git を呼ぶことも許容 |
+
+**新規変数**: flowrail が hook に渡す `FLOWRAIL_*` 変数は **追加のみ**、既存 `CLAUDE_*` 変数は変更・削除しない。既存 linear-sync の sync_session 関数 (L236-254) は hook スクリプトに 1:1 移植される (環境変数契約は維持)。
+
+#### 3.2 既存 session.session_id フォーマット
+
+現行 `project-state.json` の `session.session_id` は free-form string (例: `"unknown"`, `"claude-<uuid>"`)。flowrail state の `session.session_id` は同じ形式を引き継ぎ、フォーマット制約を追加しない (continue/handover skill が互換性を保つため)。
+
+#### 3.3 既存 Phase Summary スキーマ
+
+現行 `phase-summaries/{phase_id}.yml` は以下のフィールドを持つ (handover/SKILL.md L127-128 参照、`phase-summary.md` L18-62 で規定):
+
+```yaml
+phase: <N>
+phase_name: <name>
+status: completed | failed | in_progress
+timestamp: <ISO8601>
+attempt: <N>
+audit_verdict: PASS | FAIL
+artifacts: {...}
+decisions: [...]
+concerns: [...]
+directives: [...]
+evidence: [...]
+inner_loop_state: {...}
+validation_record: [...]
+regate_history: [...]
+```
+
+flowrail state の `state.phases[]` 要素は **このスキーマの全フィールドを superset として含む**。変換は 1:1 の field projection で可能 (損失なし)。新フィールド (`sub_phase`, `run_id_ref` 等) は新規追加のみ。
+
+#### 3.4 `phases/*.md` のセクション見出し規約
+
+現行 `phases/*.md` は以下の h2 を持つことが暗黙の契約:
+
+- `## 実行手順`
+- `## 成果物定義`
+- `## Phase Summary テンプレート`
+
+flowrail 移行後も、rule set が `phases[].phase_file` でこれらの phase.md を Read する以上、見出し規約は維持される (rule set 作者が phase.md を書き直す場合も同じ規約に従う)。
+
+#### 3.5 done-criteria の `audit: required | lite` 契約
+
+現行 `done-criteria/*.md` frontmatter の `audit: required` / `audit: lite` は workflow-engine が直接参照する。flowrail では `rules/recipes/audit-gate.yml` recipe の params として受け取る (migration は 1:1 の字句置換)。
+
+```yaml
+# before (done-criteria/execute.md)
+audit: required
+
+# after (pipeline.yml で execute phase の uses に記述)
+phases:
+  - id: execute
+    uses:
+      - recipe: audit-gate
+        params:
+          level: required
+```
+
+#### 3.6 `.agents/handover/` と `.flowrail/` の coexistence
+
+**移行期間中の契約**:
+- Phase C-D: 両方書き込み (flowrail が `.flowrail/state.json` を正として書き、同時に `.agents/handover/.../project-state.json` にも mirror 書き込み)
+- Phase E: `.flowrail/` のみ。`.agents/handover/` は continue/handover/kanban skill 側で一定期間読み取り互換性を維持した後に廃止
+- kanban / continue / handover skill は、両方のパスが存在する場合は `.flowrail/state.json` を優先する
 
 ### 4. Side Effect Risks (副作用リスク)
 
-- **Atomic write crash**: state.json 書き込み中の kill → orphan tempfile (`.flowrail/*.tmp.*`)、起動時に検出・削除
-- **Hook fire-and-forget silent failure**: linear-sync などの integration 処理失敗が workflow を止めない → warning のみ、監視が必要
-- **Worktree 内の `.flowrail/` 配置**: git common dir vs cwd の選択で snapshot の scope が変わる → 別セッションで決定
-- **既存 project-state.json との混在**: handover skill と flowrail state が同時書き込みする場合の整合性 → 別 path に保存することで干渉を避ける
+#### 4.1 Cargo 初回ビルド時のネットワーク依存
+
+**リスク**: flowrail を初めて clone した環境で `cargo build --workspace` を実行すると、workspace dependencies (clap, serde, serde-saphyr, jsonschema, minijinja, miette, thiserror, notify, uuid, regex, glob 等) を crates.io からダウンロード + ソースビルドするため、**初回 5-10 分程度のネットワーク I/O + CPU 負荷**が発生する。
+
+**緩和策**:
+- `Cargo.lock` をコミット対象 (`.gitignore` から除外済み、`CLAUDE.md` に明記) にして、依存 crate のバージョンを固定
+- CI では `cargo-cache` や `sccache` で build artifact をキャッシュ
+- ユーザーには `README.md` で「初回ビルドは 5-10 分かかる」旨を明記
+- オフライン環境では `cargo vendor` で vendored dependency を事前配置する方法を紹介
+
+**境界ケース**: crate.io が一時的に停止している場合、Cargo は `--offline` フラグなしではビルドに失敗する。Phase 1 では CI のみこのリスクを負う (開発者は手元 cache を使う)。
+
+#### 4.2 git 操作の副作用
+
+flowrail core は以下の git CLI を直接呼び出す (git2/gix 等の C 依存ライブラリは `CLAUDE.md` で禁止):
+
+| git 操作 | 呼び出し場所 | 副作用 |
+|---------|-------------|-------|
+| `git status --porcelain` | `git_status` primitive, `integrate` phase | 読み取りのみ、副作用なし |
+| `git rev-parse --abbrev-ref HEAD` | state 初期化時の branch 検出 | 読み取りのみ |
+| `git rev-parse HEAD` | run_id 生成時の commit sha 記録 | 読み取りのみ |
+| `git diff <range>` | Re-gate trigger (execute 以降) | 読み取りのみ |
+| `git log --oneline -<N>` | continue skill 互換の commit 履歴表示 | 読み取りのみ |
+| `git worktree list` | worktree 検出 | 読み取りのみ |
+
+**重要**: flowrail core は **git への書き込み操作を一切行わない** (commit / branch / push / reset / rebase 等は禁止)。rule set が hook 経由で `git commit` 等を呼ぶ場合は、rule set 作者の責任。
+
+#### 4.3 Snapshot ファイルによる file system pressure
+
+**リスク**: `flowrail snapshot create` を頻繁に呼ぶと `.flowrail/snapshots/` 配下に JSON ファイルが累積し、大きなパイプラインでは数百 KB × 数十 snapshot = 数 MB の file system pressure。
+
+**緩和策**:
+- `flowrail snapshot prune --older-than 7d` サブコマンドで古い snapshot を削除
+- `.gitignore` で `.flowrail/` 配下を常に除外 (git リポジトリへの混入防止)
+- 自動 snapshot は phase 遷移時のみ、手動 snapshot は user-initiated のみ
+- `settings.max_auto_snapshots: 10` で自動 snapshot の上限を宣言
+
+#### 4.4 Atomic write crash
+
+**リスク**: `.flowrail/state.json` を書き込み中にプロセスが kill されると `.flowrail/state.json.tmp.*` が orphan として残る。次回起動時に整合性が崩れる。
+
+**緩和策**:
+- flowrail core は起動時に `.flowrail/*.tmp.*` を検出・ログ出力・削除する (Phase 1 の Task として実装)
+- 書き込みは常に `tmp + rename` の 2 段階 (POSIX の `rename(2)` atomic 保証を利用)
+- crash recovery テストを Phase 1 Task 22 の統合検証に含める
+
+#### 4.5 Hook fire-and-forget silent failure
+
+**リスク**: linear-sync hook など integration の処理失敗が workflow をブロックしない設計 (linear-sync/SKILL.md L305 の Error Handling 方針) のため、重要な sync エラーが気付かれずに流れる。
+
+**緩和策**:
+- hook 実行結果を `.flowrail/runs/{run_id}/hook-logs/{hook_name}.log` に常に記録
+- exit code != 0 の hook はログに warning として記録し、`flowrail run next` の出力で human readable に警告
+- Phase 1 では flowrail core は exit code を見るだけ、詳細な監視は Phase 2+
+
+#### 4.6 Worktree 内の `.flowrail/` 配置
+
+**リスク**: git worktree で作業している場合、`.flowrail/` を **worktree root** に置くか **git common dir** に置くかで snapshot の scope が変わる。
+
+**決定 (本 spec での確定事項)**: **worktree root** に配置する。理由:
+- 各 worktree は独立したパイプラインを実行する想定 (feature branch 単位)
+- worktree 間で state を共有する必要がない
+- `git worktree add` で新しい worktree を作る時に `.flowrail/` が空で初期化される (既存 worktree の state を引き継がない)
+
+**トレードオフ**: worktree を削除すると `.flowrail/` も消える。ユーザーが worktree 削除前に `flowrail snapshot export --to <path>` で外部にバックアップする運用を README で案内。
+
+#### 4.7 既存 project-state.json との混在
+
+**リスク**: Phase C-D の移行期間中、handover skill が `.agents/handover/.../project-state.json` を書き、flowrail が `.flowrail/state.json` を書く。両方が同じ pipeline run を記録する場合、どちらが正か不明瞭。
+
+**緩和策**:
+- flowrail が最新の書き込み先 (`source_of_truth: flowrail | handover_skill`) を `state.json.meta` に記録
+- handover skill は flowrail state を読んで自分の project-state.json を生成する形に段階的に移行 (Phase D)
+- 両方を同時に手動編集することは非推奨 (README で明記)
 
 ### 5. Must-Verify Checklist (Phase A 完了時に検証)
 
-- [ ] `/continue` skill が新 state schema を Pipeline Detection で認識できる
-- [ ] `/handover` skill の project-state.json 生成が flowrail state と coexist できる
-- [ ] linear-sync の `resolve_ticket` が `pre_pipeline_start` で AskUserQuestion を発火できる
-- [ ] post-commit hook が新 state を参照する箇所で壊れない
-- [ ] kanban skill の handover 同期が動作する
-- [ ] worktree 内の flowrail run が正しい state を参照する
-- [ ] `flowrail run step` の冪等性 (中断点再開、partial failure)
-- [ ] `paused` 遷移 + `--classifier-response` による resume
-- [ ] `fmt` の key order が rule-set / pipeline で正しく区別される
-- [ ] 標準 rule set catalog 15 primitive + 10 recipe が spec と一致
+Phase A (flowrail 実装) 完了時、以下の 15 項目を全て PASS させてから Phase B (Standard Rule Set Catalog) に進む。各項目は具体的な検証コマンド or 手順を持つ。
 
-### 完成タイミング
+- [ ] **V1: continue skill 互換性** — `/continue` skill が flowrail `.flowrail/state.json` を Pipeline Detection で認識し、`pipeline` フィールドを正しく読み取れる
+  - 検証: handover で flowrail state を生成 → 新セッションで `/continue` 起動 → Pipeline Detection が発火することを確認
+- [ ] **V2: handover skill 互換性** — `/handover` skill の project-state.json 生成が flowrail state と coexist できる (両方が同時に存在しても互いを壊さない)
+  - 検証: flowrail state 存在下で `/handover` 実行 → `.agents/handover/.../project-state.json` が flowrail state を mirror した内容で作成されることを確認
+- [ ] **V3: linear-sync resolve_ticket** — linear-sync の `resolve_ticket` が `pre_pipeline_start` phase で AskUserQuestion を発火でき、確定した `ticket_id` が `state.integrations.linear.ticket_id` に persist される
+  - 検証: `flowrail run init --pipeline feature-dev --linear` → AskUserQuestion が出る → ticket 選択後に state.json を確認
+- [ ] **V4: kanban skill 互換性** — kanban skill の handover 同期が flowrail state の `active_tasks` を読み出せる
+  - 検証: flowrail state に active_tasks がある状態で kanban skill を起動 → tasks が表示されることを確認
+- [ ] **V5: worktree 内の state 参照** — 複数 worktree が同時に存在する場合、`flowrail run step` が正しい worktree の state.json を参照する (他 worktree の state を誤読しない)
+  - 検証: 2 つの worktree を作成 → 各々で別 pipeline を実行 → state.json が worktree root に隔離されることを確認
+- [ ] **V6: flowrail run step 冪等性** — 同一 phase の `flowrail run step` を 2 回実行しても副作用が二重にならない (中断点再開、partial failure からの回復)
+  - 検証: phase 実行中に kill → 再度 step → state が前回の続きから再開されることを確認
+- [ ] **V7: paused 遷移 + `--classifier-response`** — `classifier_question` directive が発火した phase で pipeline が paused 状態になり、`flowrail run step --classifier-response <id>=<value>` で resume できる
+  - 検証: 分類質問が発火する rule set を実行 → paused 確認 → response 指定で resume → 正しい分岐に進むことを確認
+- [ ] **V8: fmt の key order** — `flowrail pipeline fmt` が pipeline.yml と rule-set.yml で異なる key order を適用する (kind: pipeline vs kind: rule-set で区別)
+  - 検証: 両方の YAML を作成 → fmt 実行 → 出力の key 順序が各々の規約に従うことを確認
+- [ ] **V9: 標準 rule set catalog 一貫性** — `rules/primitives/*.yml` (15 個) と `rules/recipes/*.yml` (10 個) が spec の定義と完全一致
+  - 検証: `flowrail pipeline lint rules/primitives/*.yml rules/recipes/*.yml` が 0 エラー、かつ spec の "Standard Rule Set Catalog" 表との diff が 0
+- [ ] **V10: atomic write crash recovery** — `.flowrail/state.json.tmp.*` が残っている状態で flowrail 起動 → 検出・削除される
+  - 検証: tmp ファイルを手動で作成 → `flowrail run next` → tmp が削除され warning がログ出力される
+- [ ] **V11: env var pass-through** — `CLAUDE_SESSION_ID`, `CLAUDE_PROJECT_DIR` が flowrail 経由で hook script に transparent に渡る
+  - 検証: `echo "$CLAUDE_SESSION_ID" > /tmp/test` を実行する hook を仕込む → flowrail 経由で実行 → /tmp/test に値が書かれることを確認
+- [ ] **V12: schema migration — phase-summaries → state.json** — 現行の `phase-summaries/*.yml` を `flowrail state import` で読み込めて、`state.phases[]` に正しく projection される
+  - 検証: 既存 phase-summaries/design.yml + spec-review.yml を `flowrail state import` → state.json の phases[0], phases[1] に同等情報が入ることを確認
+- [ ] **V13: Determinism Mode** — `FLOWRAIL_NOW=<fixed>` + `FLOWRAIL_SEED=<fixed>` で同一入力から同一出力が得られる (JSON output のバイト一致)
+  - 検証: 同じ pipeline を 2 回実行 → JSON output の sha256 が一致することを確認
+- [ ] **V14: Event Stream 構造** — `.flowrail/runs/{run_id}/events.jsonl` が各 step 毎に 1 行の JSON event を記録し、`command.invoked` / `command.completed` を含む
+  - 検証: 1 pipeline 実行 → JSONL が生成 → `jq '.event_type'` で全 event type が定義通り列挙されることを確認
+- [ ] **V15: Cargo.lock の固定** — `Cargo.lock` がコミット対象であり、clone 直後の `cargo build --locked --workspace` が成功する
+  - 検証: CI で `--locked` flag 付きビルドを常時実行
 
-本 spec: 骨子のみ / 別セッション: 完全版 (Phase A 着手条件)
+### 実装への反映
+
+Impact Analysis の結果を Phase 1 Plan に以下の形で反映する:
+
+1. **Task 22 (実パイプライン統合検証)** に V1-V5 (skill 互換性) の検証を含める
+2. **Task 20 (Event Stream 基盤)** に V14 の検証を含める
+3. **Task 21 (Deterministic Mode)** に V13 の検証を含める
+4. **Task 23 (dotfiles bin への symlink + 全体 smoke)** に V11 (env var pass-through) の検証を含める
+5. **Task 24 (Phase 1 完了マニフェスト)** に V1-V15 の全 PASS を gate として明示
 
 ---
 
