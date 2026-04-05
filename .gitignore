@@ -1,7 +1,7 @@
 /target
 /**/target
 Cargo.lock.backup
-.flowrail/
+.belt/
 
 # Claude Code session state (local only)
 .agents/

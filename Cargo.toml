@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "crates/belt-core",
-    "crates/belt",
     "crates/belt-dev",
+    "crates/belt",
     "crates/belt-tui",
 ]
 

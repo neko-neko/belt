@@ -9,7 +9,7 @@
 //! - State machine (phase transitions)
 //! - Artifact lifecycle
 //! - Rule set resolver (YAML declarations, uses resolution, max-depth guard)
-//! - 4 core primitive checks (file_exists, cmd_exit, regex_match, git_status)
+//! - 4 core primitive checks (`file_exists`, `cmd_exit`, `regex_match`, `git_status`)
 //! - Hook executor (lifecycle events, stdin JSON contract)
 //!
 //! belt-core が持たない概念 (原則 8 + 原則 2):
@@ -20,5 +20,10 @@
 //! 8 Built-in Directives (低次語彙) と 4 LLM Response Types も本 crate が提供する。
 //!
 //! See `docs/specs/` and `docs/plans/` for design and implementation details.
+
+// Test/bench code は assertions で `.unwrap()` / `.expect()` / `panic!()` を多用するため、
+// workspace.lints.clippy の unwrap_used / expect_used / panic warn を test context では
+// 許可する (2026-04-05 plan-review Finding 5 反映)。production code では依然として warn。
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 // Module declarations to be added during Phase 1 implementation (Task 2+)
