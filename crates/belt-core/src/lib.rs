@@ -28,4 +28,5 @@
 
 // Module declarations to be added during Phase 1 implementation (Task 2+)
 pub mod error;
+pub mod pipeline;
 pub mod yaml;
