@@ -1,43 +1,46 @@
-# flowrail Phase 1 — `flowrail pipeline lint` + `flowrail pipeline fmt` Implementation Plan
+# belt Phase 1 — `belt-dev pipeline lint` + `belt-dev pipeline fmt` Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **⚠ 2026-04-05 更新 v3 (rename + repo split + workspace + layer 撤回 + Tech Stack 再調査 + path 全面書き換え)**: 本 plan は以下の 6 変更を反映して全体が更新された。実装時は**必ず spec の最新セクションを優先**すること。本 plan 本文中のファイルパス参照は **Cargo workspace 構造** に全面書き換え済み (2026-04-05 plan フェーズ): library module は `crates/flowrail-core/src/*`、agent binary は `crates/flowrail/src/*`、test fixtures は `crates/flowrail-core/tests/fixtures/` に集約されている。
+> **⚠ 2026-04-05 更新 v4 (jig → flowrail → belt rename + 3-audience 拡張 + 4 crates + clippy workspace lints)**: 本 plan は v3 の flowrail 前提を受けて、以下の 9 変更を反映して全体が更新された。実装時は**必ず spec の最新セクションを優先**すること。本 plan 本文中のファイルパス参照は **Cargo workspace 構造 (4 crates)** に全面書き換え済み: library module は `crates/belt-core/src/*`、developer CLI binary (Phase 1 MVP 実装対象) は `crates/belt-dev/src/*`、test fixtures は `crates/belt-core/tests/fixtures/` に集約されている。
 >
 > **主要変更点** (spec を正とする):
-> 1. **CLI rename**: `jig` → **`flowrail`**、バイナリ名 / 設定ディレクトリ `.flowrail/` / 環境変数 `FLOWRAIL_*`
+> 1. **CLI rename**: `jig` → `flowrail` → **`belt`**、バイナリ名 / 設定ディレクトリ `.belt/` / 環境変数 `BELT_*`
 > 2. **Layer 機構撤回**: Rule Set Schema から `layer: primitive|recipe|pipeline-local` フィールド削除、cycle detection は実装しない (実行時の `max_depth` 超過で検出)。詳細は spec の "Conventions & Best Practices" と "YAML Universe (Future)" セクション参照
-> 3. **Repository split (Pattern B)**: dotfiles から独立リポジトリ `~/go/src/github.com/neko-neko/flowrail/` へ分離
-> 4. **Cargo workspace 化 (3 crates)**: `flowrail-core` (library) + `flowrail` (agent CLI bin) + `flowrail-tui` (human TUI bin, Phase 3)。原則 8 "Separation by Audience" により agent CLI と TUI CLI を依存関係レベルで分離。本 plan 本文中のパス参照は **Cargo workspace 構造に全面書き換え済み** (library module は `crates/flowrail-core/src/*`、agent binary は `crates/flowrail/src/*`、test fixtures は `crates/flowrail-core/tests/fixtures/` に配置)
-> 5. **5 リソース体系**: `flowrail tui` サブコマンドは廃止、TUI は別バイナリ `flowrail-tui` として Phase 3 で提供。6 リソース → **5 リソース** (`pipeline` / `run` / `state` / `snapshot` / `help`)
+> 3. **Repository split**: dotfiles から独立リポジトリ `~/go/src/github.com/neko-neko/belt/` へ分離
+> 4. **Cargo workspace 化 (4 crates)**: `belt-core` (library) + `belt-dev` (developer CLI bin, **Phase 1 MVP**) + `belt` (agent runtime CLI bin, Phase 2) + `belt-tui` (human TUI bin, Phase 3)。原則 8 "Separation by Audience (**3 audience**)" により Developer / Agent / Human を依存関係レベルで分離。**lint / fmt は belt-dev binary crate の private module にのみ配置し、belt-core と belt には一切含めない** (これが 2-audience から 3-audience 拡張の主目的)
+> 5. **5 リソース体系**: TUI は別バイナリ `belt-tui` として Phase 3 で提供。5 リソース (`pipeline` / `run` / `state` / `snapshot` / `help`):
+>    - `pipeline lint/fmt/init/test` → `belt-dev` (developer CLI、authoring-time)
+>    - `run init/next/verify/step`, `state *`, `snapshot *`, `help` → `belt` (agent runtime CLI、Phase 2)
 > 6. **Technology Stack 再調査 (Rust 1.94.1 stable 時代)**:
->    - **MSRV**: `1.85` → **`1.86`** (ratatui 0.30 要求、workspace 統一のため)
+>    - **MSRV**: **`1.86`** (ratatui 0.30 要求、workspace 統一のため)
 >    - **推奨 toolchain**: **`1.94.1`** (`rust-toolchain.toml` で固定、CVE-2026-33055/33056 回避)
->    - **clap**: 4.5+ → **`4.6`**
->    - **serde**: 1.0 → **`1.0.228`**
->    - **serde-saphyr**: unpinned → **`=0.0.23`** (0.0.x 完全ピン必須)
->    - **jsonschema**: 0.20+ → **`=0.45.0`** (0.x 完全ピン、`default-features = false, features = ["resolve-file"]`)
->    - **minijinja**: 2.x → **`2.19`** (`default-features = false, features = ["builtins", "macros", "deserialization"]`)
->    - **miette**: 7.0+ → **`7.6`** (core では plain、agent/tui binary で `fancy-no-backtrace`)
->    - **thiserror**: 2.0+ → **`2.0.18`**
->    - **notify**: 追加 → **`8.2`** (v9 rc は保留、v9 stable で MSRV 1.88 要求)
->    - **uuid**: 1.x → **`1.23`** (`v4`, `v7`, `v5`, `serde` features)
->    - **regex**: 1.11+ → **`1.12`**
->    - **ratatui** (Phase 3 のみ): → **`=0.30.0`** (0.x 完全ピン)
->    - **crossterm** (Phase 3 のみ): → **`=0.29.0`** (0.x 完全ピン)
+>    - **clap**: **`4.6`** (derive + builder 混在)
+>    - **serde**: **`1.0.228`**
+>    - **serde-saphyr**: **`=0.0.23`** (0.0.x 完全ピン必須)
+>    - **jsonschema**: **`=0.45.0`** (0.x 完全ピン、`default-features = false, features = ["resolve-file"]`)
+>    - **minijinja**: **`2.19`** (`default-features = false, features = ["builtins", "macros", "deserialization"]`)
+>    - **miette**: **`7.6`** (core では plain、binary で `fancy-no-backtrace`)
+>    - **thiserror**: **`2.0.18`**
+>    - **notify**: **`8.2`** (v9 rc は保留、v9 stable で MSRV 1.88 要求)
+>    - **uuid**: **`1.23`** (`v4`, `v7`, `v5`, `serde` features)
+>    - **regex**: **`1.12`**
+>    - **ratatui** (Phase 3 のみ): **`=0.30.0`** (0.x 完全ピン)
+>    - **crossterm** (Phase 3 のみ): **`=0.29.0`** (0.x 完全ピン)
 > 7. **Cargo.lock はコミット対象** (binary project)
 > 8. **0.x crates は `=X.Y.Z` 完全ピン / 1.x crates は caret 許容** のポリシー適用
+> 9. **Clippy workspace lints** (v4 新規): `[workspace.lints.clippy]` テーブルで `clippy::all` + `clippy::pedantic` を warn、`unwrap_used` / `expect_used` / `panic` を warn 宣言 (tiny + fail-loud 方針)。`[workspace.lints.rust]` で `unsafe_code = "forbid"` を宣言。各 crate は `[lints] workspace = true` で継承。`rust-toolchain.toml` の `components = ["rustfmt", "clippy", "rust-src"]` で toolchain レベルでも保証。CI + pre-commit で `cargo clippy --workspace -- -D warnings` を実行
 >
 > 詳細は spec の「Technology Stack」「Dependency Management Policy」「Binary Separation」「Known Risks」セクション参照。
 
-**Goal:** Rust Cargo workspace `~/go/src/github.com/neko-neko/flowrail/` で、`crates/flowrail-core/` (library) と `crates/flowrail/` (agent CLI binary) を実装し、`flowrail pipeline lint` と `flowrail pipeline fmt` の MVP を提供する。新アーキテクチャ (Rule Set Architecture) の pipeline.yml + rule-set.yml の静的検証とフォーマットを提供し、Event Stream と Deterministic Mode の基盤も構築する。`crates/flowrail-tui/` は Phase 1 では placeholder (Phase 3 で実装)。
+**Goal:** Rust Cargo workspace `~/go/src/github.com/neko-neko/belt/` で、`crates/belt-core/` (runtime library) と `crates/belt-dev/` (developer CLI binary、**Phase 1 MVP 実装対象**) を実装し、`belt-dev pipeline lint` と `belt-dev pipeline fmt` の MVP を提供する。新アーキテクチャ (Rule Set Architecture) の pipeline.yml + rule-set.yml の静的検証とフォーマットを提供し、Event Stream と Deterministic Mode の基盤も構築する。`crates/belt/` (agent runtime CLI) は Phase 1 では placeholder (Phase 2 で `run/state/snapshot` 実装)、`crates/belt-tui/` も Phase 1 では placeholder (Phase 3 で実装)。
 
-**Architecture:** Rust Cargo workspace (3 crates)。`flowrail-core` が pure library として state machine / rule set resolver / lint / fmt ロジックを提供し、`flowrail` binary が clap で CLI wrapper を薄く実装 (`flowrail <resource> <verb>` 形式)。`crates/flowrail-core/src/yaml/` 抽象層経由で YAML パース (内部実装 `serde-saphyr =0.0.23`)、jsonschema でスキーマ検証、minijinja は Phase 1 では template 抽出に使用せず regex 一本、miette で診断出力。各 semantic lint ルールは独立したモジュールとして実装し、lint ドライバーが順次実行する。
+**Architecture:** Rust Cargo workspace (**4 crates**)。`belt-core` が pure runtime library として state machine / rule set resolver (model/loader/binder/template/evaluator) / 4 primitive checks / hook executor / 8 directives / YAML 抽象層を提供する。`belt-dev` binary が clap で developer CLI wrapper を薄く実装 (`belt-dev <resource> <verb>` 形式)。**lint/fmt ロジックは belt-dev 内の private module (`src/lint/`, `src/fmt/`) として実装し、belt-core には一切含めない**。`crates/belt-core/src/yaml/` 抽象層経由で YAML パース (内部実装 `serde-saphyr =0.0.23`)、jsonschema でスキーマ検証、minijinja は template 式の undeclared_variables 抽出に使用、miette で診断出力。各 semantic lint ルールは独立したモジュールとして `crates/belt-dev/src/lint/rules/` に実装し、lint ドライバー (`crates/belt-dev/src/lint/mod.rs`) が順次実行する。
 
 **Tech Stack (spec §Technology Stack を正とする):**
 - Rust (edition **2024**, MSRV **1.86**, 推奨 toolchain **1.94.1**)
 - clap **4.6** (derive + builder 混在)
-- serde **1.0.228** + **serde-saphyr `=0.0.23`** (YAML、`crates/flowrail-core/src/yaml/` 抽象層経由)
+- serde **1.0.228** + **serde-saphyr `=0.0.23`** (YAML、`crates/belt-core/src/yaml/` 抽象層経由)
 - jsonschema **`=0.45.0`** (`default-features = false, features = ["resolve-file"]`)
 - minijinja **2.19** (`default-features = false, features = ["builtins", "macros", "deserialization"]`)
 - miette **7.6** (core は plain、binary は `fancy-no-backtrace`)
@@ -47,23 +50,29 @@
 - regex **1.12**
 - uuid **1.23** (run.id 生成用、`v4`, `v7`, `v5`, `serde` features)
 
+**Workspace lints (v4 新規):**
+- `[workspace.lints.rust]`: `unsafe_code = "forbid"`, `unreachable_pub = "warn"`, `missing_debug_implementations = "warn"`
+- `[workspace.lints.clippy]`: `all = { level = "warn", priority = -1 }`, `pedantic = { level = "warn", priority = -1 }`, `unwrap_used = "warn"`, `expect_used = "warn"`, `panic = "warn"`
+- 各 crate の `Cargo.toml` に `[lints] workspace = true` を追加して継承
+- `rust-toolchain.toml`: `components = ["rustfmt", "clippy", "rust-src"]`
+- 各 Task commit 前に必ず `cargo fmt --package <pkg>` / `cargo clippy --package <pkg> -- -D warnings` / `cargo test -p <pkg>` を実行
+
 **Related:**
-- Spec: `docs/specs/2026-04-05-flowrail-cli-rule-set-architecture-design.md` (**2026-04-05 spec-review で大幅更新済み + 2026-04-05 plan フェーズで Feasibility Mapping / Impact Analysis を完全版に**)
+- Spec: `docs/specs/2026-04-05-belt-cli-rule-set-architecture-design.md` (**2026-04-05 spec-review で大幅更新済み + 2026-04-05 plan フェーズで Feasibility Mapping / Impact Analysis を完全版に + 2026-04-05 regate で 3-audience 拡張 + belt rename + clippy 追加**)
 - Linear: [CLA-5](https://linear.app/neko-neko/issue/CLA-5) (Phase 1 実装 tracking)
 - Linear (ブレインストーミング履歴): [CLA-19](https://linear.app/neko-neko/issue/CLA-19) (Done)
-- 旧 plan (3 層モデル版、参照用): dotfiles レポ `docs/superpowers/plans/2026-04-05-flowrail-phase1-lint-fmt.md` (commit 履歴参照)
 
 ---
 
 ## File Structure
 
-Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flowrail/`** (agent CLI binary)。`crates/flowrail-tui/` は Phase 1 では placeholder のみ (Phase 3 で本格実装)。
+Phase 1 実装対象は **`crates/belt-core/`** (library) と **`crates/belt-dev/`** (developer CLI binary)。`crates/belt/` (agent runtime CLI binary) と `crates/belt-tui/` (human TUI) は Phase 1 では placeholder のみ (Phase 2 / Phase 3 で本格実装)。原則 8 (Separation by Audience, 3 audience) に基づき、lint/fmt コードは belt-dev binary crate の private module にのみ配置し、belt-core と belt には一切含めない。
 
 ```
-~/go/src/github.com/neko-neko/flowrail/       # workspace root (独立リポジトリ)
-├── Cargo.toml                                 # [workspace] + [workspace.dependencies]
+~/go/src/github.com/neko-neko/belt/            # workspace root (独立リポジトリ)
+├── Cargo.toml                                 # [workspace] + [workspace.dependencies] + [workspace.lints.*]
 ├── Cargo.lock                                 # コミット対象 (binary project)
-├── rust-toolchain.toml                        # Rust 1.94.1 固定
+├── rust-toolchain.toml                        # Rust 1.94.1 + components=[rustfmt, clippy, rust-src]
 ├── README.md
 ├── CLAUDE.md
 ├── .gitignore
@@ -74,11 +83,11 @@ Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flow
 │   ├── pipeline.schema.json                   # pipeline.yml の JSON Schema (Draft 2020-12)
 │   └── rule-set.schema.json                   # rule-set.yml の JSON Schema
 ├── crates/
-│   ├── flowrail-core/                         # 📦 library (Phase 1 実装対象)
-│   │   ├── Cargo.toml                         # 依存: serde, serde-saphyr, jsonschema, minijinja, miette (plain), thiserror, notify, uuid, regex, glob
+│   ├── belt-core/                             # 📦 pure runtime library (Phase 1 実装対象)
+│   │   ├── Cargo.toml                         # lints.workspace = true、依存: serde, serde-saphyr, jsonschema, minijinja, miette (plain), thiserror, notify, uuid, regex, glob
 │   │   └── src/
 │   │       ├── lib.rs                         # pub mod 宣言
-│   │       ├── error.rs                       # thiserror 統一エラー型 (FlowrailError)
+│   │       ├── error.rs                       # thiserror 統一エラー型 (BeltError)
 │   │       ├── yaml/                          # YAML abstraction layer (serde-saphyr を wrap)
 │   │       │   └── mod.rs                     # parse<T> / parse_with_options<T> / serialize<T>
 │   │       ├── pipeline/
@@ -91,10 +100,26 @@ Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flow
 │   │       │   ├── loader.rs                  # YAML パース + schema 検証
 │   │       │   ├── resolver.rs                # imports の再帰解決 (max_depth による深度制限のみ、cycle detection は実装しない)
 │   │       │   ├── param_check.rs             # params と uses の型整合検証
-│   │       │   └── template.rs                # minijinja 統合 (static ref 解析)
-│   │       ├── lint/
-│   │       │   ├── mod.rs                     # lint ドライバー (全ルール実行)
-│   │       │   ├── diagnostic.rs              # miette 統合 (E001, E003-E008, W001; E002 欠番)
+│   │       │   └── template.rs                # minijinja 統合 (Expression::undeclared_variables による静的参照抽出)
+│   │       ├── event/
+│   │       │   ├── mod.rs
+│   │       │   └── logger.rs                  # JSONL event stream (run.id 付き)
+│   │       ├── determinism/
+│   │       │   └── mod.rs                     # BELT_NOW, BELT_SEED, JSON 正規化
+│   │       └── output/
+│   │           ├── mod.rs
+│   │           └── json.rs                    # 決定論的 JSON シリアライザ
+│   │   # ⚠ belt-core には lint/ と fmt/ を置かない (原則 8 — 3 audience 分離)。lint rules は belt-dev
+│   │   #   binary crate の private module として配置する。
+│   │
+│   ├── belt-dev/                              # 🛠 developer CLI binary (Phase 1 MVP 実装対象)
+│   │   ├── Cargo.toml                         # lints.workspace = true、依存: belt-core + clap + miette[fancy-no-backtrace]
+│   │   └── src/
+│   │       ├── main.rs                        # エントリポイント、run.id 生成、event 発行
+│   │       ├── cli.rs                         # clap 定義 (top-level + pipeline サブコマンド、2-pass parse 戦略)
+│   │       ├── lint/                          # 🔒 private module (Phase 1 MVP の主要実装)
+│   │       │   ├── mod.rs                     # lint ドライバー (全ルール実行、E001/E003-E008/W001 aggregate)
+│   │       │   ├── diagnostic.rs              # miette 統合 (E002 は欠番)
 │   │       │   └── rules/
 │   │       │       ├── mod.rs
 │   │       │       ├── unknown_rule_set.rs            # E001 unknown rule set in `uses`
@@ -103,96 +128,111 @@ Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flow
 │   │       │       ├── invalid_produced_consumed.rs   # E005 invalid produced_by/consumed_by
 │   │       │       ├── invalid_trigger_rewind.rs      # E006 invalid triggers.rewind_to
 │   │       │       ├── invalid_hook_event.rs          # E007 invalid integrations.hooks event
+│   │       │       ├── schema_error.rs                # E008 schema validation error
 │   │       │       └── unused_param.rs                # W001 unused param warning
 │   │       │       # E002 circular_import.rs は削除 (layer 撤回 + Non-Goals 遵守)。Task 8 resolver の max_depth ガードで顕在化させる
-│   │       ├── fmt/
-│   │       │   ├── mod.rs                     # YAML 正規化 (key ordering, indent)
-│   │       │   └── key_order.rs               # key 順序定義 (pipeline / rule-set 別)
-│   │       ├── event/
-│   │       │   ├── mod.rs
-│   │       │   └── logger.rs                  # JSONL event stream (run.id 付き)
-│   │       ├── determinism/
-│   │       │   └── mod.rs                     # FLOWRAIL_NOW, FLOWRAIL_SEED, JSON 正規化
-│   │       └── output/
-│   │           ├── mod.rs
-│   │           └── json.rs                    # 決定論的 JSON シリアライザ
+│   │       └── fmt/                           # 🔒 private module (YAML 正規化)
+│   │           ├── mod.rs                     # YAML 正規化 (key ordering, indent)
+│   │           └── key_order.rs               # key 順序定義 (pipeline / rule-set 別)
 │   │
-│   ├── flowrail/                              # 🤖 agent CLI binary (Phase 1 実装対象)
-│   │   ├── Cargo.toml                         # 依存: flowrail-core + clap + miette(fancy-no-backtrace)
+│   ├── belt/                                  # 🤖 agent runtime CLI binary (Phase 2 target, Phase 1 placeholder)
+│   │   ├── Cargo.toml                         # lints.workspace = true、依存: belt-core + clap + miette[fancy-no-backtrace]
 │   │   └── src/
-│   │       ├── main.rs                        # エントリポイント、run.id 生成、event 発行
-│   │       └── cli.rs                         # clap 定義 (top-level + pipeline サブコマンド、2-pass parse 戦略)
+│   │       └── main.rs                        # Phase 1: `fn main() { eprintln!("belt (agent runtime CLI): coming in Phase 2"); }`
+│   │   # ⚠ Phase 2 で `run/state/snapshot` subcommand を実装するが、Phase 1 では空の placeholder。
+│   │   #   lint/fmt は本 crate に入れない (原則 8 — belt-dev のみ)。
 │   │
-│   └── flowrail-tui/                          # 👤 human TUI binary (Phase 3)
-│       ├── Cargo.toml                         # Phase 1: 最小 placeholder (依存: flowrail-core のみ)
+│   └── belt-tui/                              # 👤 human TUI binary (Phase 3 target, Phase 1 placeholder)
+│       ├── Cargo.toml                         # lints.workspace = true、Phase 1: 最小 placeholder (依存: belt-core のみ)
 │       └── src/
-│           └── main.rs                        # Phase 1: `fn main() { eprintln!("flowrail-tui: coming in Phase 3"); }`
+│           └── main.rs                        # Phase 1: `fn main() { eprintln!("belt-tui: coming in Phase 3"); }`
 │
 ├── catalog/                                   # Standard Rule Sets (Phase 1 では .gitkeep のみ)
 │   ├── primitives/.gitkeep
 │   └── recipes/.gitkeep
-├── examples/.gitkeep                          # サンプル pipeline (Phase 1 では .gitkeep のみ)
-└── tests/                                     # integration tests (workspace root 配下も可、あるいは各 crate の tests/)
-    ├── lint_test.rs                           # 統合テスト (全ルール)
-    ├── fmt_test.rs                            # フォーマッタ統合テスト
-    ├── event_stream_test.rs                   # event stream 検証
-    ├── deterministic_test.rs                  # deterministic mode 検証
-    └── fixtures/
-        ├── valid/
-        │   ├── pipelines/
-        │   │   ├── feature-dev-minimal.yml
-        │   │   └── debug-flow-minimal.yml
-        │   └── rules/
-        │       ├── primitives/
-        │       │   ├── check-file-exists.yml
-        │       │   └── check-command.yml
-        │       └── recipes/
-        │           └── audit-gate.yml
-        └── invalid/
-            ├── unknown-rule-set-in-uses.yml
-            ├── param-type-mismatch.yml
-            ├── unresolved-template.yml
-            ├── invalid-produced-consumed.yml
-            ├── invalid-trigger-rewind.yml
-            └── invalid-hook-event.yml
-            # ⚠ circular-import-a/b.yml は削除: cycle detection を lint から外したため
+└── examples/.gitkeep                          # サンプル pipeline (Phase 1 では .gitkeep のみ)
 ```
 
-**Responsibility boundaries:**
-- **`flowrail-core`**: pure library。pipeline/ruleset/lint/fmt/event/determinism/output は library module として export
-- **`flowrail`** (binary): 薄い CLI wrapper。main.rs が clap の argument parsing → flowrail-core の library function 呼び出し → 結果の出力のみ
-- **`flowrail-tui`** (binary): Phase 1 では placeholder。Phase 3 で ratatui ベースの UI 実装
+**Test files layout (各 crate 配下)**:
+```
+crates/belt-core/tests/                        # belt-core library crate の integration test (単一 source of truth)
+├── yaml_abstraction_test.rs
+├── pipeline_model_test.rs
+├── ruleset_model_test.rs
+├── loader_test.rs
+├── resolver_test.rs
+├── param_check_test.rs
+├── template_test.rs
+└── fixtures/                                  # ⚠ fixtures は belt-core に集約 (binary crate tests からは walk-up 参照)
+    ├── valid/
+    │   ├── pipelines/
+    │   │   ├── feature-dev-minimal.yml
+    │   │   └── debug-flow-minimal.yml
+    │   └── rules/
+    │       ├── primitives/
+    │       │   ├── check-file-exists.yml
+    │       │   └── check-command.yml
+    │       └── recipes/
+    │           └── audit-gate.yml
+    └── invalid/
+        ├── unknown-rule-set-in-uses.yml
+        ├── param-type-mismatch.yml
+        ├── unresolved-template.yml
+        ├── invalid-produced-consumed.yml
+        ├── invalid-trigger-rewind.yml
+        ├── invalid-hook-event.yml
+        └── schema-error.yml
+        # ⚠ circular-import-a/b.yml は削除 (cycle detection 非実装)
+
+crates/belt-dev/tests/                         # belt-dev binary crate の integration test (CLI 統合テスト)
+├── cli_test.rs                                # clap CLI argument parsing
+├── lint_cli_test.rs                           # E2E lint driver test (全 E-code)
+├── fmt_cli_test.rs                            # E2E fmt test
+├── event_stream_test.rs                       # event stream 検証
+└── deterministic_test.rs                      # deterministic mode 検証
+# ⚠ fixture helper は walk-up で belt-core の fixtures を参照:
+#   PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("belt-core/tests/fixtures")
+```
+
+**Responsibility boundaries (原則 8 — 3 audience 分離):**
+- **`belt-core`** (library, pure runtime): pipeline/ruleset/yaml/event/determinism/output は library module として export。**lint と fmt は含まない** (原則 8 — 3 audience 分離)
+- **`belt-dev`** (binary, developer CLI): Phase 1 MVP 実装対象。`pipeline lint/fmt` の薄い CLI wrapper。main.rs が clap → belt-core model/loader 呼び出し → lint rules (private module) 実行 → miette 出力。lint rules は本 crate 内 `src/lint/rules/` に self-contained、追加時は `rules/mod.rs` に 1 行追加するだけ
+- **`belt`** (binary, agent runtime CLI): Phase 2 実装対象。Phase 1 は placeholder (`eprintln!` + exit 0)。Phase 2 で `run/state/snapshot` subcommand を実装。**lint/fmt コードは一切入れない**
+- **`belt-tui`** (binary, human TUI): Phase 3 実装対象。Phase 1 は placeholder
 - `pipeline/` と `ruleset/` は独立モジュールで、お互いに依存しない。共通の型は `error.rs` 経由でのみ共有される
-- `lint/rules/` は各ルールが自己完結。ルール追加時は `rules/mod.rs` に 1 行追加するだけで済む
-- `fmt/` は `pipeline/model.rs` と `ruleset/model.rs` を読むが書かない (出力は正規化 YAML のみ)
-- `event/` と `determinism/` はトップレベルの cross-cutting concern、flowrail-core から export され binary から呼ばれる
-- **Cargo workspace 構造に全面書き換え済み** (2026-04-05 plan フェーズ): library module は `crates/flowrail-core/src/*`、agent binary は `crates/flowrail/src/*`、test fixtures は `crates/flowrail-core/tests/fixtures/` に集約。`cargo test -p flowrail-core --test <name>` で library crate のテスト、`cargo test -p flowrail --test <name>` で binary crate のテストを実行する
+- `belt-dev/src/lint/rules/` は各ルールが self-contained。E001/E003-E008/W001 の 8 rule (E002 欠番)
+- `belt-dev/src/fmt/` は `belt_core::pipeline::model` と `belt_core::ruleset::model` を読むが書かない (出力は正規化 YAML のみ)
+- `event/` と `determinism/` は belt-core の cross-cutting concern、belt-core から export され belt-dev binary から呼ばれる
+- **Cargo workspace 構造 (4 crates)**: library は `crates/belt-core/src/*`、developer CLI は `crates/belt-dev/src/*`、fixtures は `crates/belt-core/tests/fixtures/` に集約 (binary crate tests は walk-up で参照)。`cargo test -p belt-core --test <name>` で library crate のテスト、`cargo test -p belt-dev --test <name>` で binary crate のテスト、`cargo test -p belt --test <name>` は Phase 2 まで使用しない
 
 ---
 
-## Task 1: Cargo Workspace 初期化
+## Task 1: Cargo Workspace 初期化 (4 crates)
 
 **Files:**
-- Create: `Cargo.toml` (workspace root)
-- Create: `rust-toolchain.toml`
-- Create: `crates/flowrail-core/Cargo.toml`
-- Create: `crates/flowrail-core/src/lib.rs`
-- Create: `crates/flowrail/Cargo.toml`
-- Create: `crates/flowrail/src/main.rs`
-- Create: `crates/flowrail-tui/Cargo.toml`
-- Create: `crates/flowrail-tui/src/main.rs`
+- Create/Update: `Cargo.toml` (workspace root、members + dependencies + **workspace.lints**)
+- Create/Update: `rust-toolchain.toml`
+- Create/Update: `crates/belt-core/Cargo.toml` + `src/lib.rs`
+- Create/Update: `crates/belt-dev/Cargo.toml` + `src/main.rs` + `src/lib.rs` (Phase 1 MVP 主実装対象、lib+bin crate)
+- Create/Update: `crates/belt/Cargo.toml` + `src/main.rs` (Phase 2 placeholder、**新規**)
+- Create/Update: `crates/belt-tui/Cargo.toml` + `src/main.rs` (Phase 3 placeholder)
 - Create: `.gitignore`
 
-> **Note**: Stage C (新レポジトリ作成) で上記の最小 workspace skeleton は既に配置済みの前提。本 Task 1 は Phase 1 実装時に依存と feature を具体化するステップ。version 範囲は `[workspace.dependencies]` で管理。
+> **Note**: 初期 workspace skeleton (flowrail 命名版) は Stage C で配置済み。本 Task 1 は 2026-04-05 regate 後の **4 crates** 構造 (belt-core + belt-dev + belt + belt-tui) に適合させ、`[workspace.lints.*]` を新設し、各 crate の `[lints] workspace = true` を追加する。
 
-- [ ] **Step 1: Workspace root `Cargo.toml` を確認・更新**
+- [ ] **Step 1: Workspace root `Cargo.toml` を具体化** (4 crates + workspace.dependencies + workspace.lints)
 
-`~/go/src/github.com/neko-neko/flowrail/Cargo.toml` (Stage C で最小版は配置済み、Task 1 で依存を具体化):
+`~/go/src/github.com/neko-neko/belt/Cargo.toml`:
 
 ```toml
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+    "crates/belt-core",
+    "crates/belt-dev",
+    "crates/belt",
+    "crates/belt-tui",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -200,7 +240,7 @@ edition = "2024"
 rust-version = "1.86"
 authors = ["neko-neko"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/neko-neko/flowrail"
+repository = "https://github.com/neko-neko/belt"
 
 [workspace.dependencies]
 # --- serialization / YAML ---
@@ -215,10 +255,10 @@ jsonschema = { version = "=0.45.0", default-features = false, features = ["resol
 minijinja = { version = "2.19", default-features = false, features = ["builtins", "macros", "deserialization"] }
 
 # --- error handling ---
-miette = "7.6"  # plain, for flowrail-core
+miette = "7.6"  # plain, for belt-core library
 thiserror = "2.0.18"
 
-# --- CLI (flowrail binary only) ---
+# --- CLI (belt / belt-dev binaries only) ---
 clap = { version = "4.6", features = ["derive", "env", "string"] }
 
 # --- filesystem watcher ---
@@ -229,7 +269,7 @@ uuid = { version = "1.23", features = ["v4", "v7", "v5", "serde"] }
 regex = "1.12"
 glob = "0.3"
 
-# --- TUI (flowrail-tui only, Phase 3) ---
+# --- TUI (belt-tui only, Phase 3) ---
 ratatui = "=0.30.0"
 crossterm = "=0.29.0"
 
@@ -238,15 +278,33 @@ insta = { version = "1", features = ["yaml"] }
 pretty_assertions = "1"
 tempfile = "3"
 
+# Workspace lints policy (2026-04-05 regate v4 新規追加)
+# 全 crate は `[lints] workspace = true` で継承する。
+# CI + pre-commit で `cargo clippy --workspace -- -D warnings` により warn は error 化される。
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+missing_errors_doc = "allow"  # Phase 1 では過剰、Phase 2 で再検討
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"  # belt_core::pipeline::Pipeline 等の命名を許容
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
 strip = true
 ```
 
-- [ ] **Step 2: `rust-toolchain.toml` を配置** (Rust 1.94.1 固定、CVE-2026-33055/33056 回避)
+- [ ] **Step 2: `rust-toolchain.toml` を配置** (Rust 1.94.1 固定、CVE-2026-33055/33056 回避、clippy component 必須)
 
-`~/go/src/github.com/neko-neko/flowrail/rust-toolchain.toml`:
+`~/go/src/github.com/neko-neko/belt/rust-toolchain.toml`:
 ```toml
 [toolchain]
 channel = "1.94.1"
@@ -254,16 +312,21 @@ components = ["rustfmt", "clippy", "rust-src"]
 profile = "minimal"
 ```
 
-- [ ] **Step 3: `crates/flowrail-core/Cargo.toml` を具体化**
+- [ ] **Step 3: `crates/belt-core/Cargo.toml` を具体化** (library, Phase 1 runtime)
 
 ```toml
 [package]
-name = "flowrail-core"
+name = "belt-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Tiny workflow engine library — state machine, rule set resolver, primitives"
+authors.workspace = true
+repository.workspace = true
+description = "Tiny workflow engine runtime library — state machine, rule set resolver, primitives (no lint/fmt)"
+
+[lints]
+workspace = true
 
 [dependencies]
 serde.workspace = true
@@ -284,26 +347,33 @@ pretty_assertions.workspace = true
 tempfile.workspace = true
 ```
 
-- [ ] **Step 4: `crates/flowrail/Cargo.toml` を具体化** (agent CLI binary)
+- [ ] **Step 4: `crates/belt-dev/Cargo.toml` を具体化** (developer CLI binary、Phase 1 MVP 主実装対象)
 
 ```toml
 [package]
-name = "flowrail"
+name = "belt-dev"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Tiny workflow engine CLI for LLM agents"
+authors.workspace = true
+repository.workspace = true
+description = "belt developer CLI — pipeline lint/fmt for rule set authors (Phase 1 MVP)"
+
+[lints]
+workspace = true
 
 [[bin]]
-name = "flowrail"
+name = "belt-dev"
 path = "src/main.rs"
 
 [dependencies]
-flowrail-core = { path = "../flowrail-core" }
+belt-core = { path = "../belt-core" }
 clap.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
-# ⚠ TUI 系依存 (ratatui, crossterm) は一切追加禁止
+# belt-dev 内 private module (src/lint/, src/fmt/) は belt-core の model/loader を使用し、
+# 追加の外部依存は取らない。
+# ⚠ TUI 系依存 (ratatui, crossterm) は追加禁止 (原則 8)
 
 [dev-dependencies]
 insta.workspace = true
@@ -311,101 +381,201 @@ pretty_assertions.workspace = true
 tempfile.workspace = true
 ```
 
-- [ ] **Step 5: `crates/flowrail-tui/Cargo.toml` を具体化** (Phase 3、Phase 1 では placeholder)
+- [ ] **Step 5: `crates/belt/Cargo.toml` を具体化** (agent runtime CLI binary、Phase 2 target / Phase 1 placeholder、**新規**)
 
 ```toml
 [package]
-name = "flowrail-tui"
+name = "belt"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Human-facing TUI for flowrail (Phase 3)"
+authors.workspace = true
+repository.workspace = true
+description = "belt agent runtime CLI — workflow state machine execution (Phase 2 target)"
+
+[lints]
+workspace = true
 
 [[bin]]
-name = "flowrail-tui"
+name = "belt"
 path = "src/main.rs"
 
 [dependencies]
-flowrail-core = { path = "../flowrail-core" }
+belt-core = { path = "../belt-core" }
+clap.workspace = true
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
+# belt は agent runtime 専用。原則 8 により以下は禁止:
+# ⚠ TUI 系依存 (ratatui, crossterm) 追加禁止
+# ⚠ lint/fmt コードの混入禁止 (belt-dev にのみ配置)
+# ⚠ HTTP/gRPC/async runtime 原則禁止
+
+[dev-dependencies]
+insta.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true
+```
+
+- [ ] **Step 6: `crates/belt-tui/Cargo.toml` を具体化** (Phase 3、Phase 1 では placeholder)
+
+```toml
+[package]
+name = "belt-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "belt human TUI — interactive state monitoring (Phase 3 target)"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "belt-tui"
+path = "src/main.rs"
+
+[dependencies]
+belt-core = { path = "../belt-core" }
 # Phase 3 で ratatui / crossterm / miette を追加
 # ratatui.workspace = true
 # crossterm.workspace = true
 # miette = { workspace = true, features = ["fancy-no-backtrace"] }
 ```
 
-`crates/flowrail-tui/src/main.rs` (Phase 1 placeholder):
-```rust
-fn main() {
-    eprintln!("flowrail-tui: coming in Phase 3");
-    std::process::exit(0);
-}
-```
-
-- [ ] **Step 6: `crates/flowrail-core/src/lib.rs` 初期化** (空の pub mod 宣言のみ、後続 Task で module を追加)
+- [ ] **Step 7: `crates/belt-core/src/lib.rs` 初期化** (pure runtime library、後続 Task で module を追加)
 
 ```rust
-// crates/flowrail-core/src/lib.rs
-#![forbid(unsafe_code)]
+//! belt-core — Tiny workflow engine runtime library
+//!
+//! belt-core は **pure runtime library**。原則 8 (3 audience separation) により、
+//! lint/fmt は本 crate に含めず、belt-dev binary crate の private module として配置する。
 
 // module 宣言は後続 Task で追加
 ```
 
-- [ ] **Step 7: `crates/flowrail/src/main.rs` 初期化**
+注: `#![forbid(unsafe_code)]` は `[workspace.lints.rust]` の `unsafe_code = "forbid"` で宣言済みのため、ファイル冒頭への記述は不要 (workspace lint 継承で等価)。
+
+- [ ] **Step 8: `crates/belt-dev/src/main.rs` 初期化** (Phase 1 MVP entrypoint、後続 Task で clap + lint dispatch を追加)
 
 ```rust
-// crates/flowrail/src/main.rs
-#![forbid(unsafe_code)]
+//! belt-dev — developer CLI binary (Phase 1 MVP)
+//!
+//! Rule set 作者向けの authoring-time ツール。`belt-dev pipeline lint/fmt` を提供する。
+//! lint/fmt ロジックは本 crate 内の module (src/lint/, src/fmt/) に配置される。
+//! 内部ライブラリ (src/lib.rs) で pub mod lint / pub mod fmt を公開し、integration tests
+//! (tests/*.rs) からアクセス可能にする (binary crate の一般的なパターン: lib + bin)。
 
 fn main() {
-    println!("flowrail 0.1.0");
+    println!("belt-dev 0.1.0");
 }
 ```
 
-- [ ] **Step 8: `.gitignore` を作成** (workspace root)
+- [ ] **Step 8.5: `crates/belt-dev/src/lib.rs` 初期化** (integration test から内部モジュールにアクセスするための lib crate。Task 12 以降で `pub mod lint;` / `pub mod fmt;` を追加)
+
+```rust
+//! belt-dev の内部ライブラリ。
+//!
+//! belt-dev は binary crate (`src/main.rs`) だが、integration tests (`tests/*.rs`) から
+//! lint / fmt module にアクセスする必要があるため、同時に lib crate (`src/lib.rs`) も
+//! 提供する。これは Rust の一般的な lib+bin パターン。
+//!
+//! - lib crate 名: `belt_dev` (snake_case、パッケージ名から自動派生)
+//! - bin crate 名: `belt-dev` (Cargo.toml の `[[bin]] name = "belt-dev"`)
+//!
+//! 後続 Task で以下のモジュールを追加する:
+//!   - Task 12 以降: `pub mod lint;`
+//!   - Task 19 以降: `pub mod fmt;`
+
+// module 宣言は Task 12 以降で追加
+```
+
+> **注**: Cargo は `src/lib.rs` と `src/main.rs` の両方が存在する場合、binary と library を自動検出する。Cargo.toml の `[[bin]]` セクションで bin name を明示、library は default (package name の snake_case)。main.rs から library function を使う場合は `use belt_dev::lint::...;` の形式で import する。
+
+- [ ] **Step 9: `crates/belt/src/main.rs` 初期化** (Phase 2 placeholder、**新規**)
+
+```rust
+//! belt — agent runtime CLI binary (Phase 2 target)
+//!
+//! Phase 1 では placeholder。Phase 2 で `run/state/snapshot` subcommand を実装する。
+//! lint/fmt は本 crate に一切含めない (原則 8 — belt-dev のみ)。
+
+fn main() {
+    eprintln!("belt (agent runtime CLI): coming in Phase 2");
+    eprintln!("Phase 1 MVP target is belt-dev (developer CLI). See docs/plans/.");
+    std::process::exit(0);
+}
+```
+
+- [ ] **Step 10: `crates/belt-tui/src/main.rs` 初期化** (Phase 3 placeholder)
+
+```rust
+//! belt-tui — human TUI binary (Phase 3 target)
+//!
+//! Phase 1 では placeholder。Phase 3 で ratatui-based の real-time state 可視化を実装する。
+
+fn main() {
+    eprintln!("belt-tui: coming in Phase 3");
+    std::process::exit(0);
+}
+```
+
+- [ ] **Step 11: `.gitignore` を作成** (workspace root)
 
 ```
 /target
 Cargo.lock.backup
-.flowrail/
+.belt/
 *.swp
 .DS_Store
+.agents/
 ```
 
-- [ ] **Step 9: ビルドと smoke 実行**
+- [ ] **Step 12: ビルドと smoke 実行 + clippy 確認**
 
 ```bash
-cd ~/go/src/github.com/neko-neko/flowrail && cargo check --workspace 2>&1 | tail -20
-cd ~/go/src/github.com/neko-neko/flowrail && cargo build --workspace 2>&1 | tail -20
-cd ~/go/src/github.com/neko-neko/flowrail && cargo run -p flowrail 2>&1 | tail -5
-cd ~/go/src/github.com/neko-neko/flowrail && cargo run -p flowrail-tui 2>&1 | tail -5
+cd ~/go/src/github.com/neko-neko/belt && cargo check --workspace 2>&1 | tail -20
+cd ~/go/src/github.com/neko-neko/belt && cargo build --workspace 2>&1 | tail -20
+cd ~/go/src/github.com/neko-neko/belt && cargo run -p belt-dev 2>&1 | tail -5
+cd ~/go/src/github.com/neko-neko/belt && cargo run -p belt 2>&1 | tail -5
+cd ~/go/src/github.com/neko-neko/belt && cargo run -p belt-tui 2>&1 | tail -5
+cd ~/go/src/github.com/neko-neko/belt && cargo fmt --all -- --check 2>&1 | tail -10
+cd ~/go/src/github.com/neko-neko/belt && cargo clippy --workspace -- -D warnings 2>&1 | tail -20
 ```
 
-Expected: `cargo check --workspace` と `cargo build --workspace` が成功、`flowrail` は `flowrail 0.1.0` を出力、`flowrail-tui` は `flowrail-tui: coming in Phase 3` を stderr に出力して exit 0。
+**Expected outputs:**
+- `cargo check --workspace`: 成功 (全 4 crates 解決)
+- `cargo build --workspace`: 成功
+- `cargo run -p belt-dev`: `belt-dev 0.1.0` を stdout 出力
+- `cargo run -p belt`: `belt (agent runtime CLI): coming in Phase 2\nPhase 1 MVP target is belt-dev (developer CLI). See docs/plans/.` を stderr 出力、exit 0
+- `cargo run -p belt-tui`: `belt-tui: coming in Phase 3` を stderr 出力、exit 0
+- `cargo fmt --all -- --check`: 差分なし (exit 0)
+- `cargo clippy --workspace -- -D warnings`: warning 0 件、exit 0
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add Cargo.toml Cargo.lock rust-toolchain.toml .gitignore crates/
-git commit -m "feat: initialize Cargo workspace (flowrail-core + flowrail + flowrail-tui placeholder)"
+git commit -m "feat: initialize Cargo workspace with 4 crates and workspace lints (belt-core + belt-dev + belt + belt-tui)"
 ```
 
 ---
 
-## Task 2.0: YAML 抽象層 (`crates/flowrail-core/src/yaml/`)
+## Task 2.0: YAML 抽象層 (`crates/belt-core/src/yaml/`)
 
-**前提**: spec §YAML Abstraction Layer L2563-2587 が Phase 1 必須と規定。serde-saphyr のような YAML backend を wrap し、他 module は `flowrail_core::yaml::{parse, parse_value, serialize, Value, Mapping, YamlError}` のみを import する。backend 切替時の変更範囲を最小化する。
+**前提**: spec §YAML Abstraction Layer L2563-2587 が Phase 1 必須と規定。serde-saphyr のような YAML backend を wrap し、他 module は `belt_core::yaml::{parse, parse_value, serialize, Value, Mapping, YamlError}` のみを import する。backend 切替時の変更範囲を最小化する。
 
 **Files:**
-- Create: `crates/flowrail-core/src/yaml/mod.rs`
-- Create: `crates/flowrail-core/tests/yaml_abstraction_test.rs`
+- Create: `crates/belt-core/src/yaml/mod.rs`
+- Create: `crates/belt-core/tests/yaml_abstraction_test.rs`
 
 - [ ] **Step 1: failing test を先に書く**
 
-`crates/flowrail-core/tests/yaml_abstraction_test.rs`:
+`crates/belt-core/tests/yaml_abstraction_test.rs`:
 
 ```rust
-use flowrail_core::yaml;
+use belt_core::yaml;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -416,9 +586,9 @@ struct Simple {
 
 #[test]
 fn parses_typed_value_via_abstraction() {
-    let yaml_text = "name: flowrail\ncount: 3\n";
+    let yaml_text = "name: belt\ncount: 3\n";
     let v: Simple = yaml::parse(yaml_text).expect("parse ok");
-    assert_eq!(v.name, "flowrail");
+    assert_eq!(v.name, "belt");
     assert_eq!(v.count, 3);
 }
 
@@ -438,19 +608,19 @@ fn reports_duplicate_key_as_error_by_default() {
 
 #[test]
 fn serializes_typed_value() {
-    let v = Simple { name: "flowrail".into(), count: 7 };
+    let v = Simple { name: "belt".into(), count: 7 };
     let out = yaml::serialize(&v).expect("serialize ok");
-    assert!(out.contains("name: flowrail"));
+    assert!(out.contains("name: belt"));
     assert!(out.contains("count: 7"));
 }
 ```
 
-Run: `cargo test -p flowrail-core --test yaml_abstraction_test 2>&1 | tail -20`
-Expected: FAIL — `flowrail_core::yaml` module が存在しない。
+Run: `cargo test -p belt-core --test yaml_abstraction_test 2>&1 | tail -20`
+Expected: FAIL — `belt_core::yaml` module が存在しない。
 
 - [ ] **Step 2: `src/yaml/mod.rs` 実装**
 
-`crates/flowrail-core/src/yaml/mod.rs`:
+`crates/belt-core/src/yaml/mod.rs`:
 
 ```rust
 //! YAML abstraction layer.
@@ -594,7 +764,7 @@ pub fn from_value<T: DeserializeOwned>(value: Value) -> Result<T, YamlError> {
 
 - [ ] **Step 3: `Cargo.toml` を更新**
 
-`crates/flowrail-core/Cargo.toml` の `[dependencies]` に (workspace 継承):
+`crates/belt-core/Cargo.toml` の `[dependencies]` に (workspace 継承):
 - `serde-saphyr.workspace = true`
 - `serde_json.workspace = true` (yaml::Value の実装用)
 - `serde_yml = "0.0.12"` (Phase 1 serialize の過渡期 backend、Phase 2 で削除予定を comment で明示)
@@ -605,12 +775,12 @@ pub fn from_value<T: DeserializeOwned>(value: Value) -> Result<T, YamlError> {
 
 - [ ] **Step 4: test 再実行**
 
-Run: `cargo test -p flowrail-core --test yaml_abstraction_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test yaml_abstraction_test 2>&1 | tail -20`
 Expected: 4 tests passed.
 
 - [ ] **Step 5: `pub mod yaml;` を lib.rs に追加**
 
-`crates/flowrail-core/src/lib.rs`:
+`crates/belt-core/src/lib.rs`:
 
 ```rust
 pub mod yaml;
@@ -619,10 +789,10 @@ pub mod yaml;
 - [ ] **Step 6: Commit**
 
 ```bash
-cargo fmt --package flowrail-core
-cargo clippy --package flowrail-core -- -D warnings
-git add crates/flowrail-core/src/yaml/ crates/flowrail-core/src/lib.rs crates/flowrail-core/Cargo.toml Cargo.toml crates/flowrail-core/tests/yaml_abstraction_test.rs
-git commit -m "feat(flowrail-core): introduce YAML abstraction layer (serde-saphyr wrapper)"
+cargo fmt --package belt-core
+cargo clippy --package belt-core -- -D warnings
+git add crates/belt-core/src/yaml/ crates/belt-core/src/lib.rs crates/belt-core/Cargo.toml Cargo.toml crates/belt-core/tests/yaml_abstraction_test.rs
+git commit -m "feat(belt-core): introduce YAML abstraction layer (serde-saphyr wrapper)"
 ```
 
 ---
@@ -630,22 +800,22 @@ git commit -m "feat(flowrail-core): introduce YAML abstraction layer (serde-saph
 ## Task 2: エラー型定義 (thiserror 統一)
 
 **Files:**
-- Create: `crates/flowrail-core/src/error.rs`
-- Modify: `crates/flowrail/src/main.rs`
+- Create: `crates/belt-core/src/error.rs`
+- Modify: `crates/belt-dev/src/main.rs`
 
 - [ ] **Step 1: error.rs を作成**
 
-`crates/flowrail-core/src/error.rs`:
+`crates/belt-core/src/error.rs`:
 
 ```rust
 use std::path::PathBuf;
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, FlowrailError>;
+pub type Result<T> = std::result::Result<T, BeltError>;
 
 #[derive(Debug, Error)]
 #[allow(dead_code)] // variants are introduced incrementally across Task 2-17; suppress false-positive until wired.
-pub enum FlowrailError {
+pub enum BeltError {
     #[error("I/O error for {path}: {source}")]
     Io {
         path: PathBuf,
@@ -684,36 +854,36 @@ pub enum FlowrailError {
 
 - [ ] **Step 2: lib.rs に error モジュールを露出**
 
-`crates/flowrail-core/src/lib.rs` を編集して `pub mod error;` を追加 (yaml module も Task 2.0 で追加済みの想定):
+`crates/belt-core/src/lib.rs` を編集して `pub mod error;` を追加 (yaml module も Task 2.0 で追加済みの想定):
 
 ```rust
 pub mod yaml;  // Task 2.0 で作成済み (YAML abstraction layer)
 pub mod error;
 ```
 
-`crates/flowrail/src/main.rs` を以下に更新 (binary crate からは `flowrail_core::error::*` を use する):
+`crates/belt-dev/src/main.rs` を以下に更新 (binary crate からは `belt_core::error::*` を use する):
 
 ```rust
-use flowrail_core::error::Result;
+use belt_core::error::Result;
 
 fn main() -> Result<()> {
-    println!("flowrail 0.1.0");
+    println!("belt 0.1.0");
     Ok(())
 }
 ```
 
-> **注**: `mod error;` を `crates/flowrail/src/main.rs` に書くのは誤り (sibling `error.rs` が binary crate 側に存在しないためコンパイル不可)。library crate の module を import するには `use flowrail_core::error::*;` を使うこと。
+> **注**: `mod error;` を `crates/belt-dev/src/main.rs` に書くのは誤り (sibling `error.rs` が binary crate 側に存在しないためコンパイル不可)。library crate の module を import するには `use belt_core::error::*;` を使うこと。
 
 - [ ] **Step 3: ビルド確認**
 
-Run: `cargo fmt --package flowrail-core --package flowrail && cargo clippy --package flowrail-core --package flowrail -- -D warnings && cargo build --workspace 2>&1 | tail -10`
+Run: `cargo fmt --package belt-core --package belt-dev && cargo clippy --package belt-core --package belt-dev -- -D warnings && cargo build --workspace 2>&1 | tail -10`
 Expected: ビルド成功。`#[allow(dead_code)]` により unused variant 警告なし。clippy clean。
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/flowrail-core/src/error.rs crates/flowrail-core/src/lib.rs crates/flowrail/src/main.rs
-git commit -m "feat(flowrail-core): add unified error type with thiserror"
+git add crates/belt-core/src/error.rs crates/belt-core/src/lib.rs crates/belt-dev/src/main.rs
+git commit -m "feat(belt-core): add unified error type with thiserror"
 ```
 
 ---
@@ -721,24 +891,24 @@ git commit -m "feat(flowrail-core): add unified error type with thiserror"
 ## Task 3: CLI スケルトン (clap, pipeline サブコマンド)
 
 **Files:**
-- Create: `crates/flowrail/src/cli.rs`
-- Modify: `crates/flowrail/src/main.rs`
-- Test: `crates/flowrail/tests/cli_test.rs`
+- Create: `crates/belt-dev/src/cli.rs`
+- Modify: `crates/belt-dev/src/main.rs`
+- Test: `crates/belt-dev/tests/cli_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail/tests/cli_test.rs`:
+`crates/belt-dev/tests/cli_test.rs`:
 
 ```rust
 use std::process::Command;
 
-fn flowrail_bin() -> String {
-    env!("CARGO_BIN_EXE_flowrail").to_string()
+fn belt_bin() -> String {
+    env!("CARGO_BIN_EXE_belt").to_string()
 }
 
 #[test]
 fn cli_without_args_shows_help_with_exit_2() {
-    let output = Command::new(flowrail_bin()).output().expect("run flowrail");
+    let output = Command::new(belt_bin()).output().expect("run belt");
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Usage:"));
@@ -747,10 +917,10 @@ fn cli_without_args_shows_help_with_exit_2() {
 
 #[test]
 fn cli_pipeline_lint_subcommand_is_recognized() {
-    let output = Command::new(flowrail_bin())
+    let output = Command::new(belt_bin())
         .args(["pipeline", "lint", "--help"])
         .output()
-        .expect("run flowrail pipeline lint --help");
+        .expect("run belt-dev pipeline lint --help");
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("lint"));
@@ -758,30 +928,30 @@ fn cli_pipeline_lint_subcommand_is_recognized() {
 
 #[test]
 fn cli_pipeline_fmt_subcommand_is_recognized() {
-    let output = Command::new(flowrail_bin())
+    let output = Command::new(belt_bin())
         .args(["pipeline", "fmt", "--help"])
         .output()
-        .expect("run flowrail pipeline fmt --help");
+        .expect("run belt-dev pipeline fmt --help");
     assert_eq!(output.status.code(), Some(0));
 }
 ```
 
 - [ ] **Step 2: 実行してテスト失敗を確認**
 
-Run: `cargo test -p flowrail --test cli_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test cli_test 2>&1 | tail -20`
 Expected: FAIL — `Usage:` or `pipeline` が存在しない。
 
 - [ ] **Step 3: cli.rs を実装**
 
-`crates/flowrail/src/cli.rs`:
+`crates/belt-dev/src/cli.rs`:
 
 ```rust
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
-/// flowrail — Tiny Workflow Engine CLI for LLM (Rule Set Architecture)
+/// belt — Tiny Workflow Engine CLI for LLM (Rule Set Architecture)
 #[derive(Debug, Parser)]
-#[command(name = "flowrail", version, about, long_about = None)]
+#[command(name = "belt", version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: TopLevel,
@@ -824,14 +994,14 @@ pub enum PipelineVerb {
 
 - [ ] **Step 4: main.rs で CLI を配線**
 
-`crates/flowrail/src/main.rs`:
+`crates/belt-dev/src/main.rs`:
 
 ```rust
 mod cli;
 
 use clap::Parser;
 use cli::{Cli, PipelineVerb, TopLevel};
-use flowrail_core::error::Result;
+use belt_core::error::Result;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -853,16 +1023,16 @@ fn main() -> Result<()> {
 
 Run:
 ```bash
-cargo test -p flowrail --test cli_test 2>&1 | tail -20
-cargo run --bin flowrail -- pipeline lint --help 2>&1 | head -20
+cargo test -p belt-dev --test cli_test 2>&1 | tail -20
+cargo run --bin belt -- pipeline lint --help 2>&1 | head -20
 ```
 Expected: 全テスト PASS。`pipeline lint --help` がヘルプを表示。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/flowrail/src/cli.rs crates/flowrail/src/main.rs crates/flowrail/tests/cli_test.rs
-git commit -m "feat(flowrail): add CLI skeleton with pipeline lint/fmt subcommands"
+git add crates/belt-dev/src/cli.rs crates/belt-dev/src/main.rs crates/belt-dev/tests/cli_test.rs
+git commit -m "feat(belt): add CLI skeleton with pipeline lint/fmt subcommands"
 ```
 
 ---
@@ -870,17 +1040,17 @@ git commit -m "feat(flowrail): add CLI skeleton with pipeline lint/fmt subcomman
 ## Task 4: pipeline.yml モデル定義
 
 **Files:**
-- Create: `crates/flowrail-core/src/pipeline/mod.rs`
-- Create: `crates/flowrail-core/src/pipeline/model.rs`
-- Modify: `crates/flowrail/src/main.rs`
-- Test: `crates/flowrail-core/tests/pipeline_model_test.rs`
+- Create: `crates/belt-core/src/pipeline/mod.rs`
+- Create: `crates/belt-core/src/pipeline/model.rs`
+- Modify: `crates/belt-dev/src/main.rs`
+- Test: `crates/belt-core/tests/pipeline_model_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail-core/tests/pipeline_model_test.rs`:
+`crates/belt-core/tests/pipeline_model_test.rs`:
 
 ```rust
-use flowrail_core::pipeline::model::{Pipeline, PipelineKind};
+use belt_core::pipeline::model::{Pipeline, PipelineKind};
 
 #[test]
 fn minimal_pipeline_parses() {
@@ -935,44 +1105,44 @@ phases:
 
 - [ ] **Step 2: 実行してテスト失敗を確認**
 
-Cargo workspace 構造では `flowrail-core` (library crate) と `flowrail` (binary crate) は Task 1 で既に分離済み。ここでは `crates/flowrail-core/Cargo.toml` の `[lib]` セクションが以下の形で定義されていることを確認する:
+Cargo workspace 構造では `belt-core` (library crate) と `belt` (binary crate) は Task 1 で既に分離済み。ここでは `crates/belt-core/Cargo.toml` の `[lib]` セクションが以下の形で定義されていることを確認する:
 
 ```toml
-# crates/flowrail-core/Cargo.toml
+# crates/belt-core/Cargo.toml
 [package]
-name = "flowrail-core"
+name = "belt-core"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "flowrail_core"
+name = "belt_core"
 path = "src/lib.rs"
 
 [dependencies]
 # workspace dependencies は [workspace.dependencies] を参照
 ```
 
-binary crate (`crates/flowrail/Cargo.toml`) は library に依存する形で Task 1 で設定済み (`flowrail-core = { path = "../flowrail-core" }`)。
+binary crate (`crates/belt-dev/Cargo.toml`) は library に依存する形で Task 1 で設定済み (`belt-core = { path = "../belt-core" }`)。
 
-Create `crates/flowrail-core/src/lib.rs`:
+Create `crates/belt-core/src/lib.rs`:
 
 ```rust
 pub mod error;
 pub mod pipeline;
 ```
 
-Run: `cargo test -p flowrail-core --test pipeline_model_test 2>&1 | tail -20`
-Expected: FAIL — `flowrail_core::pipeline::model` が存在しない。
+Run: `cargo test -p belt-core --test pipeline_model_test 2>&1 | tail -20`
+Expected: FAIL — `belt_core::pipeline::model` が存在しない。
 
 - [ ] **Step 3: pipeline/mod.rs と model.rs を実装**
 
-`crates/flowrail-core/src/pipeline/mod.rs`:
+`crates/belt-core/src/pipeline/mod.rs`:
 
 ```rust
 pub mod model;
 ```
 
-`crates/flowrail-core/src/pipeline/model.rs`:
+`crates/belt-core/src/pipeline/model.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1115,14 +1285,14 @@ pub struct PrePipelineStart {
 
 - [ ] **Step 4: lib.rs 経由でモジュール露出、テスト再実行**
 
-Run: `cargo test -p flowrail-core --test pipeline_model_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test pipeline_model_test 2>&1 | tail -20`
 Expected: 2 tests passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/flowrail-core/Cargo.toml crates/flowrail-core/src/lib.rs crates/flowrail-core/src/pipeline crates/flowrail-core/tests/pipeline_model_test.rs
-git commit -m "feat(flowrail): add pipeline.yml model with serde types"
+git add crates/belt-core/Cargo.toml crates/belt-core/src/lib.rs crates/belt-core/src/pipeline crates/belt-core/tests/pipeline_model_test.rs
+git commit -m "feat(belt): add pipeline.yml model with serde types"
 ```
 
 ---
@@ -1130,17 +1300,17 @@ git commit -m "feat(flowrail): add pipeline.yml model with serde types"
 ## Task 5: rule-set.yml モデル定義
 
 **Files:**
-- Create: `crates/flowrail-core/src/ruleset/mod.rs`
-- Create: `crates/flowrail-core/src/ruleset/model.rs`
-- Modify: `crates/flowrail-core/src/lib.rs`
-- Test: `crates/flowrail-core/tests/ruleset_model_test.rs`
+- Create: `crates/belt-core/src/ruleset/mod.rs`
+- Create: `crates/belt-core/src/ruleset/model.rs`
+- Modify: `crates/belt-core/src/lib.rs`
+- Test: `crates/belt-core/tests/ruleset_model_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail-core/tests/ruleset_model_test.rs`:
+`crates/belt-core/tests/ruleset_model_test.rs`:
 
 ```rust
-use flowrail_core::ruleset::model::{RuleSet, RuleSetKind, ParamType};
+use belt_core::ruleset::model::{RuleSet, RuleSetKind, ParamType};
 
 #[test]
 fn primitive_rule_set_parses() {
@@ -1210,18 +1380,18 @@ triggers:
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test ruleset_model_test 2>&1 | tail -20`
-Expected: FAIL — `flowrail_core::ruleset` が存在しない。
+Run: `cargo test -p belt-core --test ruleset_model_test 2>&1 | tail -20`
+Expected: FAIL — `belt_core::ruleset` が存在しない。
 
 - [ ] **Step 3: ruleset/mod.rs と model.rs を実装**
 
-`crates/flowrail-core/src/ruleset/mod.rs`:
+`crates/belt-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod model;
 ```
 
-`crates/flowrail-core/src/ruleset/model.rs`:
+`crates/belt-core/src/ruleset/model.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1322,7 +1492,7 @@ pub struct PrePipelineStart {
 
 - [ ] **Step 4: lib.rs に ruleset を追加**
 
-`crates/flowrail-core/src/lib.rs`:
+`crates/belt-core/src/lib.rs`:
 
 ```rust
 pub mod error;
@@ -1332,14 +1502,14 @@ pub mod ruleset;
 
 - [ ] **Step 5: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test ruleset_model_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test ruleset_model_test 2>&1 | tail -20`
 Expected: 3 tests passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/flowrail-core/src/ruleset crates/flowrail-core/src/lib.rs crates/flowrail-core/tests/ruleset_model_test.rs
-git commit -m "feat(flowrail): add rule-set.yml model with serde types including tests section"
+git add crates/belt-core/src/ruleset crates/belt-core/src/lib.rs crates/belt-core/tests/ruleset_model_test.rs
+git commit -m "feat(belt): add rule-set.yml model with serde types including tests section"
 ```
 
 ---
@@ -1357,8 +1527,8 @@ git commit -m "feat(flowrail): add rule-set.yml model with serde types including
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flowrail.dev/schema/pipeline.schema.json",
-  "title": "flowrail Pipeline",
+  "$id": "https://belt.dev/schema/pipeline.schema.json",
+  "title": "belt Pipeline",
   "type": "object",
   "required": ["kind", "name", "version", "phases"],
   "additionalProperties": false,
@@ -1460,8 +1630,8 @@ git commit -m "feat(flowrail): add rule-set.yml model with serde types including
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flowrail.dev/schema/rule-set.schema.json",
-  "title": "flowrail Rule Set",
+  "$id": "https://belt.dev/schema/rule-set.schema.json",
+  "title": "belt Rule Set",
   "type": "object",
   "required": ["kind", "name", "version"],
   "additionalProperties": false,
@@ -1554,7 +1724,7 @@ Expected: `OK`
 
 ```bash
 git add schema/
-git commit -m "feat(flowrail): add JSON Schema for pipeline.yml and rule-set.yml"
+git commit -m "feat(belt): add JSON Schema for pipeline.yml and rule-set.yml"
 ```
 
 ---
@@ -1562,16 +1732,16 @@ git commit -m "feat(flowrail): add JSON Schema for pipeline.yml and rule-set.yml
 ## Task 7: YAML ローダーと schema 検証
 
 **Files:**
-- Create: `crates/flowrail-core/src/pipeline/loader.rs`
-- Create: `crates/flowrail-core/src/ruleset/loader.rs`
-- Modify: `crates/flowrail-core/src/pipeline/mod.rs`
-- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
-- Test: `crates/flowrail-core/tests/loader_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`, `crates/flowrail-core/tests/fixtures/valid/rules/primitives/check-file-exists.yml`, `crates/flowrail-core/tests/fixtures/invalid/missing-kind.yml`
+- Create: `crates/belt-core/src/pipeline/loader.rs`
+- Create: `crates/belt-core/src/ruleset/loader.rs`
+- Modify: `crates/belt-core/src/pipeline/mod.rs`
+- Modify: `crates/belt-core/src/ruleset/mod.rs`
+- Test: `crates/belt-core/tests/loader_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`, `crates/belt-core/tests/fixtures/valid/rules/primitives/check-file-exists.yml`, `crates/belt-core/tests/fixtures/invalid/missing-kind.yml`
 
 - [ ] **Step 1: 有効な fixture を作成**
 
-`crates/flowrail-core/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`:
+`crates/belt-core/tests/fixtures/valid/pipelines/feature-dev-minimal.yml`:
 
 ```yaml
 kind: pipeline
@@ -1585,7 +1755,7 @@ phases:
   - id: plan
 ```
 
-`crates/flowrail-core/tests/fixtures/valid/rules/primitives/check-file-exists.yml`:
+`crates/belt-core/tests/fixtures/valid/rules/primitives/check-file-exists.yml`:
 
 ```yaml
 kind: rule-set
@@ -1602,7 +1772,7 @@ checks:
       path: "{{ path }}"
 ```
 
-`crates/flowrail-core/tests/fixtures/invalid/missing-kind.yml`:
+`crates/belt-core/tests/fixtures/invalid/missing-kind.yml`:
 
 ```yaml
 name: broken
@@ -1613,16 +1783,24 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/loader_test.rs`:
+`crates/belt-core/tests/loader_test.rs`:
 
 ```rust
-use flowrail_core::pipeline::loader as pipeline_loader;
-use flowrail_core::ruleset::loader as ruleset_loader;
+use belt_core::pipeline::loader as pipeline_loader;
+use belt_core::ruleset::loader as ruleset_loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -1652,15 +1830,15 @@ fn load_invalid_missing_kind_fails_schema() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test loader_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test loader_test 2>&1 | tail -20`
 Expected: FAIL — `loader` モジュール未実装。
 
 - [ ] **Step 4: pipeline loader を実装**
 
-`crates/flowrail-core/src/pipeline/loader.rs`:
+`crates/belt-core/src/pipeline/loader.rs`:
 
 ```rust
-use crate::error::{FlowrailError, Result};
+use crate::error::{BeltError, Result};
 use crate::pipeline::model::Pipeline;
 use jsonschema::Validator;
 use std::path::Path;
@@ -1668,13 +1846,13 @@ use std::path::Path;
 const PIPELINE_SCHEMA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema/pipeline.schema.json"));
 
 pub fn load(path: &Path) -> Result<Pipeline> {
-    let text = std::fs::read_to_string(path).map_err(|source| FlowrailError::Io {
+    let text = std::fs::read_to_string(path).map_err(|source| BeltError::Io {
         path: path.to_path_buf(),
         source,
     })?;
 
     let yaml_value: yaml::Value =
-        yaml::parse(&text).map_err(|source| FlowrailError::YamlParse {
+        yaml::parse(&text).map_err(|source| BeltError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1687,14 +1865,14 @@ pub fn load(path: &Path) -> Result<Pipeline> {
         .expect("pipeline schema compiles at build time");
 
     if let Err(error) = validator.validate(&json_value) {
-        return Err(FlowrailError::SchemaValidation {
+        return Err(BeltError::SchemaValidation {
             path: path.to_path_buf(),
             message: format!("{}", error),
         });
     }
 
     let pipeline: Pipeline =
-        yaml::from_value(yaml_value).map_err(|source| FlowrailError::YamlParse {
+        yaml::from_value(yaml_value).map_err(|source| BeltError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1711,10 +1889,10 @@ fn yaml_to_json(value: &yaml::Value) -> serde_json::Value {
 
 - [ ] **Step 5: ruleset loader を実装**
 
-`crates/flowrail-core/src/ruleset/loader.rs`:
+`crates/belt-core/src/ruleset/loader.rs`:
 
 ```rust
-use crate::error::{FlowrailError, Result};
+use crate::error::{BeltError, Result};
 use crate::ruleset::model::RuleSet;
 use jsonschema::Validator;
 use std::path::Path;
@@ -1722,13 +1900,13 @@ use std::path::Path;
 const RULE_SET_SCHEMA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema/rule-set.schema.json"));
 
 pub fn load(path: &Path) -> Result<RuleSet> {
-    let text = std::fs::read_to_string(path).map_err(|source| FlowrailError::Io {
+    let text = std::fs::read_to_string(path).map_err(|source| BeltError::Io {
         path: path.to_path_buf(),
         source,
     })?;
 
     let yaml_value: yaml::Value =
-        yaml::parse(&text).map_err(|source| FlowrailError::YamlParse {
+        yaml::parse(&text).map_err(|source| BeltError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1742,14 +1920,14 @@ pub fn load(path: &Path) -> Result<RuleSet> {
         .expect("rule-set schema compiles at build time");
 
     if let Err(error) = validator.validate(&json_value) {
-        return Err(FlowrailError::SchemaValidation {
+        return Err(BeltError::SchemaValidation {
             path: path.to_path_buf(),
             message: format!("{}", error),
         });
     }
 
     let rs: RuleSet =
-        yaml::from_value(yaml_value).map_err(|source| FlowrailError::YamlParse {
+        yaml::from_value(yaml_value).map_err(|source| BeltError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1760,14 +1938,14 @@ pub fn load(path: &Path) -> Result<RuleSet> {
 
 - [ ] **Step 6: mod.rs に loader を公開**
 
-Edit `crates/flowrail-core/src/pipeline/mod.rs`:
+Edit `crates/belt-core/src/pipeline/mod.rs`:
 
 ```rust
 pub mod loader;
 pub mod model;
 ```
 
-Edit `crates/flowrail-core/src/ruleset/mod.rs`:
+Edit `crates/belt-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -1776,14 +1954,14 @@ pub mod model;
 
 - [ ] **Step 7: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test loader_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test loader_test 2>&1 | tail -20`
 Expected: 3 tests passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/flowrail-core/src/pipeline/loader.rs crates/flowrail-core/src/ruleset/loader.rs crates/flowrail-core/src/pipeline/mod.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/loader_test.rs crates/flowrail-core/tests/fixtures/
-git commit -m "feat(flowrail): add YAML loader with schema validation"
+git add crates/belt-core/src/pipeline/loader.rs crates/belt-core/src/ruleset/loader.rs crates/belt-core/src/pipeline/mod.rs crates/belt-core/src/ruleset/mod.rs crates/belt-core/tests/loader_test.rs crates/belt-core/tests/fixtures/
+git commit -m "feat(belt): add YAML loader with schema validation"
 ```
 
 ---
@@ -1791,14 +1969,14 @@ git commit -m "feat(flowrail): add YAML loader with schema validation"
 ## Task 8: Import resolver - 再帰読み込み
 
 **Files:**
-- Create: `crates/flowrail-core/src/ruleset/resolver.rs`
-- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
-- Test: `crates/flowrail-core/tests/resolver_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/valid/rules/recipes/audit-gate.yml`
+- Create: `crates/belt-core/src/ruleset/resolver.rs`
+- Modify: `crates/belt-core/src/ruleset/mod.rs`
+- Test: `crates/belt-core/tests/resolver_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/valid/rules/recipes/audit-gate.yml`
 
 - [ ] **Step 1: recipe fixture を作成 (imports を持つ)**
 
-`crates/flowrail-core/tests/fixtures/valid/rules/recipes/audit-gate.yml`:
+`crates/belt-core/tests/fixtures/valid/rules/recipes/audit-gate.yml`:
 
 ```yaml
 kind: rule-set
@@ -1817,15 +1995,23 @@ uses:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/resolver_test.rs`:
+`crates/belt-core/tests/resolver_test.rs`:
 
 ```rust
-use flowrail_core::ruleset::resolver::{ResolvedGraph, resolve_from_entry};
+use belt_core::ruleset::resolver::{ResolvedGraph, resolve_from_entry};
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -1841,12 +2027,12 @@ fn resolver_loads_entry_and_transitive_imports() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test resolver_test 2>&1 | tail -20`
 Expected: FAIL — resolver モジュール未実装。
 
 - [ ] **Step 4: resolver を実装 (循環検出は次タスク)**
 
-`crates/flowrail-core/src/ruleset/resolver.rs`:
+`crates/belt-core/src/ruleset/resolver.rs`:
 
 ```rust
 use crate::error::Result;
@@ -1901,7 +2087,7 @@ pub fn resolve_from_entry(entry: &Path) -> Result<ResolvedGraph> {
 
 fn canonicalize(path: &Path) -> Result<PathBuf> {
     path.canonicalize()
-        .map_err(|source| crate::error::FlowrailError::Io {
+        .map_err(|source| crate::error::BeltError::Io {
             path: path.to_path_buf(),
             source,
         })
@@ -1910,7 +2096,7 @@ fn canonicalize(path: &Path) -> Result<PathBuf> {
 
 - [ ] **Step 5: mod.rs に resolver を追加**
 
-Edit `crates/flowrail-core/src/ruleset/mod.rs`:
+Edit `crates/belt-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -1920,30 +2106,30 @@ pub mod resolver;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test resolver_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/flowrail-core/src/ruleset/resolver.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/resolver_test.rs crates/flowrail-core/tests/fixtures/valid/rules/recipes/audit-gate.yml
-git commit -m "feat(flowrail): add rule set import resolver with transitive loading"
+git add crates/belt-core/src/ruleset/resolver.rs crates/belt-core/src/ruleset/mod.rs crates/belt-core/tests/resolver_test.rs crates/belt-core/tests/fixtures/valid/rules/recipes/audit-gate.yml
+git commit -m "feat(belt): add rule set import resolver with transitive loading"
 ```
 
 ---
 
 ## Task 9: max_depth ガード (循環/過剰ネスト対策)
 
-> **注 (2026-04-05 plan-review フィードバック反映)**: 旧 Task 9 は DFS ベースの `CircularImport` 検出を実装していたが、spec §flowrail Core L149 / §Conventions L356 / §実装フェーズ L2960 は「事前 cycle detection は行わない。実行時に max_depth 超過で顕在化」と明記し、CLAUDE.md Non-Goals も「cycle detection の実装は rule set 作者の自己責任」と明記する。旧 Task 9 は Plan 冒頭 L9 / L107 / L158 の宣言とも矛盾していたため全面書き換え。Task 8 の resolver に `max_depth` ガードのみを追加する (循環検出自体は行わない)。
+> **注 (2026-04-05 plan-review フィードバック反映)**: 旧 Task 9 は DFS ベースの `CircularImport` 検出を実装していたが、spec §belt Core L149 / §Conventions L356 / §実装フェーズ L2960 は「事前 cycle detection は行わない。実行時に max_depth 超過で顕在化」と明記し、CLAUDE.md Non-Goals も「cycle detection の実装は rule set 作者の自己責任」と明記する。旧 Task 9 は Plan 冒頭 L9 / L107 / L158 の宣言とも矛盾していたため全面書き換え。Task 8 の resolver に `max_depth` ガードのみを追加する (循環検出自体は行わない)。
 
 **Files:**
-- Modify: `crates/flowrail-core/src/ruleset/resolver.rs`
-- Test: `crates/flowrail-core/tests/resolver_test.rs` (追加ケース)
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/deep-chain-*.yml` (深いネスト fixture)
+- Modify: `crates/belt-core/src/ruleset/resolver.rs`
+- Test: `crates/belt-core/tests/resolver_test.rs` (追加ケース)
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/deep-chain-*.yml` (深いネスト fixture)
 
 - [ ] **Step 1: 深い import チェーン fixture を作成 (max_depth 超過テスト用)**
 
-`crates/flowrail-core/tests/fixtures/invalid/deep-chain-root.yml` + `deep-chain-{1..101}.yml` (または test helper で動的生成):
+`crates/belt-core/tests/fixtures/invalid/deep-chain-root.yml` + `deep-chain-{1..101}.yml` (または test helper で動的生成):
 
 ```rust
 // test helper: tempdir 内で 101 階層の import chain を生成
@@ -1967,13 +2153,13 @@ fn create_deep_chain(depth: usize) -> (TempDir, PathBuf) {
 
 - [ ] **Step 2: 失敗テストを追記**
 
-Append to `crates/flowrail-core/tests/resolver_test.rs`:
+Append to `crates/belt-core/tests/resolver_test.rs`:
 
 ```rust
 #[test]
 fn resolver_rejects_excessive_import_depth() {
     let (_dir, entry) = create_deep_chain(101); // max_depth = 100 を 1 超過
-    let err = flowrail_core::ruleset::resolver::resolve_from_entry(&entry)
+    let err = belt_core::ruleset::resolver::resolve_from_entry(&entry)
         .expect_err("should reject chain deeper than max_depth");
     let msg = format!("{}", err);
     assert!(msg.contains("Maximum import depth"), "err = {}", msg);
@@ -1982,7 +2168,7 @@ fn resolver_rejects_excessive_import_depth() {
 #[test]
 fn resolver_accepts_depth_at_limit() {
     let (_dir, entry) = create_deep_chain(100); // 丁度 max_depth
-    let graph = flowrail_core::ruleset::resolver::resolve_from_entry(&entry)
+    let graph = belt_core::ruleset::resolver::resolve_from_entry(&entry)
         .expect("100-level chain should resolve successfully");
     assert_eq!(graph.rule_sets.len(), 100);
 }
@@ -1990,40 +2176,40 @@ fn resolver_accepts_depth_at_limit() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test resolver_test resolver_rejects_excessive_import_depth 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test resolver_test resolver_rejects_excessive_import_depth 2>&1 | tail -20`
 Expected: FAIL — max_depth ガードが存在せず、stack overflow または無制限に再帰する。
 
 - [ ] **Step 4: resolver に max_depth ガードを追加**
 
-Append to `crates/flowrail-core/src/ruleset/resolver.rs`:
+Append to `crates/belt-core/src/ruleset/resolver.rs`:
 
 ```rust
 const MAX_IMPORT_DEPTH: usize = 100;
 
 // in resolve_from_entry or the recursion helper:
 //   if current_depth > MAX_IMPORT_DEPTH {
-//       return Err(FlowrailError::MaxDepthExceeded {
+//       return Err(BeltError::MaxDepthExceeded {
 //           entry: entry.to_path_buf(),
 //           depth: current_depth,
 //       });
 //   }
 ```
 
-実装の詳細は Task 8 の resolver スタイル (iterative または recursive) に合わせて調整する。depth を関数引数として伝播させ、閾値超過時に `FlowrailError::MaxDepthExceeded` を返す。
+実装の詳細は Task 8 の resolver スタイル (iterative または recursive) に合わせて調整する。depth を関数引数として伝播させ、閾値超過時に `BeltError::MaxDepthExceeded` を返す。
 
-> **明示的な Non-Goal**: 本 Task は **循環 import を検出しない**。深すぎるネスト + 循環はどちらも `MaxDepthExceeded` として報告される。rule set 作者は自己責任で循環を避ける (flowrail 外部の静的解析ツールに委ねる)。
+> **明示的な Non-Goal**: 本 Task は **循環 import を検出しない**。深すぎるネスト + 循環はどちらも `MaxDepthExceeded` として報告される。rule set 作者は自己責任で循環を避ける (belt 外部の静的解析ツールに委ねる)。
 
 - [ ] **Step 5: 既存 + 新テスト再実行**
 
-Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test resolver_test 2>&1 | tail -20`
 Expected: 3 tests passed (loads entry + transitive, rejects excessive depth, accepts depth at limit).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cargo fmt --package flowrail-core && cargo clippy --package flowrail-core -- -D warnings
-git add crates/flowrail-core/src/ruleset/resolver.rs crates/flowrail-core/tests/resolver_test.rs
-git commit -m "feat(flowrail-core): add max_depth guard in rule set resolver (no cycle detection)"
+cargo fmt --package belt-core && cargo clippy --package belt-core -- -D warnings
+git add crates/belt-core/src/ruleset/resolver.rs crates/belt-core/tests/resolver_test.rs
+git commit -m "feat(belt-core): add max_depth guard in rule set resolver (no cycle detection)"
 ```
 
 ---
@@ -2031,14 +2217,14 @@ git commit -m "feat(flowrail-core): add max_depth guard in rule set resolver (no
 ## Task 10: Param 型整合検証 (uses バインディング)
 
 **Files:**
-- Create: `crates/flowrail-core/src/ruleset/param_check.rs`
-- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
-- Test: `crates/flowrail-core/tests/param_check_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`, `crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-rule.yml`
+- Create: `crates/belt-core/src/ruleset/param_check.rs`
+- Modify: `crates/belt-core/src/ruleset/mod.rs`
+- Test: `crates/belt-core/tests/param_check_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`, `crates/belt-core/tests/fixtures/invalid/param-type-mismatch-rule.yml`
 
 - [ ] **Step 1: 不整合 fixture を作成**
 
-`crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-rule.yml`:
+`crates/belt-core/tests/fixtures/invalid/param-type-mismatch-rule.yml`:
 
 ```yaml
 kind: rule-set
@@ -2050,7 +2236,7 @@ params:
     required: true
 ```
 
-`crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`:
+`crates/belt-core/tests/fixtures/invalid/param-type-mismatch-pipeline.yml`:
 
 ```yaml
 kind: pipeline
@@ -2067,18 +2253,26 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/param_check_test.rs`:
+`crates/belt-core/tests/param_check_test.rs`:
 
 ```rust
-use flowrail_core::pipeline::loader as pipeline_loader;
-use flowrail_core::ruleset::loader as ruleset_loader;
-use flowrail_core::ruleset::param_check::check_pipeline_uses_against_rule_sets;
+use belt_core::pipeline::loader as pipeline_loader;
+use belt_core::ruleset::loader as ruleset_loader;
+use belt_core::ruleset::param_check::check_pipeline_uses_against_rule_sets;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -2103,12 +2297,12 @@ fn integer_param_rejects_string_value() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test param_check_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test param_check_test 2>&1 | tail -20`
 Expected: FAIL — `param_check` モジュール未実装。
 
 - [ ] **Step 4: param_check を実装**
 
-`crates/flowrail-core/src/ruleset/param_check.rs`:
+`crates/belt-core/src/ruleset/param_check.rs`:
 
 ```rust
 use crate::pipeline::model::Pipeline;
@@ -2236,7 +2430,7 @@ fn describe_value(v: &yaml::Value) -> &'static str {
 
 - [ ] **Step 5: mod.rs に追加**
 
-Edit `crates/flowrail-core/src/ruleset/mod.rs`:
+Edit `crates/belt-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -2247,14 +2441,14 @@ pub mod resolver;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test param_check_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test param_check_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/flowrail-core/src/ruleset/param_check.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/param_check_test.rs crates/flowrail-core/tests/fixtures/invalid/param-type-mismatch-*.yml
-git commit -m "feat(flowrail): validate uses parameter types against rule set schema (E003)"
+git add crates/belt-core/src/ruleset/param_check.rs crates/belt-core/src/ruleset/mod.rs crates/belt-core/tests/param_check_test.rs crates/belt-core/tests/fixtures/invalid/param-type-mismatch-*.yml
+git commit -m "feat(belt): validate uses parameter types against rule set schema (E003)"
 ```
 
 ---
@@ -2262,16 +2456,16 @@ git commit -m "feat(flowrail): validate uses parameter types against rule set sc
 ## Task 11: Template 静的解析 (minijinja)
 
 **Files:**
-- Create: `crates/flowrail-core/src/ruleset/template.rs`
-- Modify: `crates/flowrail-core/src/ruleset/mod.rs`
-- Test: `crates/flowrail-core/tests/template_test.rs`
+- Create: `crates/belt-core/src/ruleset/template.rs`
+- Modify: `crates/belt-core/src/ruleset/mod.rs`
+- Test: `crates/belt-core/tests/template_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail-core/tests/template_test.rs`:
+`crates/belt-core/tests/template_test.rs`:
 
 ```rust
-use flowrail_core::ruleset::template::{collect_references, extract_templates};
+use belt_core::ruleset::template::{collect_references, extract_templates};
 
 #[test]
 fn extract_single_template_reference() {
@@ -2311,17 +2505,17 @@ fn invalid_template_is_an_error() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test template_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test template_test 2>&1 | tail -20`
 Expected: FAIL — `template` モジュール未実装。
 
 > **設計判断:** Phase 1 の template 解析に必要な情報は「`{{ ... }}` の中の top-level 識別子 (dotted access を含む)」のみ。minijinja の公開 API (`Environment::compile_expression`) は式評価には優れるが、静的参照抽出には regex 1.11 の方が単純で依存が薄い。Phase 2 で実 template 評価を実装する際には minijinja の公開 API に切り替える。
 
 - [ ] **Step 3: template を regex 1.11 で実装**
 
-`crates/flowrail-core/src/ruleset/template.rs`:
+`crates/belt-core/src/ruleset/template.rs`:
 
 ```rust
-use crate::error::{FlowrailError, Result};
+use crate::error::{BeltError, Result};
 use regex::Regex;
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -2348,7 +2542,7 @@ pub fn collect_references(input: &str) -> Result<Vec<String>> {
     let open = input.matches("{{").count();
     let close = input.matches("}}").count();
     if open != close {
-        return Err(FlowrailError::UnresolvedTemplate {
+        return Err(BeltError::UnresolvedTemplate {
             expression: input.to_string(),
             path: PathBuf::from("<template>"),
         });
@@ -2363,7 +2557,7 @@ pub fn collect_references(input: &str) -> Result<Vec<String>> {
             || trimmed.ends_with('*')
             || trimmed.ends_with('/')
         {
-            return Err(FlowrailError::UnresolvedTemplate {
+            return Err(BeltError::UnresolvedTemplate {
                 expression: input.to_string(),
                 path: PathBuf::from("<template>"),
             });
@@ -2419,7 +2613,7 @@ fn walk(value: &yaml::Value, path: &mut String, out: &mut Vec<(String, String)>)
 
 - [ ] **Step 4: mod.rs に template を追加**
 
-Edit `crates/flowrail-core/src/ruleset/mod.rs`:
+Edit `crates/belt-core/src/ruleset/mod.rs`:
 
 ```rust
 pub mod loader;
@@ -2431,14 +2625,14 @@ pub mod template;
 
 - [ ] **Step 5: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test template_test 2>&1 | tail -20`
+Run: `cargo test -p belt-core --test template_test 2>&1 | tail -20`
 Expected: 4 tests passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/flowrail-core/src/ruleset/template.rs crates/flowrail-core/src/ruleset/mod.rs crates/flowrail-core/tests/template_test.rs
-git commit -m "feat(flowrail): add template reference extractor (regex-based, Phase 1)"
+git add crates/belt-core/src/ruleset/template.rs crates/belt-core/src/ruleset/mod.rs crates/belt-core/tests/template_test.rs
+git commit -m "feat(belt): add template reference extractor (regex-based, Phase 1)"
 ```
 
 ---
@@ -2446,17 +2640,17 @@ git commit -m "feat(flowrail): add template reference extractor (regex-based, Ph
 ## Task 12: Lint rule — unknown rule set in `uses` (E001)
 
 **Files:**
-- Create: `crates/flowrail-core/src/lint/mod.rs`
-- Create: `crates/flowrail-core/src/lint/diagnostic.rs`
-- Create: `crates/flowrail-core/src/lint/rules/mod.rs`
-- Create: `crates/flowrail-core/src/lint/rules/unknown_rule_set.rs`
-- Modify: `crates/flowrail-core/src/lib.rs`
-- Test: `crates/flowrail-core/tests/lint_unknown_rule_set_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`
+- Create: `crates/belt-dev/src/lint/mod.rs`
+- Create: `crates/belt-dev/src/lint/diagnostic.rs`
+- Create: `crates/belt-dev/src/lint/rules/mod.rs`
+- Create: `crates/belt-dev/src/lint/rules/unknown_rule_set.rs`
+- Modify: `crates/belt-dev/src/lib.rs` (add `pub mod lint;`)
+- Test: `crates/belt-dev/tests/lint_unknown_rule_set_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`
 
 - [ ] **Step 1: Fixture を作成**
 
-`crates/flowrail-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`:
+`crates/belt-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml`:
 
 ```yaml
 kind: pipeline
@@ -2472,18 +2666,26 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/lint_unknown_rule_set_test.rs`:
+`crates/belt-dev/tests/lint_unknown_rule_set_test.rs`:
 
 ```rust
-use flowrail_core::lint::diagnostic::{DiagnosticKind, Severity};
-use flowrail_core::lint::rules::unknown_rule_set::check_unknown_rule_set;
-use flowrail_core::pipeline::loader as pipeline_loader;
+use belt_dev::lint::diagnostic::{DiagnosticKind, Severity};
+use belt_dev::lint::rules::unknown_rule_set::check_unknown_rule_set;
+use belt_core::pipeline::loader as pipeline_loader;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -2501,19 +2703,19 @@ fn detects_unknown_rule_set_name() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test lint_unknown_rule_set_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_unknown_rule_set_test 2>&1 | tail -20`
 Expected: FAIL — lint モジュール未実装。
 
 - [ ] **Step 4: 共通診断型を実装**
 
-`crates/flowrail-core/src/lint/mod.rs`:
+`crates/belt-dev/src/lint/mod.rs`:
 
 ```rust
 pub mod diagnostic;
 pub mod rules;
 ```
 
-`crates/flowrail-core/src/lint/diagnostic.rs`:
+`crates/belt-dev/src/lint/diagnostic.rs`:
 
 ```rust
 use std::path::PathBuf;
@@ -2600,13 +2802,13 @@ impl Diagnostic {
 
 - [ ] **Step 5: unknown_rule_set ルールを実装**
 
-`crates/flowrail-core/src/lint/rules/mod.rs`:
+`crates/belt-dev/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod unknown_rule_set;
 ```
 
-`crates/flowrail-core/src/lint/rules/unknown_rule_set.rs`:
+`crates/belt-dev/src/lint/rules/unknown_rule_set.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2671,27 +2873,29 @@ fn levenshtein(a: &str, b: &str) -> usize {
 }
 ```
 
-- [ ] **Step 6: lib.rs に lint を追加**
+- [ ] **Step 6: belt-dev の lib.rs に lint を追加**
 
-`crates/flowrail-core/src/lib.rs`:
+`crates/belt-dev/src/lib.rs` を編集して `pub mod lint;` を追加 (本 Task で `src/lint/` を新規作成するため):
 
 ```rust
-pub mod error;
+//! belt-dev の内部ライブラリ (integration test 用)。
+
 pub mod lint;
-pub mod pipeline;
-pub mod ruleset;
+// pub mod fmt; は Task 18 で追加
 ```
+
+> **注**: belt-dev は binary crate だが、integration tests が `use belt_dev::lint::*` で内部モジュールにアクセスするため lib + bin 構成にしている。Task 1 Step 8.5 で `src/lib.rs` を空で初期化済み。
 
 - [ ] **Step 7: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test lint_unknown_rule_set_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_unknown_rule_set_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/flowrail-core/src/lint/ crates/flowrail-core/src/lib.rs crates/flowrail-core/tests/lint_unknown_rule_set_test.rs crates/flowrail-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml
-git commit -m "feat(flowrail): add lint rule for unknown rule set in uses (E001)"
+git add crates/belt-dev/src/lint/ crates/belt-dev/src/lib.rs crates/belt-dev/tests/lint_unknown_rule_set_test.rs crates/belt-core/tests/fixtures/invalid/unknown-rule-set-in-uses.yml
+git commit -m "feat(belt-dev): add lint rule for unknown rule set in uses (E001)"
 ```
 
 ---
@@ -2699,14 +2903,14 @@ git commit -m "feat(flowrail): add lint rule for unknown rule set in uses (E001)
 ## Task 13: Lint rule — invalid produced_by / consumed_by (E005)
 
 **Files:**
-- Create: `crates/flowrail-core/src/lint/rules/invalid_produced_consumed.rs`
-- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
-- Test: `crates/flowrail-core/tests/lint_produced_consumed_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/invalid-produced-consumed.yml`
+- Create: `crates/belt-dev/src/lint/rules/invalid_produced_consumed.rs`
+- Modify: `crates/belt-dev/src/lint/rules/mod.rs`
+- Test: `crates/belt-dev/tests/lint_produced_consumed_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/invalid-produced-consumed.yml`
 
 - [ ] **Step 1: Fixture**
 
-`crates/flowrail-core/tests/fixtures/invalid/invalid-produced-consumed.yml`:
+`crates/belt-core/tests/fixtures/invalid/invalid-produced-consumed.yml`:
 
 ```yaml
 kind: pipeline
@@ -2725,17 +2929,25 @@ phases:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/lint_produced_consumed_test.rs`:
+`crates/belt-dev/tests/lint_produced_consumed_test.rs`:
 
 ```rust
-use flowrail_core::lint::diagnostic::{DiagnosticKind, Severity};
-use flowrail_core::lint::rules::invalid_produced_consumed::check_produced_consumed;
-use flowrail_core::pipeline::loader;
+use belt_dev::lint::diagnostic::{DiagnosticKind, Severity};
+use belt_dev::lint::rules::invalid_produced_consumed::check_produced_consumed;
+use belt_core::pipeline::loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -2751,12 +2963,12 @@ fn detects_produced_by_nonexistent_phase() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test lint_produced_consumed_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_produced_consumed_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`crates/flowrail-core/src/lint/rules/invalid_produced_consumed.rs`:
+`crates/belt-dev/src/lint/rules/invalid_produced_consumed.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2799,7 +3011,7 @@ pub fn check_produced_consumed(pipeline: &Pipeline) -> Vec<Diagnostic> {
 
 - [ ] **Step 5: rules/mod.rs に追加**
 
-Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
+Edit `crates/belt-dev/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_produced_consumed;
@@ -2808,14 +3020,14 @@ pub mod unknown_rule_set;
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test lint_produced_consumed_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_produced_consumed_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/flowrail-core/src/lint/rules/invalid_produced_consumed.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_produced_consumed_test.rs crates/flowrail-core/tests/fixtures/invalid/invalid-produced-consumed.yml
-git commit -m "feat(flowrail): add lint rule for invalid produced_by/consumed_by (E005)"
+git add crates/belt-dev/src/lint/rules/invalid_produced_consumed.rs crates/belt-dev/src/lint/rules/mod.rs crates/belt-dev/tests/lint_produced_consumed_test.rs crates/belt-core/tests/fixtures/invalid/invalid-produced-consumed.yml
+git commit -m "feat(belt): add lint rule for invalid produced_by/consumed_by (E005)"
 ```
 
 ---
@@ -2823,14 +3035,14 @@ git commit -m "feat(flowrail): add lint rule for invalid produced_by/consumed_by
 ## Task 14: Lint rule — invalid triggers.rewind_to (E006)
 
 **Files:**
-- Create: `crates/flowrail-core/src/lint/rules/invalid_trigger_rewind.rs`
-- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
-- Test: `crates/flowrail-core/tests/lint_trigger_rewind_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/invalid-trigger-rewind.yml`
+- Create: `crates/belt-dev/src/lint/rules/invalid_trigger_rewind.rs`
+- Modify: `crates/belt-dev/src/lint/rules/mod.rs`
+- Test: `crates/belt-dev/tests/lint_trigger_rewind_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/invalid-trigger-rewind.yml`
 
 - [ ] **Step 1: Fixture**
 
-`crates/flowrail-core/tests/fixtures/invalid/invalid-trigger-rewind.yml`:
+`crates/belt-core/tests/fixtures/invalid/invalid-trigger-rewind.yml`:
 
 ```yaml
 kind: rule-set
@@ -2845,19 +3057,27 @@ triggers:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/lint_trigger_rewind_test.rs`:
+`crates/belt-dev/tests/lint_trigger_rewind_test.rs`:
 
 ```rust
-use flowrail_core::lint::diagnostic::DiagnosticKind;
-use flowrail_core::lint::rules::invalid_trigger_rewind::check_trigger_rewind;
-use flowrail_core::pipeline::model::Phase;
-use flowrail_core::ruleset::loader;
+use belt_dev::lint::diagnostic::DiagnosticKind;
+use belt_dev::lint::rules::invalid_trigger_rewind::check_trigger_rewind;
+use belt_core::pipeline::model::Phase;
+use belt_core::ruleset::loader;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -2874,12 +3094,12 @@ fn detects_trigger_rewind_to_nonexistent_phase() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test lint_trigger_rewind_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_trigger_rewind_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`crates/flowrail-core/src/lint/rules/invalid_trigger_rewind.rs`:
+`crates/belt-dev/src/lint/rules/invalid_trigger_rewind.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -2910,7 +3130,7 @@ pub fn check_trigger_rewind(
 
 - [ ] **Step 5: rules/mod.rs に追加**
 
-Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
+Edit `crates/belt-dev/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_produced_consumed;
@@ -2920,12 +3140,12 @@ pub mod unknown_rule_set;
 
 - [ ] **Step 6: テスト再実行 + Commit**
 
-Run: `cargo test -p flowrail-core --test lint_trigger_rewind_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_trigger_rewind_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 ```bash
-git add crates/flowrail-core/src/lint/rules/invalid_trigger_rewind.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_trigger_rewind_test.rs crates/flowrail-core/tests/fixtures/invalid/invalid-trigger-rewind.yml
-git commit -m "feat(flowrail): add lint rule for invalid triggers.rewind_to (E006)"
+git add crates/belt-dev/src/lint/rules/invalid_trigger_rewind.rs crates/belt-dev/src/lint/rules/mod.rs crates/belt-dev/tests/lint_trigger_rewind_test.rs crates/belt-core/tests/fixtures/invalid/invalid-trigger-rewind.yml
+git commit -m "feat(belt): add lint rule for invalid triggers.rewind_to (E006)"
 ```
 
 ---
@@ -2933,14 +3153,14 @@ git commit -m "feat(flowrail): add lint rule for invalid triggers.rewind_to (E00
 ## Task 15: Lint rule — invalid integrations.hooks event name (E007)
 
 **Files:**
-- Create: `crates/flowrail-core/src/lint/rules/invalid_hook_event.rs`
-- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
-- Test: `crates/flowrail-core/tests/lint_hook_event_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/invalid-hook-event.yml`
+- Create: `crates/belt-dev/src/lint/rules/invalid_hook_event.rs`
+- Modify: `crates/belt-dev/src/lint/rules/mod.rs`
+- Test: `crates/belt-dev/tests/lint_hook_event_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/invalid-hook-event.yml`
 
 - [ ] **Step 1: Fixture**
 
-`crates/flowrail-core/tests/fixtures/invalid/invalid-hook-event.yml`:
+`crates/belt-core/tests/fixtures/invalid/invalid-hook-event.yml`:
 
 ```yaml
 kind: pipeline
@@ -2958,17 +3178,25 @@ integrations:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/lint_hook_event_test.rs`:
+`crates/belt-dev/tests/lint_hook_event_test.rs`:
 
 ```rust
-use flowrail_core::lint::diagnostic::DiagnosticKind;
-use flowrail_core::lint::rules::invalid_hook_event::check_hook_events;
-use flowrail_core::pipeline::loader;
+use belt_dev::lint::diagnostic::DiagnosticKind;
+use belt_dev::lint::rules::invalid_hook_event::check_hook_events;
+use belt_core::pipeline::loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -2987,12 +3215,12 @@ fn detects_renamed_and_unknown_hook_events() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test lint_hook_event_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_hook_event_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`crates/flowrail-core/src/lint/rules/invalid_hook_event.rs`:
+`crates/belt-dev/src/lint/rules/invalid_hook_event.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -3053,7 +3281,7 @@ pub fn check_hook_events(pipeline: &Pipeline) -> Vec<Diagnostic> {
 
 - [ ] **Step 5: rules/mod.rs に追加**
 
-Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
+Edit `crates/belt-dev/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_hook_event;
@@ -3064,12 +3292,12 @@ pub mod unknown_rule_set;
 
 - [ ] **Step 6: テスト再実行 + Commit**
 
-Run: `cargo test -p flowrail-core --test lint_hook_event_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_hook_event_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 ```bash
-git add crates/flowrail-core/src/lint/rules/invalid_hook_event.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_hook_event_test.rs crates/flowrail-core/tests/fixtures/invalid/invalid-hook-event.yml
-git commit -m "feat(flowrail): add lint rule for invalid integrations.hooks event (E007)"
+git add crates/belt-dev/src/lint/rules/invalid_hook_event.rs crates/belt-dev/src/lint/rules/mod.rs crates/belt-dev/tests/lint_hook_event_test.rs crates/belt-core/tests/fixtures/invalid/invalid-hook-event.yml
+git commit -m "feat(belt): add lint rule for invalid integrations.hooks event (E007)"
 ```
 
 ---
@@ -3077,14 +3305,14 @@ git commit -m "feat(flowrail): add lint rule for invalid integrations.hooks even
 ## Task 16: Lint rule — unused param warning (W001)
 
 **Files:**
-- Create: `crates/flowrail-core/src/lint/rules/unused_param.rs`
-- Modify: `crates/flowrail-core/src/lint/rules/mod.rs`
-- Test: `crates/flowrail-core/tests/lint_unused_param_test.rs`
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/unused-param.yml`
+- Create: `crates/belt-dev/src/lint/rules/unused_param.rs`
+- Modify: `crates/belt-dev/src/lint/rules/mod.rs`
+- Test: `crates/belt-dev/tests/lint_unused_param_test.rs`
+- Test fixtures: `crates/belt-core/tests/fixtures/invalid/unused-param.yml`
 
 - [ ] **Step 1: Fixture**
 
-`crates/flowrail-core/tests/fixtures/invalid/unused-param.yml`:
+`crates/belt-core/tests/fixtures/invalid/unused-param.yml`:
 
 ```yaml
 kind: rule-set
@@ -3105,17 +3333,25 @@ checks:
 
 - [ ] **Step 2: 失敗テストを書く**
 
-`crates/flowrail-core/tests/lint_unused_param_test.rs`:
+`crates/belt-dev/tests/lint_unused_param_test.rs`:
 
 ```rust
-use flowrail_core::lint::diagnostic::{DiagnosticKind, Severity};
-use flowrail_core::lint::rules::unused_param::check_unused_params;
-use flowrail_core::ruleset::loader;
+use belt_dev::lint::diagnostic::{DiagnosticKind, Severity};
+use belt_dev::lint::rules::unused_param::check_unused_params;
+use belt_core::ruleset::loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
+    // Fixtures are centralized in `crates/belt-core/tests/fixtures/` (single source
+    // of truth). For belt-core tests, `CARGO_MANIFEST_DIR` = `crates/belt-core`, and
+    // for belt-dev binary crate tests, it is `crates/belt-dev`. Walking up to
+    // `crates/` and then into `belt-core/tests/fixtures` works for both.
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crate manifest has parent crates/")
+        .join("belt-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -3131,12 +3367,12 @@ fn detects_declared_but_unused_param() {
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test lint_unused_param_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_unused_param_test 2>&1 | tail -20`
 Expected: FAIL.
 
 - [ ] **Step 4: ルール実装**
 
-`crates/flowrail-core/src/lint/rules/unused_param.rs`:
+`crates/belt-dev/src/lint/rules/unused_param.rs`:
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
@@ -3181,7 +3417,7 @@ pub fn check_unused_params(rule_set: &RuleSet) -> Vec<Diagnostic> {
 
 - [ ] **Step 5: rules/mod.rs に追加 + テスト**
 
-Edit `crates/flowrail-core/src/lint/rules/mod.rs`:
+Edit `crates/belt-dev/src/lint/rules/mod.rs`:
 
 ```rust
 pub mod invalid_hook_event;
@@ -3191,14 +3427,14 @@ pub mod unknown_rule_set;
 pub mod unused_param;
 ```
 
-Run: `cargo test -p flowrail-core --test lint_unused_param_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test lint_unused_param_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/flowrail-core/src/lint/rules/unused_param.rs crates/flowrail-core/src/lint/rules/mod.rs crates/flowrail-core/tests/lint_unused_param_test.rs crates/flowrail-core/tests/fixtures/invalid/unused-param.yml
-git commit -m "feat(flowrail): add lint rule for unused param warning (W001)"
+git add crates/belt-dev/src/lint/rules/unused_param.rs crates/belt-dev/src/lint/rules/mod.rs crates/belt-dev/tests/lint_unused_param_test.rs crates/belt-core/tests/fixtures/invalid/unused-param.yml
+git commit -m "feat(belt): add lint rule for unused param warning (W001)"
 ```
 
 ---
@@ -3208,47 +3444,47 @@ git commit -m "feat(flowrail): add lint rule for unused param warning (W001)"
 > **実装時の分割推奨 (2026-04-05 plan-review 反映)**:
 > 本 Task は他のルール実装 Task (12-16、各 ~80 LOC) と比べて粒度が大きい (~344 LOC) ため、実装時は以下 2 サブタスクに分けて **別々にコミット** することを推奨する:
 >
-> 1. **Task 17a — Lint driver (library)**: `crates/flowrail-core/src/lint/driver.rs` + `crates/flowrail-core/src/lint/rules/param_type_mismatch.rs` (E003) + `crates/flowrail-core/src/lint/rules/unresolved_template.rs` (E004) + driver の unit test。pipeline/rule-set 自動判別 + import 解決 + 全 lint rule の wire + SchemaError 分類。~200 LOC
-> 2. **Task 17b — main.rs CLI 配線**: `crates/flowrail/src/main.rs` を ExitCode ベースに refactor + `crates/flowrail/tests/lint_cli_test.rs` で E2E テスト。~150 LOC
+> 1. **Task 17a — Lint driver (library)**: `crates/belt-dev/src/lint/driver.rs` + `crates/belt-dev/src/lint/rules/param_type_mismatch.rs` (E003) + `crates/belt-dev/src/lint/rules/unresolved_template.rs` (E004) + driver の unit test。pipeline/rule-set 自動判別 + import 解決 + 全 lint rule の wire + SchemaError 分類。~200 LOC
+> 2. **Task 17b — main.rs CLI 配線**: `crates/belt-dev/src/main.rs` を ExitCode ベースに refactor + `crates/belt-dev/tests/lint_cli_test.rs` で E2E テスト。~150 LOC
 >
 > 各 subtask 終了時に `cargo fmt --package <pkg>` + `cargo clippy --package <pkg> -- -D warnings` + `cargo test -p <pkg>` を実行する。
 
 
 **Files:**
-- Create: `crates/flowrail-core/src/lint/driver.rs`
-- Modify: `crates/flowrail-core/src/lint/mod.rs`
-- Modify: `crates/flowrail/src/main.rs`
-- Test: `crates/flowrail/tests/lint_cli_test.rs`
+- Create: `crates/belt-dev/src/lint/driver.rs`
+- Modify: `crates/belt-dev/src/lint/mod.rs`
+- Modify: `crates/belt-dev/src/main.rs`
+- Test: `crates/belt-dev/tests/lint_cli_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail/tests/lint_cli_test.rs`:
+`crates/belt-dev/tests/lint_cli_test.rs`:
 
 ```rust
 use std::path::PathBuf;
 use std::process::Command;
 
-fn flowrail_bin() -> String {
-    env!("CARGO_BIN_EXE_flowrail").to_string()
+fn belt_bin() -> String {
+    env!("CARGO_BIN_EXE_belt").to_string()
 }
 
-/// Binary crate tests resolve fixtures via the sibling `flowrail-core` crate
+/// Binary crate tests resolve fixtures via the sibling `belt-core` crate
 /// because all lint/fmt test fixtures are centralized there (single source of
-/// truth). `CARGO_MANIFEST_DIR` points to `crates/flowrail/`, so we walk up one
-/// level to `crates/` and into `flowrail-core/tests/fixtures/`.
+/// truth). `CARGO_MANIFEST_DIR` points to `crates/belt-dev/`, so we walk up one
+/// level to `crates/` and into `belt-core/tests/fixtures/`.
 fn fixture(rel: &str) -> PathBuf {
     let manifest = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest)
         .parent()
-        .expect("crates/flowrail has parent crates/")
-        .join("flowrail-core/tests/fixtures")
+        .expect("crates/belt-dev has parent crates/")
+        .join("belt-core/tests/fixtures")
         .join(rel)
 }
 
 #[test]
 fn lint_exits_0_on_valid_pipeline() {
     let path = fixture("valid/pipelines/feature-dev-minimal.yml");
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "lint", path.to_str().unwrap()])
         .output()
         .expect("run lint");
@@ -3258,7 +3494,7 @@ fn lint_exits_0_on_valid_pipeline() {
 #[test]
 fn lint_exits_2_on_errors() {
     let path = fixture("invalid/unknown-rule-set-in-uses.yml");
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "lint", path.to_str().unwrap()])
         .output()
         .expect("run lint");
@@ -3271,7 +3507,7 @@ fn lint_exits_2_on_errors() {
 #[test]
 fn lint_exits_1_on_warnings_only() {
     let path = fixture("invalid/unused-param.yml");
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "lint", path.to_str().unwrap()])
         .output()
         .expect("run lint");
@@ -3283,15 +3519,15 @@ fn lint_exits_1_on_warnings_only() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail --test lint_cli_test 2>&1 | tail -30`
+Run: `cargo test -p belt-dev --test lint_cli_test 2>&1 | tail -30`
 Expected: FAIL — lint サブコマンドが stub 出力のみ。
 
 - [ ] **Step 3: lint driver を実装**
 
-`crates/flowrail-core/src/lint/driver.rs`:
+`crates/belt-dev/src/lint/driver.rs`:
 
 ```rust
-use crate::error::{FlowrailError, Result};
+use crate::error::{BeltError, Result};
 use crate::lint::diagnostic::{Diagnostic, Severity};
 use crate::lint::rules::{
     invalid_hook_event, invalid_produced_consumed, invalid_trigger_rewind,
@@ -3326,12 +3562,12 @@ pub fn lint_path(path: &Path) -> Result<LintReport> {
     let mut report = LintReport::default();
 
     // Detect whether the entry is a pipeline or a rule set by reading kind
-    let text = std::fs::read_to_string(path).map_err(|source| FlowrailError::Io {
+    let text = std::fs::read_to_string(path).map_err(|source| BeltError::Io {
         path: path.to_path_buf(),
         source,
     })?;
     let preview: yaml::Value =
-        yaml::parse(&text).map_err(|source| FlowrailError::YamlParse {
+        yaml::parse(&text).map_err(|source| BeltError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -3465,21 +3701,21 @@ fn lint_rule_set_entry(path: &Path, report: &mut LintReport) -> Result<()> {
 ///
 /// - `Io`, `YamlParse`, `SchemaValidation`, `MaxDepthExceeded` → `SchemaError` (E008)
 /// - Anything else we decide to widen later (e.g. explicit E00x codes per variant).
-fn schema_error_diagnostic(err: &FlowrailError, path: &Path) -> Diagnostic {
+fn schema_error_diagnostic(err: &BeltError, path: &Path) -> Diagnostic {
     let kind = match err {
-        FlowrailError::Io { .. }
-        | FlowrailError::YamlParse { .. }
-        | FlowrailError::SchemaValidation { .. }
-        | FlowrailError::MaxDepthExceeded { .. } => {
+        BeltError::Io { .. }
+        | BeltError::YamlParse { .. }
+        | BeltError::SchemaValidation { .. }
+        | BeltError::MaxDepthExceeded { .. } => {
             crate::lint::diagnostic::DiagnosticKind::SchemaError
         }
-        FlowrailError::UnknownRuleSet { .. } => {
+        BeltError::UnknownRuleSet { .. } => {
             crate::lint::diagnostic::DiagnosticKind::UnknownRuleSet
         }
-        FlowrailError::ParamTypeMismatch { .. } => {
+        BeltError::ParamTypeMismatch { .. } => {
             crate::lint::diagnostic::DiagnosticKind::ParamTypeMismatch
         }
-        FlowrailError::UnresolvedTemplate { .. } => {
+        BeltError::UnresolvedTemplate { .. } => {
             crate::lint::diagnostic::DiagnosticKind::UnresolvedTemplate
         }
     };
@@ -3489,7 +3725,7 @@ fn schema_error_diagnostic(err: &FlowrailError, path: &Path) -> Diagnostic {
 
 - [ ] **Step 4: lint/mod.rs に driver を公開**
 
-Edit `crates/flowrail-core/src/lint/mod.rs`:
+Edit `crates/belt-dev/src/lint/mod.rs`:
 
 ```rust
 pub mod diagnostic;
@@ -3499,16 +3735,16 @@ pub mod rules;
 
 - [ ] **Step 5: main.rs で lint を配線**
 
-Edit `crates/flowrail/src/main.rs`:
+Edit `crates/belt-dev/src/main.rs`:
 
 ```rust
 mod cli;
 
 use clap::Parser;
 use cli::{Cli, PipelineVerb, TopLevel};
-use flowrail_core::error::Result;
-use flowrail_core::lint::driver::lint_path;
-use flowrail_core::lint::diagnostic::Severity;
+use belt_core::error::Result;
+use belt_dev::lint::driver::lint_path;
+use belt_dev::lint::diagnostic::Severity;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -3579,14 +3815,14 @@ fn real_main() -> Result<ExitCode> {
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cargo test -p flowrail --test lint_cli_test 2>&1 | tail -30`
+Run: `cargo test -p belt-dev --test lint_cli_test 2>&1 | tail -30`
 Expected: 3 tests passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/flowrail-core/src/lint/driver.rs crates/flowrail-core/src/lint/mod.rs crates/flowrail/src/main.rs crates/flowrail/tests/lint_cli_test.rs
-git commit -m "feat(flowrail): wire lint driver with all rules and exit codes"
+git add crates/belt-dev/src/lint/driver.rs crates/belt-dev/src/lint/mod.rs crates/belt-dev/src/main.rs crates/belt-dev/tests/lint_cli_test.rs
+git commit -m "feat(belt): wire lint driver with all rules and exit codes"
 ```
 
 ---
@@ -3594,17 +3830,17 @@ git commit -m "feat(flowrail): wire lint driver with all rules and exit codes"
 ## Task 18: YAML フォーマッタ — key ordering
 
 **Files:**
-- Create: `crates/flowrail-core/src/fmt/mod.rs`
-- Create: `crates/flowrail-core/src/fmt/key_order.rs`
-- Modify: `crates/flowrail-core/src/lib.rs`
-- Test: `crates/flowrail-core/tests/fmt_test.rs`
+- Create: `crates/belt-dev/src/fmt/mod.rs`
+- Create: `crates/belt-dev/src/fmt/key_order.rs`
+- Modify: `crates/belt-dev/src/lib.rs` (add `pub mod fmt;`)
+- Test: `crates/belt-dev/tests/fmt_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail-core/tests/fmt_test.rs`:
+`crates/belt-dev/tests/fmt_test.rs`:
 
 ```rust
-use flowrail_core::fmt::format_yaml;
+use belt_dev::fmt::format_yaml;
 
 #[test]
 fn formats_pipeline_reorders_keys() {
@@ -3669,17 +3905,17 @@ phases:
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test fmt_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test fmt_test 2>&1 | tail -20`
 Expected: FAIL — fmt モジュール未実装。
 
 - [ ] **Step 3: key_order.rs を実装**
 
-`crates/flowrail-core/src/fmt/key_order.rs`:
+`crates/belt-dev/src/fmt/key_order.rs`:
 
 ```rust
 /// Canonical key order for top-level fields in a pipeline YAML.
 ///
-/// Source of truth: spec §flowrail pipeline fmt L1355.
+/// Source of truth: spec §belt-dev pipeline fmt L1355.
 /// `tests` and `on_phase_complete` are RULE-SET level, not pipeline level, and
 /// are intentionally excluded here.
 pub const PIPELINE_KEY_ORDER: &[&str] = &[
@@ -3702,7 +3938,7 @@ pub const PIPELINE_KEY_ORDER: &[&str] = &[
 
 /// Canonical key order for top-level fields in a rule-set YAML.
 ///
-/// Source of truth: spec §flowrail pipeline fmt L1354 (with `layer` removed per
+/// Source of truth: spec §belt-dev pipeline fmt L1354 (with `layer` removed per
 /// 2026-04-05 layer retraction). `tests` is a Phase 2 field and is currently
 /// excluded from Phase 1 (see Task 5 note).
 pub const RULE_SET_KEY_ORDER: &[&str] = &[
@@ -3749,17 +3985,17 @@ fn fxhash_u32(s: &str) -> u32 {
 
 - [ ] **Step 4: fmt/mod.rs を実装**
 
-`crates/flowrail-core/src/fmt/mod.rs`:
+`crates/belt-dev/src/fmt/mod.rs`:
 
 ```rust
 pub mod key_order;
 
-use crate::error::{FlowrailError, Result};
+use crate::error::{BeltError, Result};
 use yaml::Value;
 use std::path::PathBuf;
 
 pub fn format_yaml(input: &str) -> Result<String> {
-    let value: Value = yaml::parse(input).map_err(|source| FlowrailError::YamlParse {
+    let value: Value = yaml::parse(input).map_err(|source| BeltError::YamlParse {
         path: PathBuf::from("<memory>"),
         source,
     })?;
@@ -3773,7 +4009,7 @@ pub fn format_yaml(input: &str) -> Result<String> {
     let reordered = reorder(value, order);
 
     // Serialize via yaml abstraction layer (uses 2-space indentation by default)
-    let mut out = yaml::serialize(&reordered).map_err(|source| FlowrailError::YamlParse {
+    let mut out = yaml::serialize(&reordered).map_err(|source| BeltError::YamlParse {
         path: PathBuf::from("<memory>"),
         source,
     })?;
@@ -3805,49 +4041,48 @@ fn reorder(value: Value, top_order: &[&str]) -> Value {
 }
 ```
 
-- [ ] **Step 5: lib.rs に fmt を追加**
+- [ ] **Step 5: belt-dev の lib.rs に fmt を追加**
 
-Edit `crates/flowrail-core/src/lib.rs`:
+Edit `crates/belt-dev/src/lib.rs` を編集して `pub mod fmt;` を追加:
 
 ```rust
-pub mod error;
-pub mod fmt;
-pub mod lint;
-pub mod pipeline;
-pub mod ruleset;
+//! belt-dev の内部ライブラリ (integration test 用)。
+
+pub mod lint;  // Task 12 で追加済み
+pub mod fmt;   // ← 本 Task で追加
 ```
 
 - [ ] **Step 6: テスト再実行**
 
-Run: `cargo test -p flowrail-core --test fmt_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test fmt_test 2>&1 | tail -20`
 Expected: 3 tests passed.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/flowrail-core/src/fmt/ crates/flowrail-core/src/lib.rs crates/flowrail-core/tests/fmt_test.rs
-git commit -m "feat(flowrail): add YAML formatter with canonical key ordering"
+git add crates/belt-dev/src/fmt/ crates/belt-dev/src/lib.rs crates/belt-dev/tests/fmt_test.rs
+git commit -m "feat(belt-dev): add YAML formatter with canonical key ordering"
 ```
 
 ---
 
-## Task 19: `flowrail pipeline fmt` CLI 統合 (--check, --diff)
+## Task 19: `belt-dev pipeline fmt` CLI 統合 (--check, --diff)
 
 **Files:**
-- Modify: `crates/flowrail/src/main.rs`
-- Test: `crates/flowrail/tests/fmt_cli_test.rs`
+- Modify: `crates/belt-dev/src/main.rs`
+- Test: `crates/belt-dev/tests/fmt_cli_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail/tests/fmt_cli_test.rs`:
+`crates/belt-dev/tests/fmt_cli_test.rs`:
 
 ```rust
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::tempdir;
 
-fn flowrail_bin() -> String {
-    env!("CARGO_BIN_EXE_flowrail").to_string()
+fn belt_bin() -> String {
+    env!("CARGO_BIN_EXE_belt").to_string()
 }
 
 #[test]
@@ -3865,7 +4100,7 @@ kind: pipeline
     )
     .unwrap();
 
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "fmt", file.to_str().unwrap()])
         .output()
         .unwrap();
@@ -3884,7 +4119,7 @@ fn fmt_check_exits_1_when_unformatted() {
     let original = "phases:\n  - id: only\nname: t\nversion: 1\nkind: pipeline\n";
     std::fs::write(&file, original).unwrap();
 
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "fmt", "--check", file.to_str().unwrap()])
         .output()
         .unwrap();
@@ -3904,7 +4139,7 @@ fn fmt_diff_prints_diff_to_stdout() {
     )
     .unwrap();
 
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "fmt", "--diff", file.to_str().unwrap()])
         .output()
         .unwrap();
@@ -3915,12 +4150,12 @@ fn fmt_diff_prints_diff_to_stdout() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail --test fmt_cli_test 2>&1 | tail -30`
+Run: `cargo test -p belt-dev --test fmt_cli_test 2>&1 | tail -30`
 Expected: FAIL — fmt CLI stub だけ。
 
 - [ ] **Step 3: main.rs で fmt を配線**
 
-Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
+Replace the `PipelineVerb::Fmt { .. }` branch in `crates/belt-dev/src/main.rs`:
 
 ```rust
             PipelineVerb::Fmt { paths, check, diff } => {
@@ -3931,12 +4166,12 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
                 let mut any_changed = false;
                 for path in paths {
                     let original = std::fs::read_to_string(&path).map_err(|source| {
-                        flowrail_core::error::FlowrailError::Io {
+                        belt_core::error::BeltError::Io {
                             path: path.clone(),
                             source,
                         }
                     })?;
-                    let formatted = flowrail_core::fmt::format_yaml(&original)?;
+                    let formatted = belt_dev::fmt::format_yaml(&original)?;
                     if original == formatted {
                         continue;
                     }
@@ -3949,7 +4184,7 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
                         print_unified_diff(&original, &formatted, &path);
                     }
                     std::fs::write(&path, &formatted).map_err(|source| {
-                        flowrail_core::error::FlowrailError::Io {
+                        belt_core::error::BeltError::Io {
                             path: path.clone(),
                             source,
                         }
@@ -3963,7 +4198,7 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
             }
 ```
 
-Add the helper at the bottom of `crates/flowrail/src/main.rs`:
+Add the helper at the bottom of `crates/belt-dev/src/main.rs`:
 
 ```rust
 fn print_unified_diff(old: &str, new: &str, path: &std::path::Path) {
@@ -3988,14 +4223,14 @@ fn print_unified_diff(old: &str, new: &str, path: &std::path::Path) {
 
 - [ ] **Step 4: テスト再実行**
 
-Run: `cargo test -p flowrail --test fmt_cli_test 2>&1 | tail -30`
+Run: `cargo test -p belt-dev --test fmt_cli_test 2>&1 | tail -30`
 Expected: 3 tests passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/flowrail/src/main.rs crates/flowrail/tests/fmt_cli_test.rs
-git commit -m "feat(flowrail): wire pipeline fmt CLI with --check and --diff flags"
+git add crates/belt-dev/src/main.rs crates/belt-dev/tests/fmt_cli_test.rs
+git commit -m "feat(belt): wire pipeline fmt CLI with --check and --diff flags"
 ```
 
 ---
@@ -4003,22 +4238,22 @@ git commit -m "feat(flowrail): wire pipeline fmt CLI with --check and --diff fla
 ## Task 20: Event Stream 基盤 (run.id + command.invoked/completed)
 
 **Files:**
-- Create: `crates/flowrail-core/src/event/mod.rs`
-- Create: `crates/flowrail-core/src/event/logger.rs`
-- Modify: `crates/flowrail-core/src/lib.rs`
-- Modify: `crates/flowrail/src/main.rs`
-- Test: `crates/flowrail/tests/event_stream_test.rs`
+- Create: `crates/belt-core/src/event/mod.rs`
+- Create: `crates/belt-core/src/event/logger.rs`
+- Modify: `crates/belt-core/src/lib.rs`
+- Modify: `crates/belt-dev/src/main.rs`
+- Test: `crates/belt-dev/tests/event_stream_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail/tests/event_stream_test.rs`:
+`crates/belt-dev/tests/event_stream_test.rs`:
 
 ```rust
 use std::process::Command;
 use tempfile::tempdir;
 
-fn flowrail_bin() -> String {
-    env!("CARGO_BIN_EXE_flowrail").to_string()
+fn belt_bin() -> String {
+    env!("CARGO_BIN_EXE_belt").to_string()
 }
 
 #[test]
@@ -4037,12 +4272,12 @@ fn emits_command_invoked_and_completed_with_run_id() {
     )
     .unwrap();
 
-    let out = Command::new(flowrail_bin())
-        .env("FLOWRAIL_EVENTS_FILE", events_path.to_str().unwrap())
+    let out = Command::new(belt_bin())
+        .env("BELT_EVENTS_FILE", events_path.to_str().unwrap())
         .args(["pipeline", "lint", fixture_pipeline.to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(out.status.code().is_some(), "flowrail should exit normally");
+    assert!(out.status.code().is_some(), "belt should exit normally");
 
     let text = std::fs::read_to_string(&events_path).unwrap();
     let lines: Vec<&str> = text.lines().collect();
@@ -4073,8 +4308,8 @@ fn v14_event_stream_includes_all_phase1_event_types() {
     )
     .unwrap();
 
-    Command::new(flowrail_bin())
-        .env("FLOWRAIL_EVENTS_FILE", events_path.to_str().unwrap())
+    Command::new(belt_bin())
+        .env("BELT_EVENTS_FILE", events_path.to_str().unwrap())
         .args(["pipeline", "lint", fixture.to_str().unwrap()])
         .output()
         .unwrap();
@@ -4097,18 +4332,18 @@ fn v14_event_stream_includes_all_phase1_event_types() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail --test event_stream_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test event_stream_test 2>&1 | tail -20`
 Expected: FAIL — event ファイルが存在しない。
 
 - [ ] **Step 3: event/logger.rs を実装**
 
-`crates/flowrail-core/src/event/mod.rs`:
+`crates/belt-core/src/event/mod.rs`:
 
 ```rust
 pub mod logger;
 ```
 
-`crates/flowrail-core/src/event/logger.rs`:
+`crates/belt-core/src/event/logger.rs`:
 
 ```rust
 use serde::Serialize;
@@ -4133,7 +4368,7 @@ static LOGGER: OnceLock<EventLogger> = OnceLock::new();
 impl EventLogger {
     fn new() -> Self {
         let run_id = Uuid::new_v4().to_string();
-        let sink = std::env::var("FLOWRAIL_EVENTS_FILE").ok().and_then(|path| {
+        let sink = std::env::var("BELT_EVENTS_FILE").ok().and_then(|path| {
             OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -4180,13 +4415,13 @@ pub fn emit(event_name: &str, payload: serde_json::Value) {
 
 > **実装順序の注意 (2026-04-05 plan-review 反映)**: Step 3 の `event/logger.rs` は `crate::determinism::now_iso()` を参照する。Step 3 を単独でコンパイル可能にするため、本 Step 4 (determinism module 作成) は Step 3 と「同一コミット」内で実施する必要がある。分離すると Step 3 終了時点で unresolved module エラーが発生する。
 
-`crates/flowrail-core/src/determinism/mod.rs`:
+`crates/belt-core/src/determinism/mod.rs`:
 
 ```rust
 /// Return an ISO-8601 timestamp string.
 ///
 /// Priority:
-/// 1. `FLOWRAIL_NOW` env var (deterministic mode) → used verbatim (caller responsibility to
+/// 1. `BELT_NOW` env var (deterministic mode) → used verbatim (caller responsibility to
 ///    supply a valid ISO-8601 string; we do NOT parse or validate it).
 /// 2. Wall clock → formatted as a true ISO-8601 `YYYY-MM-DDTHH:MM:SSZ` string using the
 ///    `time` crate (added as a workspace dependency in Task 1).
@@ -4196,7 +4431,7 @@ pub fn emit(event_name: &str, payload: serde_json::Value) {
 /// validation and downstream consumers expecting ISO-8601. We now use the `time` crate
 /// for a proper implementation.
 pub fn now_iso() -> String {
-    if let Ok(fixed) = std::env::var("FLOWRAIL_NOW") {
+    if let Ok(fixed) = std::env::var("BELT_NOW") {
         return fixed;
     }
     // Use the `time` crate (added to workspace.dependencies) to format a valid
@@ -4212,7 +4447,7 @@ pub fn now_iso() -> String {
 
 - [ ] **Step 5: lib.rs に event + determinism を追加**
 
-Edit `crates/flowrail-core/src/lib.rs`:
+Edit `crates/belt-core/src/lib.rs`:
 
 ```rust
 pub mod determinism;
@@ -4226,17 +4461,17 @@ pub mod ruleset;
 
 - [ ] **Step 6: main.rs で emit を呼ぶ**
 
-Add at the top of `real_main()` in `crates/flowrail/src/main.rs`:
+Add at the top of `real_main()` in `crates/belt-dev/src/main.rs`:
 
 ```rust
-    flowrail_core::event::logger::emit(
+    belt_core::event::logger::emit(
         "command.invoked",
         serde_json::json!({
             "argv": std::env::args().collect::<Vec<_>>(),
         }),
     );
     let result = run_cli();
-    flowrail_core::event::logger::emit(
+    belt_core::event::logger::emit(
         "command.completed",
         serde_json::json!({
             "exit_code": result.as_ref().map(|c| format!("{:?}", c)).unwrap_or_else(|e| format!("err:{}", e)),
@@ -4260,37 +4495,37 @@ fn run_cli() -> Result<ExitCode> {
 
 - [ ] **Step 7: テスト再実行**
 
-Run: `cargo test -p flowrail --test event_stream_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test event_stream_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/flowrail-core/src/event/ crates/flowrail-core/src/determinism/ crates/flowrail-core/src/lib.rs crates/flowrail/src/main.rs crates/flowrail/tests/event_stream_test.rs
-git commit -m "feat(flowrail): emit command.invoked/completed events with stable run.id"
+git add crates/belt-core/src/event/ crates/belt-core/src/determinism/ crates/belt-core/src/lib.rs crates/belt-dev/src/main.rs crates/belt-dev/tests/event_stream_test.rs
+git commit -m "feat(belt): emit command.invoked/completed events with stable run.id"
 ```
 
 ---
 
-## Task 21: Deterministic Mode (FLOWRAIL_NOW + JSON 正規化)
+## Task 21: Deterministic Mode (BELT_NOW + JSON 正規化)
 
 **Files:**
-- Modify: `crates/flowrail-core/src/determinism/mod.rs`
-- Create: `crates/flowrail-core/src/output/mod.rs`
-- Create: `crates/flowrail-core/src/output/json.rs`
-- Modify: `crates/flowrail-core/src/lib.rs`
-- Test: `crates/flowrail/tests/deterministic_test.rs`
+- Modify: `crates/belt-core/src/determinism/mod.rs`
+- Create: `crates/belt-core/src/output/mod.rs`
+- Create: `crates/belt-core/src/output/json.rs`
+- Modify: `crates/belt-core/src/lib.rs`
+- Test: `crates/belt-dev/tests/deterministic_test.rs`
 
 - [ ] **Step 1: 失敗テストを書く**
 
-`crates/flowrail/tests/deterministic_test.rs`:
+`crates/belt-dev/tests/deterministic_test.rs`:
 
 ```rust
 use std::process::Command;
 use tempfile::tempdir;
 
-fn flowrail_bin() -> String {
-    env!("CARGO_BIN_EXE_flowrail").to_string()
+fn belt_bin() -> String {
+    env!("CARGO_BIN_EXE_belt").to_string()
 }
 
 #[test]
@@ -4312,10 +4547,10 @@ fn deterministic_mode_produces_byte_identical_events() {
     let fixed_seed = "deadbeef-dead-beef-dead-beefdeadbeef";
 
     for target in [&file_a, &file_b] {
-        Command::new(flowrail_bin())
-            .env("FLOWRAIL_EVENTS_FILE", target.to_str().unwrap())
-            .env("FLOWRAIL_NOW", fixed_now)
-            .env("FLOWRAIL_SEED", fixed_seed)
+        Command::new(belt_bin())
+            .env("BELT_EVENTS_FILE", target.to_str().unwrap())
+            .env("BELT_NOW", fixed_now)
+            .env("BELT_SEED", fixed_seed)
             .args(["pipeline", "lint", fixture.to_str().unwrap()])
             .output()
             .unwrap();
@@ -4325,7 +4560,7 @@ fn deterministic_mode_produces_byte_identical_events() {
     let b = std::fs::read_to_string(&file_b).unwrap();
     assert_eq!(a, b, "two runs under deterministic mode should produce identical event streams");
     assert!(a.contains(fixed_now), "events should contain fixed timestamp");
-    assert!(a.contains(fixed_seed), "run.id should be derived from FLOWRAIL_SEED when provided");
+    assert!(a.contains(fixed_seed), "run.id should be derived from BELT_SEED when provided");
 
     // V13 strict: sha256 一致も検証
     use sha2::{Digest, Sha256};
@@ -4337,19 +4572,19 @@ fn deterministic_mode_produces_byte_identical_events() {
 
 - [ ] **Step 2: テスト失敗を確認**
 
-Run: `cargo test -p flowrail --test deterministic_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test deterministic_test 2>&1 | tail -20`
 Expected: FAIL — run.id が uuid_v4 ランダムで非決定。
 
 - [ ] **Step 3: determinism/mod.rs を拡張**
 
-Replace `crates/flowrail-core/src/determinism/mod.rs` (Task 20 で定義した `now_iso` は保持、`run_id` と `is_deterministic` を追加):
+Replace `crates/belt-core/src/determinism/mod.rs` (Task 20 で定義した `now_iso` は保持、`run_id` と `is_deterministic` を追加):
 
 ```rust
 // `now_iso` は Task 20 で実装済み (ISO-8601 with `time` crate)。ここでは
 // `run_id` と `is_deterministic` だけ追加する。
 
 pub fn now_iso() -> String {
-    if let Ok(fixed) = std::env::var("FLOWRAIL_NOW") {
+    if let Ok(fixed) = std::env::var("BELT_NOW") {
         return fixed;
     }
     use time::format_description::well_known::Rfc3339;
@@ -4359,7 +4594,7 @@ pub fn now_iso() -> String {
 }
 
 pub fn run_id() -> String {
-    if let Ok(seed) = std::env::var("FLOWRAIL_SEED") {
+    if let Ok(seed) = std::env::var("BELT_SEED") {
         // Phase 1 では seed 文字列をそのまま run.id に使用する (spec L2855 の
         // `seeded v5 UUID` は Phase 2 で再評価)。用途は deterministic test の
         // byte-identity のみなので文字列そのままで十分。
@@ -4369,13 +4604,13 @@ pub fn run_id() -> String {
 }
 
 pub fn is_deterministic() -> bool {
-    std::env::var("FLOWRAIL_DETERMINISTIC").is_ok() || std::env::var("FLOWRAIL_NOW").is_ok()
+    std::env::var("BELT_DETERMINISTIC").is_ok() || std::env::var("BELT_NOW").is_ok()
 }
 ```
 
 - [ ] **Step 4: event/logger.rs の run_id 生成を `determinism::run_id` に差し替え**
 
-Replace in `crates/flowrail-core/src/event/logger.rs`:
+Replace in `crates/belt-core/src/event/logger.rs`:
 
 ```rust
     fn new() -> Self {
@@ -4386,13 +4621,13 @@ And remove the `use uuid::Uuid;` import at the top.
 
 - [ ] **Step 5: JSON 正規化出力 (output/json.rs)**
 
-`crates/flowrail-core/src/output/mod.rs`:
+`crates/belt-core/src/output/mod.rs`:
 
 ```rust
 pub mod json;
 ```
 
-`crates/flowrail-core/src/output/json.rs`:
+`crates/belt-core/src/output/json.rs`:
 
 ```rust
 use serde::Serialize;
@@ -4424,7 +4659,7 @@ fn sort_value(v: serde_json::Value) -> serde_json::Value {
 
 - [ ] **Step 6: lib.rs に output を追加**
 
-Edit `crates/flowrail-core/src/lib.rs`:
+Edit `crates/belt-core/src/lib.rs`:
 
 ```rust
 pub mod determinism;
@@ -4462,14 +4697,14 @@ Edit the `emit` method of `EventLogger`:
 
 - [ ] **Step 8: テスト再実行**
 
-Run: `cargo test -p flowrail --test deterministic_test 2>&1 | tail -20`
+Run: `cargo test -p belt-dev --test deterministic_test 2>&1 | tail -20`
 Expected: 1 test passed.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/flowrail-core/src/determinism/ crates/flowrail-core/src/output/ crates/flowrail-core/src/event/logger.rs crates/flowrail-core/src/lib.rs crates/flowrail/tests/deterministic_test.rs
-git commit -m "feat(flowrail): add deterministic mode (FLOWRAIL_NOW/FLOWRAIL_SEED) with canonical JSON"
+git add crates/belt-core/src/determinism/ crates/belt-core/src/output/ crates/belt-core/src/event/logger.rs crates/belt-core/src/lib.rs crates/belt-dev/tests/deterministic_test.rs
+git commit -m "feat(belt): add deterministic mode (BELT_NOW/BELT_SEED) with canonical JSON"
 ```
 
 ---
@@ -4477,16 +4712,16 @@ git commit -m "feat(flowrail): add deterministic mode (FLOWRAIL_NOW/FLOWRAIL_SEE
 ## Task 22: 実パイプライン統合検証 (feature-dev / debug-flow 試作 fixture)
 
 **Files:**
-- Create: `crates/flowrail-core/tests/fixtures/integration/pipelines/feature-dev.yml`
-- Create: `crates/flowrail-core/tests/fixtures/integration/pipelines/debug-flow.yml`
-- Create: `crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-file-exists.yml`
-- Create: `crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-command.yml`
-- Create: `crates/flowrail-core/tests/fixtures/integration/rules/recipes/audit-gate.yml`
-- Test: `crates/flowrail/tests/integration_test.rs`
+- Create: `crates/belt-core/tests/fixtures/integration/pipelines/feature-dev.yml`
+- Create: `crates/belt-core/tests/fixtures/integration/pipelines/debug-flow.yml`
+- Create: `crates/belt-core/tests/fixtures/integration/rules/primitives/check-file-exists.yml`
+- Create: `crates/belt-core/tests/fixtures/integration/rules/primitives/check-command.yml`
+- Create: `crates/belt-core/tests/fixtures/integration/rules/recipes/audit-gate.yml`
+- Test: `crates/belt-dev/tests/integration_test.rs`
 
 - [ ] **Step 1: 統合 fixture を作成**
 
-`crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-file-exists.yml`:
+`crates/belt-core/tests/fixtures/integration/rules/primitives/check-file-exists.yml`:
 
 ```yaml
 kind: rule-set
@@ -4503,7 +4738,7 @@ checks:
       path: "{{ path }}"
 ```
 
-`crates/flowrail-core/tests/fixtures/integration/rules/primitives/check-command.yml`:
+`crates/belt-core/tests/fixtures/integration/rules/primitives/check-command.yml`:
 
 ```yaml
 kind: rule-set
@@ -4523,7 +4758,7 @@ checks:
       expected: "{{ expected_exit }}"
 ```
 
-`crates/flowrail-core/tests/fixtures/integration/rules/recipes/audit-gate.yml`:
+`crates/belt-core/tests/fixtures/integration/rules/recipes/audit-gate.yml`:
 
 ```yaml
 kind: rule-set
@@ -4541,7 +4776,7 @@ uses:
       path: "{{ artifact_path }}"
 ```
 
-`crates/flowrail-core/tests/fixtures/integration/pipelines/feature-dev.yml`:
+`crates/belt-core/tests/fixtures/integration/pipelines/feature-dev.yml`:
 
 ```yaml
 kind: pipeline
@@ -4577,7 +4812,7 @@ integrations:
       on_snapshot_created: "linear-sync snapshot"
 ```
 
-`crates/flowrail-core/tests/fixtures/integration/pipelines/debug-flow.yml`:
+`crates/belt-core/tests/fixtures/integration/pipelines/debug-flow.yml`:
 
 ```yaml
 kind: pipeline
@@ -4596,32 +4831,32 @@ phases:
 
 - [ ] **Step 2: 統合テストを書く**
 
-`crates/flowrail/tests/integration_test.rs`:
+`crates/belt-dev/tests/integration_test.rs`:
 
 ```rust
 use std::path::PathBuf;
 use std::process::Command;
 
-fn flowrail_bin() -> String {
-    env!("CARGO_BIN_EXE_flowrail").to_string()
+fn belt_bin() -> String {
+    env!("CARGO_BIN_EXE_belt").to_string()
 }
 
-/// Integration fixtures live in `crates/flowrail-core/tests/fixtures/integration/`
+/// Integration fixtures live in `crates/belt-core/tests/fixtures/integration/`
 /// (single source of truth). Binary crate tests resolve them by walking up from
-/// `crates/flowrail/` to `crates/`.
+/// `crates/belt-dev/` to `crates/`.
 fn fixture(rel: &str) -> PathBuf {
     let manifest = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest)
         .parent()
-        .expect("crates/flowrail has parent crates/")
-        .join("flowrail-core/tests/fixtures/integration")
+        .expect("crates/belt-dev has parent crates/")
+        .join("belt-core/tests/fixtures/integration")
         .join(rel)
 }
 
 #[test]
 fn feature_dev_pipeline_lints_clean() {
     let path = fixture("pipelines/feature-dev.yml");
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "lint", path.to_str().unwrap()])
         .output()
         .unwrap();
@@ -4637,7 +4872,7 @@ fn feature_dev_pipeline_lints_clean() {
 #[test]
 fn debug_flow_pipeline_lints_clean() {
     let path = fixture("pipelines/debug-flow.yml");
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "lint", path.to_str().unwrap()])
         .output()
         .unwrap();
@@ -4653,11 +4888,11 @@ fn debug_flow_pipeline_lints_clean() {
 fn feature_dev_pipeline_is_already_fmt_clean_after_first_fmt() {
     let path = fixture("pipelines/feature-dev.yml");
     // Run fmt once (may modify), then fmt --check should pass
-    Command::new(flowrail_bin())
+    Command::new(belt_bin())
         .args(["pipeline", "fmt", path.to_str().unwrap()])
         .output()
         .unwrap();
-    let out = Command::new(flowrail_bin())
+    let out = Command::new(belt_bin())
         .args(["pipeline", "fmt", "--check", path.to_str().unwrap()])
         .output()
         .unwrap();
@@ -4667,14 +4902,14 @@ fn feature_dev_pipeline_is_already_fmt_clean_after_first_fmt() {
 
 - [ ] **Step 3: テスト実行**
 
-Run: `cargo test -p flowrail --test integration_test 2>&1 | tail -30`
+Run: `cargo test -p belt-dev --test integration_test 2>&1 | tail -30`
 Expected: 3 tests passed.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/flowrail-core/tests/fixtures/integration/ crates/flowrail/tests/integration_test.rs
-git commit -m "test(flowrail): add integration fixtures for feature-dev and debug-flow pipelines"
+git add crates/belt-core/tests/fixtures/integration/ crates/belt-dev/tests/integration_test.rs
+git commit -m "test(belt): add integration fixtures for feature-dev and debug-flow pipelines"
 ```
 
 ---
@@ -4682,23 +4917,23 @@ git commit -m "test(flowrail): add integration fixtures for feature-dev and debu
 ## Task 23: workspace root bin/ symlink 設置 + 全体 smoke
 
 **Files:**
-- Create: `bin/flowrail` (symlink, workspace root 基準)
+- Create: `bin/belt` (symlink, workspace root 基準)
 - Modify: `Cargo.toml` (workspace root、必要なら `[profile.release]` 調整)
 
-> **注**: 独立レポジトリ化後 (2026-04-05) は dotfiles 側への symlink ではなく、flowrail workspace root 内に `bin/flowrail → ../target/release/flowrail` を設置する。ユーザーは `export PATH="<workspace-root>/bin:$PATH"` または `cargo install --path crates/flowrail` で `$HOME/.cargo/bin/flowrail` にインストールする運用。
+> **注**: 独立レポジトリ化後 (2026-04-05) は dotfiles 側への symlink ではなく、belt workspace root 内に `bin/belt → ../target/release/belt` を設置する。ユーザーは `export PATH="<workspace-root>/bin:$PATH"` または `cargo install --path crates/belt-dev` で `$HOME/.cargo/bin/belt` にインストールする運用。
 
 - [ ] **Step 1: release ビルド**
 
 Run:
 ```bash
 cargo build --workspace --release 2>&1 | tail -10
-ls -lh target/release/flowrail
+ls -lh target/release/belt
 ```
-Expected: ビルド成功、`target/release/flowrail` バイナリが生成される。
+Expected: ビルド成功、`target/release/belt` バイナリが生成される。
 
 - [ ] **Step 2: バイナリサイズ確認 (20MB 以下)**
 
-Run: `stat -f %z target/release/flowrail 2>/dev/null || stat -c %s target/release/flowrail`
+Run: `stat -f %z target/release/belt 2>/dev/null || stat -c %s target/release/belt`
 Expected: 20 * 1024 * 1024 = 20971520 以下。
 
 > **NOTE:** もし 20MB を超えた場合、workspace root の `Cargo.toml` に以下を追加して再ビルドを検討:
@@ -4710,13 +4945,13 @@ Expected: 20 * 1024 * 1024 = 20971520 以下。
 > strip = true
 > ```
 
-- [ ] **Step 3: bin/flowrail symlink を作成**
+- [ ] **Step 3: bin/belt symlink を作成**
 
 Run:
 ```bash
 mkdir -p bin
-ln -sfn ../target/release/flowrail bin/flowrail
-ls -l bin/flowrail
+ln -sfn ../target/release/belt bin/belt
+ls -l bin/belt
 ```
 Expected: symlink が作成される。
 
@@ -4725,10 +4960,10 @@ Expected: symlink が作成される。
 Run:
 ```bash
 export PATH="$(pwd)/bin:$PATH"
-which flowrail
-flowrail --version
-flowrail pipeline lint --help
-flowrail pipeline lint crates/flowrail-core/tests/fixtures/integration/pipelines/feature-dev.yml
+which belt
+belt --version
+belt-dev pipeline lint --help
+belt-dev pipeline lint crates/belt-core/tests/fixtures/integration/pipelines/feature-dev.yml
 ```
 Expected: コマンドが解決し、lint が clean で exit 0。
 
@@ -4740,11 +4975,11 @@ Expected: 全テスト PASS。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add bin/flowrail Cargo.toml .gitignore
-git commit -m "feat(flowrail): add bin/flowrail symlink to release binary"
+git add bin/belt Cargo.toml .gitignore
+git commit -m "feat(belt): add bin/belt symlink to release binary"
 ```
 
-> **注**: `target/` は `.gitignore` で除外されているため、`bin/flowrail → ../target/release/flowrail` の symlink リンク先はユーザー毎にローカルビルドで生成される。clone 直後は `cargo build --workspace --release` が必要。
+> **注**: `target/` は `.gitignore` で除外されているため、`bin/belt → ../target/release/belt` の symlink リンク先はユーザー毎にローカルビルドで生成される。clone 直後は `cargo build --workspace --release` が必要。
 
 ---
 
@@ -4760,43 +4995,43 @@ git commit -m "feat(flowrail): add bin/flowrail symlink to release binary"
 `README.md` (workspace root、Phase 1 セクションを追記):
 
 ```markdown
-# flowrail — Tiny Workflow Engine CLI for LLM
+# belt — Tiny Workflow Engine CLI for LLM
 
-Phase 1 MVP — `flowrail pipeline lint` + `flowrail pipeline fmt`.
+Phase 1 MVP — `belt-dev pipeline lint` + `belt-dev pipeline fmt`.
 
 ## Build
 
 \`\`\`bash
 # workspace root で実行
 cargo build --workspace --release
-# バイナリは target/release/flowrail に生成される
+# バイナリは target/release/belt に生成される
 \`\`\`
 
 ## Usage
 
 \`\`\`bash
 # Lint a pipeline.yml (+ all transitively imported rule sets)
-flowrail pipeline lint path/to/feature-dev.yml
+belt-dev pipeline lint path/to/feature-dev.yml
 
 # Format a pipeline.yml in place
-flowrail pipeline fmt path/to/feature-dev.yml
+belt-dev pipeline fmt path/to/feature-dev.yml
 
 # Check formatting without modifying (CI-friendly)
-flowrail pipeline fmt --check path/to/feature-dev.yml
+belt-dev pipeline fmt --check path/to/feature-dev.yml
 
 # Show diff of pending formatting changes
-flowrail pipeline fmt --diff path/to/feature-dev.yml
+belt-dev pipeline fmt --diff path/to/feature-dev.yml
 \`\`\`
 
 ## Exit Codes
 
 | Command | Code | Meaning |
 |---------|------|---------|
-| \`flowrail pipeline lint\` | 0 | clean |
-| \`flowrail pipeline lint\` | 1 | warnings only |
-| \`flowrail pipeline lint\` | 2 | errors present |
-| \`flowrail pipeline fmt\` | 0 | up-to-date or reformatted |
-| \`flowrail pipeline fmt --check\` | 1 | formatting changes required |
+| \`belt-dev pipeline lint\` | 0 | clean |
+| \`belt-dev pipeline lint\` | 1 | warnings only |
+| \`belt-dev pipeline lint\` | 2 | errors present |
+| \`belt-dev pipeline fmt\` | 0 | up-to-date or reformatted |
+| \`belt-dev pipeline fmt --check\` | 1 | formatting changes required |
 
 ## Diagnostics
 
@@ -4813,22 +5048,22 @@ flowrail pipeline fmt --diff path/to/feature-dev.yml
 
 ## Event Stream
 
-Set \`FLOWRAIL_EVENTS_FILE=/path/to/events.jsonl\` to capture a JSONL event stream
+Set \`BELT_EVENTS_FILE=/path/to/events.jsonl\` to capture a JSONL event stream
 with \`command.invoked\` and \`command.completed\` events. Every event carries
 a \`run.id\` UUID that is stable within a single process invocation.
 
 ## Deterministic Mode
 
-- \`FLOWRAIL_NOW=<iso8601>\` — fix the \`timestamp\` field in all events
-- \`FLOWRAIL_SEED=<uuid>\` — fix the \`run.id\`
+- \`BELT_NOW=<iso8601>\` — fix the \`timestamp\` field in all events
+- \`BELT_SEED=<uuid>\` — fix the \`run.id\`
 
 Under deterministic mode, two runs of the same command produce byte-identical
 event streams.
 
 ## Related Docs
 
-- Spec: \`docs/specs/2026-04-05-flowrail-cli-rule-set-architecture-design.md\`
-- Phase 1 Plan: \`docs/plans/2026-04-05-flowrail-phase1-pipeline-lint-fmt.md\`
+- Spec: \`docs/specs/2026-04-05-belt-cli-rule-set-architecture-design.md\`
+- Phase 1 Plan: \`docs/plans/2026-04-05-belt-phase1-pipeline-lint-fmt.md\`
 ```
 
 - [ ] **Step 2: 最終ビルド + 全テスト + コミット**
@@ -4842,7 +5077,7 @@ Expected: 全 PASS。
 
 ```bash
 git add README.md
-git commit -m "docs(flowrail): add Phase 1 README with usage and diagnostics"
+git commit -m "docs(belt): add Phase 1 README with usage and diagnostics"
 ```
 
 ---
@@ -4854,13 +5089,13 @@ Phase 1 が完了したと見なすための基準:
 ### 機能・品質基準
 
 1. **全テスト PASS**: `cargo test --workspace --locked` が全 test を pass する
-2. **`flowrail pipeline lint feature-dev.yml` が clean** (exit 0)
-3. **`flowrail pipeline lint` が 7 種のエラー + 1 種の警告を正しく検出** (E001, E003-E008, W001; E002 は欠番)
-4. **`flowrail pipeline fmt --check` が未整形ファイルで exit 1、整形済みで exit 0**
-5. **FLOWRAIL_EVENTS_FILE 指定時、Phase 1 event types (command.invoked, command.completed, ruleset.resolved 等) が run.id 付きで出力される**
-6. **FLOWRAIL_NOW + FLOWRAIL_SEED 指定時、2 回の同一実行が byte-identical な JSONL を生成 + sha256 が一致**
+2. **`belt-dev pipeline lint feature-dev.yml` が clean** (exit 0)
+3. **`belt-dev pipeline lint` が 7 種のエラー + 1 種の警告を正しく検出** (E001, E003-E008, W001; E002 は欠番)
+4. **`belt-dev pipeline fmt --check` が未整形ファイルで exit 1、整形済みで exit 0**
+5. **BELT_EVENTS_FILE 指定時、Phase 1 event types (command.invoked, command.completed, ruleset.resolved 等) が run.id 付きで出力される**
+6. **BELT_NOW + BELT_SEED 指定時、2 回の同一実行が byte-identical な JSONL を生成 + sha256 が一致**
 7. **release バイナリが 20MB 以下** (超過時は `[profile.release]` の `opt-level = "z"` + `strip = true` で調整)
-8. **`bin/flowrail` symlink 経由で PATH から呼び出せる**
+8. **`bin/belt` symlink 経由で PATH から呼び出せる**
 9. **`cargo fmt --all` / `cargo clippy --workspace -- -D warnings` が clean**
 10. **`cargo build --locked --workspace` がクリーン clone 直後に成功 (V15)**
 
@@ -4873,26 +5108,26 @@ Phase 1 が完了したと見なすための基準:
 | V3 | linear-sync `resolve_ticket` AskUserQuestion + persist | — | Phase 2 で integration hooks 実装後 | Phase 2 Task |
 | V4 | kanban skill の active_tasks 読み出し | — | Phase 2 で state.json 実装後 | Phase 2 Task |
 | V5 | 複数 worktree の state 分離 | — | Phase 2 で state.json 実装後 | Phase 2 Task |
-| V6 | `flowrail run step` 冪等性 | — | Phase 2 で `flowrail run` 実装後 | Phase 2 Task |
-| V7 | paused + `--classifier-response` | — | Phase 2 で `flowrail run` 実装後 | Phase 2 Task |
+| V6 | `belt run step` 冪等性 | — | Phase 2 で `belt run` 実装後 | Phase 2 Task |
+| V7 | paused + `--classifier-response` | — | Phase 2 で `belt run` 実装後 | Phase 2 Task |
 | **V8** | **`pipeline fmt` key order (pipeline vs rule-set 区別)** | **✅** | Task 18 test `formats_pipeline_vs_rule_set_uses_different_key_order` | Task 18 |
 | **V9** | **標準 rule set catalog 15 primitive + 10 recipe が spec と一致** | ⚠ | Phase B (Standard Rule Set Catalog) で catalog 作成後。Phase 1 は lint 側のみ | Phase B Task |
-| V10 | `.flowrail/*.tmp.*` atomic write crash recovery | — | Phase 2 で state.json 書き込み実装後 (spec §4.4 を Phase 2 に移送) | Phase 2 Task |
+| V10 | `.belt/*.tmp.*` atomic write crash recovery | — | Phase 2 で state.json 書き込み実装後 (spec §4.4 を Phase 2 に移送) | Phase 2 Task |
 | **V11** | **`CLAUDE_SESSION_ID` / `CLAUDE_PROJECT_DIR` hook pass-through** | **✅** | Task 23 Step 4 に env var echo hook + tmp ファイル assert を追加 | Task 23 |
-| V12 | `phase-summaries/*.yml` → `state.json` schema migration | — | Phase 2 で state.json + `flowrail state import` 実装後 | Phase 2 Task |
+| V12 | `phase-summaries/*.yml` → `state.json` schema migration | — | Phase 2 で state.json + `belt state import` 実装後 | Phase 2 Task |
 | **V13** | **Deterministic Mode (JSONL byte-identity + sha256 一致)** | **✅** | Task 21 Step 3 に `sha256` 比較を追加 | Task 21 |
 | **V14** | **Event Stream 構造 (全 Phase 1 event type が列挙)** | **✅** | Task 20 test に `jq '.event_type'` で expected event types 全列挙を assert | Task 20 |
 | **V15** | **Cargo.lock 固定ビルド (`cargo build --locked --workspace`)** | **✅** | Task 23 Step 1 前に追加 | Task 23 |
 
 **Phase 1 で実装する V 項目**: V8, V11, V13, V14, V15 (5 項目)
-**Phase 2 以降に Deferred**: V1-V7, V10, V12 (9 項目、`flowrail run` / state.json / integration hooks 実装後)
+**Phase 2 以降に Deferred**: V1-V7, V10, V12 (9 項目、`belt run` / state.json / integration hooks 実装後)
 **Phase B に Deferred**: V9 (Standard Rule Set Catalog 作成後)
 
-> **注 (2026-04-05 plan-review 反映)**: 旧 Self-Review criterion #9 は「新 spec の Phase 1 項目 10 項が全て実装」と記載していたが、Phase 1 (pipeline lint + fmt MVP) のスコープは `flowrail Core 5 概念` のうち Rule Set Resolver の lint 側のみであり、State Machine / Artifact Lifecycle / 4 Primitive Checks / Hook Executor / 8 Built-in Directives runtime は Phase 2 で実装される。この境界を Self-Review で明示的に分離した。
+> **注 (2026-04-05 plan-review 反映)**: 旧 Self-Review criterion #9 は「新 spec の Phase 1 項目 10 項が全て実装」と記載していたが、Phase 1 (pipeline lint + fmt MVP) のスコープは `belt Core 5 概念` のうち Rule Set Resolver の lint 側のみであり、State Machine / Artifact Lifecycle / 4 Primitive Checks / Hook Executor / 8 Built-in Directives runtime は Phase 2 で実装される。この境界を Self-Review で明示的に分離した。
 
 ### Phase 1 Scope Clarification
 
-本 plan は **`flowrail pipeline lint` + `flowrail pipeline fmt` MVP** のみを対象とする。spec §flowrail Core 5 概念のうち以下の実装範囲:
+本 plan は **`belt-dev pipeline lint` + `belt-dev pipeline fmt` MVP** のみを対象とする。spec §belt Core 5 概念のうち以下の実装範囲:
 
 | 概念 | Phase 1 (本 plan) | Phase 2 (次 plan) |
 |------|:--:|:--:|
@@ -4934,7 +5169,7 @@ pub fn collect_references(text: &str) -> Result<Vec<String>, TemplateError> {
 
 構文エラー検出は `compile_expression` が担うため、独自の「trailing operator heuristic」は不要 (false positive 除去)。
 
-**dependency**: `minijinja = { version = "2.19", default-features = false, features = ["builtins", "macros"] }` を `crates/flowrail-core/Cargo.toml` に追加 (Task 1 の dev-dependencies ではなく本 dependencies)。
+**dependency**: `minijinja = { version = "2.19", default-features = false, features = ["builtins", "macros"] }` を `crates/belt-core/Cargo.toml` に追加 (Task 1 の dev-dependencies ではなく本 dependencies)。
 
 ### Task 17 exit code 分離 (2026-04-05 plan-review 反映)
 
@@ -4951,13 +5186,13 @@ Plan の Task 17 main.rs は以下の exit code を返す:
 
 ### Cluster 1 回帰 lint ルールの取り込み
 
-旧 plan (`2026-04-05-flowrail-phase1-lint-fmt.md`) の Appendix A には、Linear CLA-6/CLA-9/CLA-15 由来の regression fixture が 3 件定義されている。これらは新アーキテクチャでも有効な検査ポイントなので、Phase 1 完了後の Phase 1.5 相当として取り込む予定:
+旧 plan (`2026-04-05-belt-phase1-lint-fmt.md`) の Appendix A には、Linear CLA-6/CLA-9/CLA-15 由来の regression fixture が 3 件定義されている。これらは新アーキテクチャでも有効な検査ポイントなので、Phase 1 完了後の Phase 1.5 相当として取り込む予定:
 
 - **CLA-6**: `spec_file.consumed_by` に `execute` が含まれないが `code_changes.contract.validation.against` で `spec_file` を参照 → 新アーキテクチャでは rule set の template 参照として `{{ artifact.spec_file }}` が consumed_by に対応する phase で呼ばれるかを検査
 - **CLA-9**: 空 contract の orphan artifact → 新アーキテクチャでは produced_by も consumed_by も持たない artifact の検出
 - **CLA-15**: 対称性が期待される `evidence_collection` の欠落 → カスタム lint ルールとして Phase 1.5 で追加
 
-これらは新 spec の成功基準 1「`flowrail pipeline lint` が既存 + 新 pipeline.yml のスキーマ変更波及漏れを検出できる（0 false-negative）」に紐付く。
+これらは新 spec の成功基準 1「`belt-dev pipeline lint` が既存 + 新 pipeline.yml のスキーマ変更波及漏れを検出できる（0 false-negative）」に紐付く。
 
 ### Task 依存関係
 

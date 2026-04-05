@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+    "crates/belt-core",
+    "crates/belt",
+    "crates/belt-dev",
+    "crates/belt-tui",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,7 +13,7 @@ edition = "2024"
 rust-version = "1.86"
 authors = ["neko-neko"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/neko-neko/flowrail"
+repository = "https://github.com/neko-neko/belt"
 
 [workspace.dependencies]
 # --- serialization / YAML ---
@@ -23,10 +28,10 @@ jsonschema = { version = "=0.45.0", default-features = false, features = ["resol
 minijinja = { version = "2.19", default-features = false, features = ["builtins", "macros", "deserialization"] }
 
 # --- error handling ---
-miette = "7.6"  # plain, for flowrail-core
+miette = "7.6"  # plain, for belt-core library
 thiserror = "2.0.18"
 
-# --- CLI (flowrail binary only) ---
+# --- CLI (belt / belt-dev binaries only) ---
 clap = { version = "4.6", features = ["derive", "env", "string"] }
 
 # --- filesystem watcher ---
@@ -37,7 +42,7 @@ uuid = { version = "1.23", features = ["v4", "v7", "v5", "serde"] }
 regex = "1.12"
 glob = "0.3"
 
-# --- TUI (flowrail-tui only, Phase 3) ---
+# --- TUI (belt-tui only, Phase 3) ---
 ratatui = "=0.30.0"
 crossterm = "=0.29.0"
 
@@ -45,6 +50,33 @@ crossterm = "=0.29.0"
 insta = { version = "1", features = ["yaml"] }
 pretty_assertions = "1"
 tempfile = "3"
+
+# Workspace-level lint policy.
+#
+# 原則 8 (Separation by Audience) と原則 7 (Tiny by Constraint) を強制するため、
+# 全 crate 共通で clippy lint を宣言的に warn レベルに設定する。各 crate の
+# Cargo.toml で `[lints] workspace = true` を宣言することで継承される。
+#
+# `cargo clippy --workspace -- -D warnings` を CI + pre-commit で実行すれば、
+# ここで warn に設定した lint は全て error として検出される。
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+# clippy 全グループ (correctness/suspicious/style/complexity/perf) を warn
+all = { level = "warn", priority = -1 }
+# pedantic グループ (より厳格な lint 群) も warn
+pedantic = { level = "warn", priority = -1 }
+# パニック系を個別に warn (tiny + fail-loud の方針)
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+# ドキュメントが無い public item を警告 (必要に応じ個別 allow)
+missing_errors_doc = "allow"  # Phase 1 では過剰、Phase 2 で再検討
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"  # belt_core::pipeline::Pipeline 等の命名を許容
 
 [profile.release]
 lto = "thin"

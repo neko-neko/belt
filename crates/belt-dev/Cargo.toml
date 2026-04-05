@@ -1,0 +1,35 @@
+[package]
+name = "belt-dev"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "belt developer CLI — pipeline lint/fmt for rule set authors (Phase 1 MVP target)"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "belt-dev"
+path = "src/main.rs"
+
+[dependencies]
+belt-core = { path = "../belt-core" }
+clap.workspace = true
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
+# belt-dev は developer CLI のため、belt-core が使用する serde/serde-saphyr/jsonschema/minijinja を
+# 間接的に含む。lint 実装は本 crate 内の private module (src/lint/) に配置し、外部依存は
+# belt-core + clap + miette のみに限定する (lint ロジック自体は belt-core の model/loader を使い、
+# 追加の外部依存は取らない)。
+#
+# ⚠ TUI/GUI 系依存 (ratatui, crossterm, tui-*, iced, egui) は追加禁止 (原則 8 — developer CLI は
+# agent CLI ではないが、TUI からも依存的に分離される)。
+# ⚠ HTTP/gRPC (reqwest, hyper, tonic) は原則禁止。
+# ⚠ async runtime (tokio, async-std, smol) は原則禁止。
+
+[dev-dependencies]
+insta.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true

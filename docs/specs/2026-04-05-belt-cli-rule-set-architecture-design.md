@@ -1,30 +1,30 @@
-# flowrail — Tiny Workflow Engine CLI for LLM (Rule Set Architecture)
+# belt — Tiny Workflow Engine CLI for LLM (Rule Set Architecture)
 
 ## Overview
 
-`flowrail` は LLM エージェント向けの超軽量ワークフローエンジン CLI。YAML で宣言された決定論的 state machine を、冪等かつ拡張可能に駆動する。
+`belt` は LLM エージェント向けの超軽量ワークフローエンジン CLI。YAML で宣言された決定論的 state machine を、冪等かつ拡張可能に駆動する。
 
-**テーマ**: 治具（flowrail）— ワークを固定して精密な作業を可能にする道具。LLM のワークフローを固定して正しく動かす。
+**テーマ**: 治具（belt）— ワークを固定して精密な作業を可能にする道具。LLM のワークフローを固定して正しく動かす。
 
-**Linux 哲学**: Do One Thing and Do It Well. flowrail の One Thing = 「YAML で宣言された決定論的 state machine を、冪等かつ拡張可能に駆動する」のみ。監査、regate、inner-loop 等の**ワークフロー semantics は全て YAML 側の rule set に委譲される**。
+**Linux 哲学**: Do One Thing and Do It Well. belt の One Thing = 「YAML で宣言された決定論的 state machine を、冪等かつ拡張可能に駆動する」のみ。監査、regate、inner-loop 等の**ワークフロー semantics は全て YAML 側の rule set に委譲される**。
 
 **方向性**: dotfiles 内で実証 → 将来的に汎用 OSS 化（Claude Code, Cursor, Codex 等で利用可能）
 
-**Supersedes**: `2026-04-05-flowrail-cli-design.md`（3 層プラガビリティモデル版）。当 spec は rule set を単一のプラガブル単位とするミニマリスト再設計である。
+**Supersedes**: `2026-04-05-belt-cli-design.md`（3 層プラガビリティモデル版）。当 spec は rule set を単一のプラガブル単位とするミニマリスト再設計である。
 
 ## 背景と課題
 
 ### 前 spec の問題点
 
-`2026-04-05-flowrail-cli-design.md`（前バージョン）は 3 層プラガビリティモデル（Core / Strategy / Integration）を採用したが、**Core に audit/verify、regate、inner-loop 等のワークフロー semantics が組み込まれており flowrail がまだ大きい**という課題があった。Linux 哲学「Do One Thing and Do It Well」の観点では、flowrail は**決定論的 state machine の駆動のみ**に集中すべきで、監査や回復戦略は外出しが自然である。
+`2026-04-05-belt-cli-design.md`（前バージョン）は 3 層プラガビリティモデル（Core / Strategy / Integration）を採用したが、**Core に audit/verify、regate、inner-loop 等のワークフロー semantics が組み込まれており belt がまだ大きい**という課題があった。Linux 哲学「Do One Thing and Do It Well」の観点では、belt は**決定論的 state machine の駆動のみ**に集中すべきで、監査や回復戦略は外出しが自然である。
 
 ### 根本原因
 
-「ワークフローの決定論的な部分」と「ワークフロー固有の semantics」を混同していた。前者は flowrail の責務（=One Thing）、後者は YAML で宣言されるべき外部知識。
+「ワークフローの決定論的な部分」と「ワークフロー固有の semantics」を混同していた。前者は belt の責務（=One Thing）、後者は YAML で宣言されるべき外部知識。
 
 ### 新方向性のコア
 
-- **Phase 1 の flowrail コアは以下 5 つの概念のみを知る**:
+- **Phase 1 の belt コアは以下 5 つの概念のみを知る**:
   1. State machine（phase transition）
   2. Artifact lifecycle
   3. Rule set の import 解決と評価
@@ -32,7 +32,7 @@
   5. Hook executor
 - **Phase 1 Infrastructure（概念ではなく全サブコマンド共通基盤）**:
   - Event Stream（`run.id` 付き JSONL）
-  - Deterministic Mode（`FLOWRAIL_NOW` / `FLOWRAIL_SEED`）
+  - Deterministic Mode（`BELT_NOW` / `BELT_SEED`）
 - **Phase 2 で追加される Testing Framework（5 primitives、別章扱い）**: Recording / Replay / Assertion / State Diff / Pipeline Test Runner — rule set 作者の品質保証のみ、N 回実行・統計・可視化は外部ツール
 - 監査・回復・反復・スナップショット（ハンドオーバー用途を含む）等は全て rule set として YAML に宣言される
 - rule set は最小単位の responsibility で分割され、`imports:` で組み合わせて使う
@@ -42,17 +42,17 @@
 
 ### 7 つのコア原則
 
-1. **flowrail は LLM を知らない** — stdin/stdout の JSON/Markdown で通信するだけ。プラットフォーム固有の知識はゼロ
-2. **flowrail は高次 workflow semantics を知らない** — audit の Evidence Plan / 累積診断 / エスカレーション、regate strategy、inner-loop の HARD-GATE / 同一テスト 2 連続 PAUSE、autonomy の状況依存 if-then ルール等の**高次の workflow semantics** は全て rule set に外出し。**特に regate semantics (trigger 発火条件、rewind 先、failure classification) も全て rule set の `triggers:` セクションで宣言される**。flowrail core に専用の `flowrail run regate` コマンドは存在せず、`flowrail run step` が triggers を自動評価して `regate` / `pause` / `complete` のいずれかを決定・実行する。
-   ただし flowrail core は以下の**低次の語彙**を知る（rule set 評価エンジンとして必要最小限）:
+1. **belt は LLM を知らない** — stdin/stdout の JSON/Markdown で通信するだけ。プラットフォーム固有の知識はゼロ
+2. **belt は高次 workflow semantics を知らない** — audit の Evidence Plan / 累積診断 / エスカレーション、regate strategy、inner-loop の HARD-GATE / 同一テスト 2 連続 PAUSE、autonomy の状況依存 if-then ルール等の**高次の workflow semantics** は全て rule set に外出し。**特に regate semantics (trigger 発火条件、rewind 先、failure classification) も全て rule set の `triggers:` セクションで宣言される**。belt core に専用の `belt run regate` コマンドは存在せず、`belt run step` が triggers を自動評価して `regate` / `pause` / `complete` のいずれかを決定・実行する。
+   ただし belt core は以下の**低次の語彙**を知る（rule set 評価エンジンとして必要最小限）:
    - **8 つの built-in directive**: `confirm`, `classify_then_regate`, `produce_artifact`, `validation_question`, `regate_action`, `hook_command`, `phase_confirm`, `classifier_question`
    - **4 つの LLM 応答型**: verdict (`PASS` / `FAIL`), check result, classifier response, validation result
    - **rule set の実行モデル**: imports 解決、parameter binding、template expansion、lifecycle event 発火
 3. **YAML が SSOT** — pipeline.yml + rule set ファイル群が唯一の仕様定義
 4. **state.json が実行状態の SSOT** — フェーズ進捗、artifact 状態、trigger 履歴、snapshot 履歴を全て持つ。LLM のコンテキストに依存しない
 5. **冪等性（Idempotency）** — 全サブコマンドは idempotent。atomic write + compare-and-set
-6. **Hook-First Extensibility** — 外部連携（Linear, Slack, custom scripts）は全て lifecycle hook 経由。flowrail コア不変
-7. **Tiny by Constraint** — 明示的に小さく保つ。**Phase 1: flowrail core ~3,500-3,800 LOC、Phase 2 完了時: ~4,400 LOC、バイナリ ≤ 20MB (Phase 2 完了時点計測)**。以下は **non-goals**:
+6. **Hook-First Extensibility** — 外部連携（Linear, Slack, custom scripts）は全て lifecycle hook 経由。belt コア不変
+7. **Tiny by Constraint** — 明示的に小さく保つ。**Phase 1: belt core ~3,500-3,800 LOC、Phase 2 完了時: ~4,400 LOC、バイナリ ≤ 20MB (Phase 2 完了時点計測)**。以下は **non-goals**:
    - LLM プラットフォーム固有の知識
    - DAG 並列実行（線形パイプラインのみ）
    - ワークフロー定義の動的生成
@@ -60,12 +60,13 @@
    - プラグインの動的ロード（hook は外部コマンド呼び出しのみ）
    - **高度な Testing DSL**（複雑な assertion 言語 / カスタム matcher / golden file 自動更新 / diff visualization / N 回実行統計 / LLM バージョン tracking）。Phase 2 で追加される Testing Framework は最小限の **5 primitives のみ**: Recording / Replay / Assertion / State Diff / Pipeline Test Runner。assertion は `verdict` + `checks_passed` / `failed_checks` の set 比較のみ。N 回実行・consistency 計算・可視化は外部ツールの責務
    - **高次 workflow semantics の組み込み**（audit / regate / inner-loop / autonomy は全て rule set に外出し）
-   - **並列実行**: 同一 `.flowrail/{pipeline}-{branch}.state.json` に対する複数プロセスの並行 `flowrail run *` 呼び出しは undefined behavior。Phase 2 以降の拡張候補
-8. **Separation by Audience** — flowrail は 2 種類の利用者（**Agent** と **Human**）を想定し、それぞれに最適化された**別バイナリ**を提供する。
-   - **`flowrail` (agent CLI)**: LLM エージェント・CI/CD・スクリプト向け。stdin/stdout JSON 通信が主、security-first、**minimal dependencies** を重視。依存は `flowrail-core` + `clap` のみで、TUI/GUI ライブラリ (ratatui, crossterm 等) を一切含まない
-   - **`flowrail-tui` (human CLI)**: 開発者・運用者が手動で workflow を監視・デバッグする TUI。`ratatui` + `crossterm` 等の rich UI 依存を含む
-   - この分離は **Cargo workspace の crate 分離**で保証される (feature flag ではなく独立 crate / 独立 binary)。agent CLI への TUI/GUI 依存の混入は構造的に不可能
-   - `flowrail-core` は両バイナリが共通で参照する pure library (state machine / rule set resolver / primitive checks / hook executor)
+   - **並列実行**: 同一 `.belt/{pipeline}-{branch}.state.json` に対する複数プロセスの並行 `belt run *` 呼び出しは undefined behavior。Phase 2 以降の拡張候補
+8. **Separation by Audience (3 audience)** — belt は **3 種類の利用者** (`Developer`, `Agent`, `Human`) を想定し、それぞれに最適化された**別バイナリ**を提供する。lint / fmt は rule set 作者 (developer) のための authoring-time ツールであり、agent runtime には含めない。これが 2026-04-05 の 3-audience 拡張の主目的である。
+   - **`belt-dev` (developer CLI)**: rule set 作者向けの authoring-time ツール。`pipeline lint` / `pipeline fmt` を提供。依存は `belt-core` + `clap` + `miette[fancy-no-backtrace]` で、lint rules は本 crate 内の private module (`src/lint/`, `src/fmt/`) として実装する。**Phase 1 MVP のメインターゲット**
+   - **`belt` (agent runtime CLI)**: LLM エージェント・CI/CD・スクリプト向けの runtime。`run init / next / verify / step`, `state *`, `snapshot *` を提供。stdin/stdout JSON 通信が主、security-first、**minimal dependencies** を重視。依存は `belt-core` + `clap` + `miette[fancy-no-backtrace]` のみで、TUI/GUI ライブラリ (ratatui, crossterm 等) および lint/fmt ロジックを一切含まない。Phase 2 で実装
+   - **`belt-tui` (human TUI)**: 開発者・運用者が手動で workflow を監視・デバッグする rich TUI。`ratatui` + `crossterm` 等の rich UI 依存を含む。Phase 3 で実装
+   - この分離は **Cargo workspace の crate 分離**で保証される (feature flag ではなく独立 crate / 独立 binary)。agent CLI への TUI/GUI 依存の混入は構造的に不可能。**lint/fmt コードの混入も同様に不可能** (lint rules は `belt-dev` binary crate の private module にのみ存在、`belt-core` には含めない)
+   - `belt-core` は全 binary が共通で参照する pure runtime library (state machine / rule set resolver / primitive checks / hook executor / 8 directives / YAML 抽象層)。lint / fmt ロジックは **belt-core には含まれない**
    - 詳細は後述の "Binary Separation" セクション参照
 
 ## アーキテクチャ
@@ -77,12 +78,12 @@
 │  LLM (Claude Code / Cursor / Codex / ...)                   │
 │                                                             │
 │  ┌──────────────┐                                           │
-│  │   SKILL      │  超薄い (~20行)。flowrail の呼び出しループのみ │
+│  │   SKILL      │  超薄い (~20行)。belt の呼び出しループのみ │
 │  └──────┬───────┘                                           │
-│         │ flowrail run next / verify / step                      │
+│         │ belt run next / verify / step                      │
 │         ▼                                                   │
 │  ┌─────────────────────────────────────────────┐            │
-│  │  flowrail CLI (Phase 1: ~3,500-3,800 LOC,         │            │
+│  │  belt CLI (Phase 1: ~3,500-3,800 LOC,         │            │
 │  │           Phase 2 完了: ~4,400 LOC)          │            │
 │  │  ┌───────────────┐  ┌──────────────────┐    │            │
 │  │  │ State Machine │  │ Rule Set Resolver│    │            │
@@ -106,7 +107,7 @@
    ┌──────┴──────────────────────────────────┐
    ▼                                         ▼
 ┌─────────────────┐              ┌──────────────────────────┐
-│  YAML Universe  │              │  .flowrail/ (local state)     │
+│  YAML Universe  │              │  .belt/ (local state)     │
 │                 │              │  {pipeline}-{branch}.json│
 │  ┌───────────┐  │              └──────────────────────────┘
 │  │ Pipeline  │  Layer 3: ユーザー特化ワークフロー
@@ -127,26 +128,26 @@
 
 ### 通信モデル
 
-LLM が `flowrail` を呼ぶ。`flowrail` が LLM を呼ぶことはない。
+LLM が `belt` を呼ぶ。`belt` が LLM を呼ぶことはない。
 
 ```
-LLM: flowrail run next          → CLI: 次 phase の情報 + rule set 評価結果
+LLM: belt run next          → CLI: 次 phase の情報 + rule set 評価結果
 LLM: (phase 実行)
-LLM: flowrail run verify        → CLI: rule set の checks を実行、結果を出力
-LLM: flowrail run step          → CLI: 状態遷移、triggers 自動評価、次 phase / regate / pause / complete
+LLM: belt run verify        → CLI: rule set の checks を実行、結果を出力
+LLM: belt run step          → CLI: 状態遷移、triggers 自動評価、次 phase / regate / pause / complete
 ```
 
 全サブコマンドの出力は JSON（デフォルト）または Markdown（`--format md`）。エラーは stderr、正常出力は stdout。
 
-## flowrail Core の責務
+## belt Core の責務
 
-**Phase 1 の flowrail Core が知っている概念は 5 つのみ**：
+**Phase 1 の belt Core が知っている概念は 5 つのみ**：
 
 | 概念 | 内容 | 不変条件 |
 |------|------|----------|
 | **State Machine** | phase transition (pending → running → verifying → completed / failed / skipped / paused / aborted) | 状態遷移は atomic、hash-based compare-and-set、single-write transaction (phase 遷移 + trigger 評価 + trigger_history 追記を単一 state.json 書き込みで完結) |
-| **Artifact Lifecycle** | artifact の存在・検証状態 (pending → produced → verified / failed) | produced_by と consumed_by の位相順序は flowrail が強制 |
-| **Rule Set Resolver** | imports を再帰的に解決、parameter binding、template expansion、primitive への変換、pipeline-root `uses:` を各 phase の global-trigger table に展開 | 循環 import は**実行時に `max_depth` 超過で顕在化**（lint では cycle detection を行わない、rule set 作者の自己責任）。層間逆依存の enforcement は flowrail core の関心外（"Conventions & Best Practices" 参照）|
+| **Artifact Lifecycle** | artifact の存在・検証状態 (pending → produced → verified / failed) | produced_by と consumed_by の位相順序は belt が強制 |
+| **Rule Set Resolver** | imports を再帰的に解決、parameter binding、template expansion、primitive への変換、pipeline-root `uses:` を各 phase の global-trigger table に展開 | 循環 import は**実行時に `max_depth` 超過で顕在化**（lint では cycle detection を行わない、rule set 作者の自己責任）。層間逆依存の enforcement は belt core の関心外（"Conventions & Best Practices" 参照）|
 | **4 Core Primitive Checks** | file_exists / cmd_exit / regex_match / git_status を実装 | 決定論的、副作用なし、idempotent |
 | **Hook Executor** | lifecycle event で外部コマンド発火 (env + stdin JSON)、state commit 後の post-action として fire-and-forget | 失敗はワークフローを止めない、macOS + Linux のみサポート (POSIX `sh -c`) |
 
@@ -154,27 +155,27 @@ LLM: flowrail run step          → CLI: 状態遷移、triggers 自動評価、
 
 | Infrastructure | 内容 |
 |---------------|------|
-| **Event Stream** | 全 event に `run.id` (UUID) 付与、JSONL 形式、`FLOWRAIL_EVENTS_FILE=<path>` で出力先指定 |
-| **Deterministic Mode** | `--deterministic` フラグまたは `FLOWRAIL_DETERMINISTIC=1` で有効化、`FLOWRAIL_NOW=<iso8601>` でタイムスタンプ固定、`FLOWRAIL_SEED=<uuid>` で `run.id` 固定 |
+| **Event Stream** | 全 event に `run.id` (UUID) 付与、JSONL 形式、`BELT_EVENTS_FILE=<path>` で出力先指定 |
+| **Deterministic Mode** | `--deterministic` フラグまたは `BELT_DETERMINISTIC=1` で有効化、`BELT_NOW=<iso8601>` でタイムスタンプ固定、`BELT_SEED=<uuid>` で `run.id` 固定 |
 
 **Phase 2 以降で追加される Testing Framework (別章扱い、5 primitives):**
 
 - Recording Mode (`--record <path>`)
 - Recording Replay (`--replay-from <path>`)
 - Assertion Mode (`--assert-recording <baseline>` / `--assert-level strict|loose`)
-- State Diff (`flowrail state diff <a> <b> [--ignore <fields>]`)
-- Pipeline Test Runner (`flowrail pipeline test` で rule set の `tests:` 実行)
+- State Diff (`belt state diff <a> <b> [--ignore <fields>]`)
+- Pipeline Test Runner (`belt-dev pipeline test` で rule set の `tests:` 実行)
 
-これらは Phase 1 の flowrail core 5 概念には含まれず、Phase 2 の独立章で定義される。原則 7 の「最小限の 5 primitives のみ」と整合する。
+これらは Phase 1 の belt core 5 概念には含まれず、Phase 2 の独立章で定義される。原則 7 の「最小限の 5 primitives のみ」と整合する。
 
-**flowrail Core が知らないもの:**
+**belt Core が知らないもの:**
 - `sections_present`, `tests_pass`, `build_passes`, `git_committed` 等の高次 check → 標準 recipe rule set で実現
 - `audit` の Evidence Plan / 累積診断, `regate` strategy, `inner-loop` の HARD-GATE / 同一テスト 2 連続 PAUSE, `handover`（= snapshot のユースケース名）, `autonomy` の状況依存 if-then 等の**高次 workflow semantics** → 全て rule set
 - LLM プラットフォーム固有の知識
 - DAG 並列実行、動的ワークフロー生成、プラグイン動的ロード
 - 複数プロセスによる state.json への並列書き込み（単一プロセス前提、compare-and-set で衝突検出時は即 exit）
 
-**flowrail Core が知っている低次の語彙 (原則 2 参照):**
+**belt Core が知っている低次の語彙 (原則 2 参照):**
 - 8 built-in directive: `confirm` / `classify_then_regate` / `produce_artifact` / `validation_question` / `regate_action` / `hook_command` / `phase_confirm` / `classifier_question`
 - 4 LLM 応答型: verdict / check result / classifier response / validation result
 
@@ -182,7 +183,7 @@ LLM: flowrail run step          → CLI: 状態遷移、triggers 自動評価、
 
 ### Layer 1: Primitive Rule Sets
 
-最小責務、parametrized、flowrail の core primitive 1〜数個を薄く wrap した再利用単位。
+最小責務、parametrized、belt の core primitive 1〜数個を薄く wrap した再利用単位。
 
 ```yaml
 # rules/primitives/check-file-exists.yml
@@ -219,7 +220,7 @@ checks:
 
 ### Layer 2: Recipe Rule Sets
 
-複数の primitive rule set を import し、responsibility cohesive な単位でまとめた「参考実装」。flowrail プロジェクトが標準 recipe として同梱し、ユーザーは自由に import・改変・追加できる。
+複数の primitive rule set を import し、responsibility cohesive な単位でまとめた「参考実装」。belt プロジェクトが標準 recipe として同梱し、ユーザーは自由に import・改変・追加できる。
 
 ```yaml
 # rules/recipes/audit-gate.yml
@@ -314,7 +315,7 @@ phases:
   # ...
 
 # Pipeline-level uses: pipeline-global な trigger / hook 宣言
-# flowrail pipeline lint 時に compile-time で normalize され、各 phase の triggers に展開される
+# belt-dev pipeline lint 時に compile-time で normalize され、各 phase の triggers に展開される
 # (global-trigger table として state.json に persist される)
 uses:
   - regate-on-test-fail:
@@ -333,10 +334,10 @@ integrations:
 
 ### レイヤー間の依存 (推奨 Convention)
 
-> **注記**: 以下は **flowrail core が強制しない推奨 convention** である。詳細は後述の "Conventions & Best Practices" セクションを参照。flowrail core は rule set の構造的品質保証 (層間逆依存検証、cycle detection) を関与せず、rule set 作者の自己責任または別の静的解析ツールに委ねる (原則 7 "Tiny by Constraint"、"YAML Universe (Future)" 参照)。
+> **注記**: 以下は **belt core が強制しない推奨 convention** である。詳細は後述の "Conventions & Best Practices" セクションを参照。belt core は rule set の構造的品質保証 (層間逆依存検証、cycle detection) を関与せず、rule set 作者の自己責任または別の静的解析ツールに委ねる (原則 7 "Tiny by Constraint"、"YAML Universe (Future)" 参照)。
 
 ```
-Pipeline ──imports──▶ Recipe ──imports──▶ Primitive ──uses──▶ flowrail core
+Pipeline ──imports──▶ Recipe ──imports──▶ Primitive ──uses──▶ belt core
    △                     △                    │
    │                     │                    ▼
    │                     │              4 primitive checks
@@ -351,7 +352,7 @@ Pipeline ──imports──▶ Recipe ──imports──▶ Primitive ──us
 - **Pipeline は Primitive を直接 import 可能**: 薄い wrap が不要な場合のショートカット
 - **同層内 import は許可**: Recipe → Recipe, Primitive → Primitive は通常パターン (`audit-gate` が `check-git-committed` 等を import する)
 
-**flowrail core が強制しないもの**:
+**belt core が強制しないもの**:
 - layer metadata (旧設計では `layer: primitive|recipe|pipeline-local` 必須フィールドだったが撤回)
 - cycle detection (実行時に `max_depth` 超過で顕在化するため事前検出は行わない)
 - 同層/逆依存の validation
@@ -360,7 +361,7 @@ Pipeline ──imports──▶ Recipe ──imports──▶ Primitive ──us
 
 ## Conventions & Best Practices
 
-本セクションは **flowrail core が強制しない推奨プラクティス**を記述する。原則 7 "Tiny by Constraint" に従い、これらは rule set 作者のガイドラインであり、flowrail core による自動検証・enforcement は行わない。
+本セクションは **belt core が強制しない推奨プラクティス**を記述する。原則 7 "Tiny by Constraint" に従い、これらは rule set 作者のガイドラインであり、belt core による自動検証・enforcement は行わない。
 
 ### 3 レイヤー構造の推奨
 
@@ -368,7 +369,7 @@ rule set を以下の 3 レイヤーに分けることを推奨する:
 
 1. **Primitive Rule Set** (~15 個、標準 catalog)
    - 1 primitive rule set = 1 つの最小責務
-   - flowrail core primitive を薄く wrap、parameterize のインターフェース化
+   - belt core primitive を薄く wrap、parameterize のインターフェース化
    - 複数 pipeline で流用されることを前提
 
 2. **Recipe Rule Set** (~10 個、標準 catalog)
@@ -382,7 +383,7 @@ rule set を以下の 3 レイヤーに分けることを推奨する:
 
 ### 逆依存の回避
 
-以下は**推奨**であり、flowrail core が強制するものではない:
+以下は**推奨**であり、belt core が強制するものではない:
 
 - Primitive は Recipe を import しない (責務混線を避ける)
 - Recipe は Pipeline を import しない (循環リスク)
@@ -391,17 +392,17 @@ rule set を以下の 3 レイヤーに分けることを推奨する:
 ### 循環参照の回避
 
 - rule set の `uses:` / `imports:` で循環 (A → B → A) を作らない
-- flowrail core は事前検出せず、実行時に `max_depth` 超過で顕在化する (デフォルト `max_depth=100`)
+- belt core は事前検出せず、実行時に `max_depth` 超過で顕在化する (デフォルト `max_depth=100`)
 - 必要に応じて rule set 作者が独自の静的解析ツールでチェックする
 
 ### カタログ配置
 
-- flowrail プロジェクト同梱の標準 catalog は `catalog/primitives/` と `catalog/recipes/` に配置
-- ユーザー定義の rule set は任意の場所に配置可能 (flowrail core は directory layout に依存しない)
+- belt プロジェクト同梱の標準 catalog は `catalog/primitives/` と `catalog/recipes/` に配置
+- ユーザー定義の rule set は任意の場所に配置可能 (belt core は directory layout に依存しない)
 
 ### Rule Set の自己検証 (Phase 2)
 
-Phase 2 で rule set 作者は `tests:` セクションを用いて自身の rule set の期待動作を宣言できる。`flowrail pipeline test` で実行。詳細は "Phase 2: Testing Framework" セクション参照。
+Phase 2 で rule set 作者は `tests:` セクションを用いて自身の rule set の期待動作を宣言できる。`belt-dev pipeline test` で実行。詳細は "Phase 2: Testing Framework" セクション参照。
 
 これらは**推奨**であり、作者は独自のテスト戦略を採用することも許容される。
 
@@ -414,12 +415,12 @@ Phase 2 で rule set 作者は `tests:` セクションを用いて自身の rul
 rule set を **Web で誰でも公開/取得できるエコシステム**を構築する。Rust crate の `crates.io`、Node.js の `npm`、Python の `PyPI` に相当する rule set marketplace。
 
 - rule set 作者は自作の rule set を Web に公開できる
-- flowrail ユーザーは URL / パッケージ名で他者の rule set を取得・利用できる
+- belt ユーザーは URL / パッケージ名で他者の rule set を取得・利用できる
 - marketplace の具体形態: git-based (GitHub raw URL), centralized registry, content-addressable hash による配信 等 (将来設計)
 
-### エコシステム成立の前提: flowrail core が品質保証機構を持たない
+### エコシステム成立の前提: belt core が品質保証機構を持たない
 
-YAML Universe が成立するには、flowrail core が以下を**持たない**ことが必須である:
+YAML Universe が成立するには、belt core が以下を**持たない**ことが必須である:
 
 1. **`layer` metadata 必須化の撤回** (完了 — 本 spec で撤回済み)
    - 理由: marketplace 参入障壁を下げる。rule set 作者全員に「3 層構造を理解し layer を宣言せよ」と要求すると、多様な発想の rule set が生まれない
@@ -430,12 +431,12 @@ YAML Universe が成立するには、flowrail core が以下を**持たない**
    - 代わりに: 実行時の `max_depth` 超過で顕在化、エラーメッセージで循環の可能性を案内
 
 3. **構造的品質保証を外部ツールに委ねる**
-   - 将来、flowrail とは別プロジェクトで `flowrail-lint` (仮称) のような静的解析ツールが作られる可能性
+   - 将来、belt とは別プロジェクトで `belt-lint` (仮称) のような静的解析ツールが作られる可能性
    - 品質保証は第三者製ツールによる多様な分析手法を許容する
 
-### flowrail core の責務と marketplace の関係
+### belt core の責務と marketplace の関係
 
-| 責務 | flowrail core | marketplace エコシステム (将来) |
+| 責務 | belt core | marketplace エコシステム (将来) |
 |------|--------------|-----------------------------|
 | rule set の解析・実行 | ✅ core の責務 | — |
 | rule set の構造検証 (layer, cycle, 逆依存) | ❌ 関与しない | ✅ 第三者製静的解析ツール |
@@ -444,7 +445,7 @@ YAML Universe が成立するには、flowrail core が以下を**持たない**
 
 ### 原則 7 との整合
 
-本構想は原則 7 "Tiny by Constraint" の必然的帰結である。flowrail core を極限まで小さく保つことで、エコシステム全体の多様性と柔軟性を最大化する。
+本構想は原則 7 "Tiny by Constraint" の必然的帰結である。belt core を極限まで小さく保つことで、エコシステム全体の多様性と柔軟性を最大化する。
 
 ## Rule Set Schema
 
@@ -548,18 +549,18 @@ max_retries 超過時は `triggers[].on_exhausted` の action に従う (default
 
 ### フィールド意味論
 
-- **`imports`**: 他の rule set への依存を宣言。flowrail はこれを再帰的に resolve する。循環は lint で検出
-- **`params`**: 呼び出し元（pipeline or 別 rule set）から値を受け取るインターフェース。型は最小限（flowrail は複雑な型システムを持たない）
+- **`imports`**: 他の rule set への依存を宣言。belt はこれを再帰的に resolve する。循環は lint で検出
+- **`params`**: 呼び出し元（pipeline or 別 rule set）から値を受け取るインターフェース。型は最小限（belt は複雑な型システムを持たない）
 - **`checks`** vs **`uses`**: 
   - `checks`: 機械的 verification（primitive 呼び出し or 他 rule set の call）
   - `uses`: 複合的な呼び出しで、主に recipe 層で複数の primitive rule set を組み合わせる時に使う
   - 実質的には両者とも「rule set の呼び出し」を表現するが、意味論的に分ける（`checks` は短命の評価、`uses` は責務の委譲）
 - **`when`**: 条件付き実行。template expression で bool 値に評価。false なら skip
 - **`for-each`**: 反復実行。template expression が list に評価され、各要素を変数として bind
-- **`triggers`**: regate の発火条件。flowrail は `flowrail run step` 実行時 (verify 完了後) にこれを評価し、action (regate / pause / complete) を自動実行
+- **`triggers`**: regate の発火条件。belt は `belt run step` 実行時 (verify 完了後) にこれを評価し、action (regate / pause / complete) を自動実行
 - **`classifier`**: LLM に分類を依頼する特殊な trigger action。Failure Router の代替
 - **`on_phase_complete`**: phase 完了時に実行される動作。主に phase summary artifact の生成などに使う
-- **`tests`**: この rule set 自体の自己テスト宣言。`flowrail pipeline test` で一括実行。各テストは `given` で params と replay 応答を指定し、`expect` で期待 verdict と通過/失敗 check を指定する。rule set 作者が自分の rule set の期待振る舞いを実行可能な形で担保するための最小限の DSL
+- **`tests`**: この rule set 自体の自己テスト宣言。`belt-dev pipeline test` で一括実行。各テストは `given` で params と replay 応答を指定し、`expect` で期待 verdict と通過/失敗 check を指定する。rule set 作者が自分の rule set の期待振る舞いを実行可能な形で担保するための最小限の DSL
 
 ### Template Expression
 
@@ -576,7 +577,7 @@ Rule set の `{{ ... }}` は minijinja 互換の template。以下をサポー�
 
 ## Rule Set Resolution & Evaluation
 
-### 解決フェーズ（flowrail pipeline lint / flowrail run init 時）
+### 解決フェーズ（belt-dev pipeline lint / belt run init 時）
 
 1. **Parse**: pipeline.yml と全 import 先 rule set を YAML パース
 2. **Schema 検証**: 各 rule set が `rule-set.schema.json` に適合するか
@@ -585,7 +586,7 @@ Rule set の `{{ ... }}` は minijinja 互換の template。以下をサポー�
 5. **Template 静的解析**: `{{ ... }}` 内の参照が resolvable か（未定義 param の検出）
 6. **Dependency graph 構築**: artifact の produced_by/consumed_by から位相順序を計算、循環検出
 
-### 評価フェーズ（flowrail run verify / flowrail run step 時）
+### 評価フェーズ（belt run verify / belt run step 時）
 
 1. **Parameter binding**: pipeline.yml の `uses` で渡された値を rule set の params に束縛
 2. **Template expansion**: `{{ ... }}` を現在の context で展開
@@ -636,7 +637,7 @@ Rule set 評価時に利用可能な context 変数：
 
 ## 4 Core Primitive Checks
 
-flowrail core に組み込まれる決定論的な check type。全ての高次 check はこれらの組み合わせで実現される。
+belt core に組み込まれる決定論的な check type。全ての高次 check はこれらの組み合わせで実現される。
 
 ### `file_exists`
 
@@ -710,7 +711,7 @@ args:
 
 ## Standard Rule Sets Catalog
 
-flowrail プロジェクトが標準で同梱する rule set の一覧。
+belt プロジェクトが標準で同梱する rule set の一覧。
 
 ### Primitive Rule Sets（~15 個）
 
@@ -818,11 +819,11 @@ triggers:
             action: "{{ on_ambiguous_requirement }}"
 ```
 
-### `flowrail run step` による triggers 自動評価
+### `belt run step` による triggers 自動評価
 
-`regate-router` recipe 側で宣言された `triggers:` は、LLM が `flowrail run step` を呼ぶたびに flowrail core が自動評価する。verify が失敗した phase では、step 実行時に以下の流れで動作する:
+`regate-router` recipe 側で宣言された `triggers:` は、LLM が `belt run step` を呼ぶたびに belt core が自動評価する。verify が失敗した phase では、step 実行時に以下の流れで動作する:
 
-1. flowrail が現 phase の `triggers:` を順次評価
+1. belt が現 phase の `triggers:` を順次評価
 2. `condition` を満たす trigger の `action` を実行:
    - `regate` → 指定 `rewind_to` に state を巻き戻し
    - `classify_then_regate` → `classifier` 質問を LLM に投げ、応答に従って rewind
@@ -830,15 +831,15 @@ triggers:
    - `complete` → 通常の前進
 3. 該当 trigger がなければ通常の前進
 
-flowrail core に「regate サブコマンド」は存在しない。回復戦略は全て rule set の `triggers:` で宣言され、`flowrail run step` が一元的に処理する。
+belt core に「regate サブコマンド」は存在しない。回復戦略は全て rule set の `triggers:` で宣言され、`belt run step` が一元的に処理する。
 
 ### Resume セマンティクス
 
-現行の `current_substep` ベース resume は不要。各 sub-phase は通常の phase なので、`flowrail snapshot restore <label>` (または `flowrail run next` による直接再開) が自動的に中断位置から再開する。
+現行の `current_substep` ベース resume は不要。各 sub-phase は通常の phase なので、`belt snapshot restore <label>` (または `belt run next` による直接再開) が自動的に中断位置から再開する。
 
 ### 利点
 
-- flowrail core が sub-step 概念を持たなくて済む
+- belt core が sub-step 概念を持たなくて済む
 - regate の rewind_to が sub-phase 単位で指定可能
 - 他パイプラインで inner-loop が不要なら sub-phase を省略するだけ
 - 現行の `inner-loop.md`（219 行）は廃止
@@ -848,20 +849,20 @@ flowrail core に「regate サブコマンド」は存在しない。回復戦�
 ### State ファイルの配置
 
 ```
-{project-root}/.flowrail/{pipeline}-{branch}.state.json       # 実行状態 (SSOT)
-{project-root}/.flowrail/snapshots/<label>.json               # 独立 snapshot (checkpoint)
-{project-root}/.flowrail/snapshots/<label>.meta.json          # snapshot メタデータ
+{project-root}/.belt/{pipeline}-{branch}.state.json       # 実行状態 (SSOT)
+{project-root}/.belt/snapshots/<label>.json               # 独立 snapshot (checkpoint)
+{project-root}/.belt/snapshots/<label>.meta.json          # snapshot メタデータ
 ```
 
-`.flowrail/` は `.gitignore` に追加。
+`.belt/` は `.gitignore` に追加。
 
-**snapshot の独立性**: snapshot は state に対する操作ではなく、独立したリソースとして扱われる (kubectl 等の慣習に準拠)。state.json は現在の実行状態の SSOT であり、snapshot は任意時点での state の不変コピー。snapshot は独自のライフサイクル (create → list → restore → prune) を持ち、`flowrail snapshot <verb>` でのみ操作される。
+**snapshot の独立性**: snapshot は state に対する操作ではなく、独立したリソースとして扱われる (kubectl 等の慣習に準拠)。state.json は現在の実行状態の SSOT であり、snapshot は任意時点での state の不変コピー。snapshot は独自のライフサイクル (create → list → restore → prune) を持ち、`belt snapshot <verb>` でのみ操作される。
 
 ### State Schema
 
 ```json
 {
-  "$schema": "flowrail-state.schema.json",
+  "$schema": "belt-state.schema.json",
   "pipeline": "feature-dev",
   "pipeline_path": "claude/skills/feature-dev/pipeline.yml",
   "version": 4,
@@ -967,7 +968,7 @@ flowrail core に「regate サブコマンド」は存在しない。回復戦�
       "label": "pre-refactor",
       "session": 1,
       "phase": "execute_impl",
-      "path": ".flowrail/snapshots/pre-refactor.json",
+      "path": ".belt/snapshots/pre-refactor.json",
       "at": "...",
       "reason": "manual_checkpoint"
     }
@@ -1011,8 +1012,8 @@ pending → running → verifying → completed
          aborted (max_retries 超過、on_exhausted: pause|fail|complete に従い遷移)
 ```
 
-- **`paused`**: classifier trigger が未解決 or autonomy の `phase-confirm` で待機中。state.json の `phases[<id>].pending_classifier` に未解決情報を保持。resume は `flowrail run step --classifier-response <label>` で (LLM 応答注入) または `flowrail run next` で (confirm 解除後)
-- **`aborted`**: `max_retries` 超過時の終端状態。`phases[<id>].abort_reason` に理由記録。回復には `flowrail state reset --to-phase <id>` または `flowrail snapshot restore <label>` が必要
+- **`paused`**: classifier trigger が未解決 or autonomy の `phase-confirm` で待機中。state.json の `phases[<id>].pending_classifier` に未解決情報を保持。resume は `belt run step --classifier-response <label>` で (LLM 応答注入) または `belt run next` で (confirm 解除後)
+- **`aborted`**: `max_retries` 超過時の終端状態。`phases[<id>].abort_reason` に理由記録。回復には `belt state reset --to-phase <id>` または `belt snapshot restore <label>` が必要
 
 ### Artifact Lifecycle
 
@@ -1021,7 +1022,7 @@ pending → produced → verified
                    ↘ failed → (regate トリガー)
 ```
 
-`flowrail` は verification まで（rule set の checks 評価）。validation は LLM が行い、結果を `flowrail run step --validation-result <id>=pass|fail` で report (複数 question 対応、question_id 単位)。
+`belt` は verification まで（rule set の checks 評価）。validation は LLM が行い、結果を `belt run step --validation-result <id>=pass|fail` で report (複数 question 対応、question_id 単位)。
 
 ## Idempotency Contract
 
@@ -1029,50 +1030,50 @@ pending → produced → verified
 
 | コマンド | 冪等性 | 中断点からの再開挙動 | Hook 発火 |
 |---------|--------|---------|-----------|
-| `flowrail pipeline lint` | Pure | 副作用なし | — |
-| `flowrail pipeline fmt` | Strict | 既にフォーマット済みなら no-op (mtime 不変) | — |
-| `flowrail pipeline test` (Phase 2) | Pure | 副作用なし | — |
-| `flowrail pipeline init` | Strict | 既存 pipeline が同名なら error exit (`--force` で上書き) | — |
-| `flowrail run init` | Strict | 既存 state あり同じ pipeline/flags なら no-op。異なる場合 error exit | 初回のみ `on_pipeline_start` 発火、no-op 時は発火しない |
-| `flowrail run next` | Pure | read-only、同じ state なら同じ出力 | — |
-| `flowrail run verify` | Strict | 毎回 checks を実再実行。state.json への書き込みは single-write transaction | — |
-| `flowrail run step` | Observable | 現 phase が既に completed なら no-op (`on_phase_complete` も再発火しない)。triggers 由来の rewind は `trigger_history` にエントリ追加。phase 遷移 + trigger 評価 + trigger_history 追記は single-write transaction、hook 発火は state commit 後の post-action (commit 前 crash → 再実行で前状態から; commit 後 hook 前 crash → hook 未発火のみ影響) | state commit 後のみ `on_phase_complete` / `on_trigger_fired` 発火 |
-| `flowrail state show` | Pure | read-only | — |
-| `flowrail state list` | Pure | read-only | — |
-| `flowrail state diff` (Phase 2) | Pure | read-only、2 つの state を比較のみ | — |
-| `flowrail state reset` | Strict | 指定 `--to-phase` 以降を pending に戻す、既にその状態なら no-op | — |
-| `flowrail state prune` | Strict | 削除対象が無ければ no-op | — |
-| `flowrail snapshot create` | **Same-Label Error** | 同一 label が既存の場合 error exit (kubectl 慣習)、`--force` で上書き、auto-label (timestamp) 時のみ常に新規作成 | `snapshot.created` イベント発行、no-op 時は発行しない |
-| `flowrail snapshot restore` | Strict | restore 対象が指定 snapshot と同一状態なら no-op、異なれば state 置換。worktree/artifact の整合性は別途検証 | `snapshot.restored` イベント発行、no-op 時は発行しない |
-| `flowrail snapshot list` | Pure | read-only | — |
-| `flowrail snapshot prune` | Strict | 削除対象が無ければ no-op | — |
+| `belt-dev pipeline lint` | Pure | 副作用なし | — |
+| `belt-dev pipeline fmt` | Strict | 既にフォーマット済みなら no-op (mtime 不変) | — |
+| `belt-dev pipeline test` (Phase 2) | Pure | 副作用なし | — |
+| `belt-dev pipeline init` | Strict | 既存 pipeline が同名なら error exit (`--force` で上書き) | — |
+| `belt run init` | Strict | 既存 state あり同じ pipeline/flags なら no-op。異なる場合 error exit | 初回のみ `on_pipeline_start` 発火、no-op 時は発火しない |
+| `belt run next` | Pure | read-only、同じ state なら同じ出力 | — |
+| `belt run verify` | Strict | 毎回 checks を実再実行。state.json への書き込みは single-write transaction | — |
+| `belt run step` | Observable | 現 phase が既に completed なら no-op (`on_phase_complete` も再発火しない)。triggers 由来の rewind は `trigger_history` にエントリ追加。phase 遷移 + trigger 評価 + trigger_history 追記は single-write transaction、hook 発火は state commit 後の post-action (commit 前 crash → 再実行で前状態から; commit 後 hook 前 crash → hook 未発火のみ影響) | state commit 後のみ `on_phase_complete` / `on_trigger_fired` 発火 |
+| `belt state show` | Pure | read-only | — |
+| `belt state list` | Pure | read-only | — |
+| `belt state diff` (Phase 2) | Pure | read-only、2 つの state を比較のみ | — |
+| `belt state reset` | Strict | 指定 `--to-phase` 以降を pending に戻す、既にその状態なら no-op | — |
+| `belt state prune` | Strict | 削除対象が無ければ no-op | — |
+| `belt snapshot create` | **Same-Label Error** | 同一 label が既存の場合 error exit (kubectl 慣習)、`--force` で上書き、auto-label (timestamp) 時のみ常に新規作成 | `snapshot.created` イベント発行、no-op 時は発行しない |
+| `belt snapshot restore` | Strict | restore 対象が指定 snapshot と同一状態なら no-op、異なれば state 置換。worktree/artifact の整合性は別途検証 | `snapshot.restored` イベント発行、no-op 時は発行しない |
+| `belt snapshot list` | Pure | read-only | — |
+| `belt snapshot prune` | Strict | 削除対象が無ければ no-op | — |
 
 ### 実装原則
 
 - **Atomic Writes**: state.json への書き込みは `tempfile → fsync → rename` パターン
-- **Single-Write Transaction**: `flowrail run step` は phase 遷移 + trigger 評価 + trigger_history 追記を 1 回の state.json 書き込みで完結。hook は state commit 後の post-action
+- **Single-Write Transaction**: `belt run step` は phase 遷移 + trigger 評価 + trigger_history 追記を 1 回の state.json 書き込みで完結。hook は state commit 後の post-action
 - **Compare-and-Set**: state 更新前に現在の `updated_at` / hash を検証。衝突時は即 exit code 1 + `E_STATE_CONFLICT` エラー (race detection、静かに壊さない)
 - **Deterministic Serialization**: JSON 出力はキー順固定、タイムスタンプはミリ秒精度固定
 - **No Hidden Side Effects**: state.json / event log 以外への書き込みは行わない
-- **単一プロセス前提**: 同一 `.flowrail/{pipeline}-{branch}.state.json` に対する並列 `flowrail run *` 呼び出しは undefined behavior。flock(2) 等の排他制御は Phase 2 以降の拡張候補 (現状は compare-and-set で early-fail)
-- **破損 state.json の扱い**: 起動時に schema validation を実行し、失敗時は「直前の snapshot から手動復元 (`flowrail snapshot restore <label>`) を促す」エラー exit。自動修復はしない
+- **単一プロセス前提**: 同一 `.belt/{pipeline}-{branch}.state.json` に対する並列 `belt run *` 呼び出しは undefined behavior。flock(2) 等の排他制御は Phase 2 以降の拡張候補 (現状は compare-and-set で early-fail)
+- **破損 state.json の扱い**: 起動時に schema validation を実行し、失敗時は「直前の snapshot から手動復元 (`belt snapshot restore <label>`) を促す」エラー exit。自動修復はしない
 
 ## Hook System
 
-flowrail の唯一の拡張機構。コアは閉じた決定論的状態機械であり、**全ての柔軟性・連携・カスタマイズは hook で提供する**。
+belt の唯一の拡張機構。コアは閉じた決定論的状態機械であり、**全ての柔軟性・連携・カスタマイズは hook で提供する**。
 
 ### Lifecycle Events（完全一覧）
 
 | イベント | 発火タイミング |
 |---------|---------------|
-| `on_pipeline_start` | `flowrail run init` 直後 |
+| `on_pipeline_start` | `belt run init` 直後 |
 | `on_phase_start` | phase の state が running に遷移した時 |
 | `on_phase_complete` | phase の state が completed に遷移した時 |
 | `on_phase_fail` | verification 失敗で phase の state が failed に遷移した時 |
 | `on_verify_fail` | 個別の check が失敗した時 |
-| `on_trigger_fired` | `flowrail run step` が rule set の `triggers:` を発火した時 (旧 `on_regate`) |
-| `on_snapshot_created` | `flowrail snapshot create` 実行時 (旧 `on_handover`) |
-| `on_snapshot_restored` | `flowrail snapshot restore` 実行時 |
+| `on_trigger_fired` | `belt run step` が rule set の `triggers:` を発火した時 (旧 `on_regate`) |
+| `on_snapshot_created` | `belt snapshot create` 実行時 (旧 `on_handover`) |
+| `on_snapshot_restored` | `belt snapshot restore` 実行時 |
 | `on_pipeline_complete` | 全 phase completed 時 |
 | `on_pipeline_abort` | max_retries 超過や手動中断時 |
 
@@ -1100,15 +1101,15 @@ integrations:
 **実行仕様:**
 - **実行形式**: `sh -c "<command>"` (POSIX shell 前提、macOS + Linux のみサポート、Windows は Phase 2 以降の拡張候補)
 - **環境変数**:
-  - `FLOWRAIL_PIPELINE` — パイプライン名
-  - `FLOWRAIL_PHASE` — 現在の phase ID
-  - `FLOWRAIL_EVENT` — 発火したイベント名
-  - `FLOWRAIL_STATE_FILE` — state.json の絶対パス
-  - `FLOWRAIL_SESSION` — セッション番号
-  - `FLOWRAIL_RUN_ID` — 現 run の UUID (Event Stream と突き合わせ可能)
-  - `FLOWRAIL_ARTIFACT_<NAME>` — 該当 artifact のパス（該当する場合）
+  - `BELT_PIPELINE` — パイプライン名
+  - `BELT_PHASE` — 現在の phase ID
+  - `BELT_EVENT` — 発火したイベント名
+  - `BELT_STATE_FILE` — state.json の絶対パス
+  - `BELT_SESSION` — セッション番号
+  - `BELT_RUN_ID` — 現 run の UUID (Event Stream と突き合わせ可能)
+  - `BELT_ARTIFACT_<NAME>` — 該当 artifact のパス（該当する場合）
 - **stdin JSON**: 構造化イベントデータが JSON で流れる（後述）、最大 1MB (超過時は state_file への参照のみ渡す)
-- **実行モード**: Fire-and-forget (非同期)、ただし **state commit 後の post-action** として実行 (flowrail run step の single-write transaction 完了後)
+- **実行モード**: Fire-and-forget (非同期)、ただし **state commit 後の post-action** として実行 (belt run step の single-write transaction 完了後)
 - **タイムアウト**: 15 分 (デフォルト)、`settings.hook_timeout_seconds` で設定可能、超過時は `SIGTERM → 5 秒待機 → SIGKILL`、子プロセスは `setsid` で独立 pgid (orphan 防止)
 - **失敗時**: stderr に warning を出すのみ。ワークフローは継続
 - **並列実行**: 同一イベントに複数 hook があれば並列実行、各 hook の成否は `hook_history[].per_hook_results` に個別記録
@@ -1148,7 +1149,7 @@ Hook 起動時、stdin に以下の JSON が流れる：
   ],
   "event_data": {},
   "state_hash": "sha256:abc123...",
-  "state_file": "/abs/path/to/.flowrail/feature-dev-master.state.json"
+  "state_file": "/abs/path/to/.belt/feature-dev-master.state.json"
 }
 ```
 
@@ -1165,7 +1166,7 @@ integrations:
       skill_file: "linear-sync/resolve_ticket.md"
 ```
 
-flowrail はこのフィールドを `flowrail run next` の最初の呼び出しで LLM に出力に含めるだけ。実行は LLM の責務。
+belt はこのフィールドを `belt run next` の最初の呼び出しで LLM に出力に含めるだけ。実行は LLM の責務。
 
 ### non-goals
 
@@ -1175,57 +1176,68 @@ flowrail はこのフィールドを `flowrail run next` の最初の呼び出�
 - Hook の結果を state.json に書き戻す機構
 - Hook からのワークフロー操作（regate 等）
 
-## Binary Separation (原則 8 の具体化)
+## Binary Separation (原則 8 の具体化、3 audience)
 
-flowrail は Cargo workspace として構成され、3 つの crate に分離される。
+belt は Cargo workspace として構成され、**4 つの crate** (1 library + 3 binaries) に分離される。`lint` / `fmt` は developer 向けの authoring-time ツールであり agent runtime (`belt` binary) には含まれない。これが原則 8 の 2-audience (Agent/Human) から 3-audience (Developer/Agent/Human) 拡張の主目的である。
 
 ### Crate 構成
 
 | Crate | 種別 | 役割 | Audience | Phase |
 |-------|-----|------|----------|-------|
-| **`flowrail-core`** | library | state machine, rule set resolver, 4 primitive checks, hook executor, 8 directives, YAML 抽象層 (`src/yaml/`) | (内部のみ、両 binary が依存) | Phase 1 |
-| **`flowrail`** | binary | agent 用 CLI (`flowrail <resource> <verb>` 形式の subcommand 群)、stdin/stdout JSON protocol | LLM エージェント, CI/CD, スクリプト | Phase 1 |
-| **`flowrail-tui`** | binary | 人間用 TUI CLI、ratatui-based、リアルタイム state 可視化 | 開発者・運用者 (手動) | Phase 3 |
+| **`belt-core`** | library | state machine, rule set resolver, 4 primitive checks, hook executor, 8 directives, YAML 抽象層 (`src/yaml/`)。**lint / fmt ロジックは含まない** | (内部のみ、全 binary が依存) | Phase 1 |
+| **`belt-dev`** | binary | **developer CLI**: `belt-dev pipeline lint / fmt`。rule set 作者向けの authoring-time ツール。lint rules は本 crate 内の private module (`src/lint/`, `src/fmt/`) | Developer (rule set 作者) | **Phase 1 (MVP)** |
+| **`belt`** | binary | **agent runtime CLI**: `belt run init/next/verify/step`, `belt state *`, `belt snapshot *`。stdin/stdout JSON protocol。minimal deps | LLM エージェント, CI/CD, スクリプト | Phase 2 |
+| **`belt-tui`** | binary | **human TUI**: ratatui-based、リアルタイム state 可視化 | 開発者・運用者 (手動監視) | Phase 3 |
 
 ### 依存関係フロー
 
 ```
-flowrail-core (pure library)
+belt-core (pure library)
      │
-     ├──▶ flowrail (agent bin, minimal deps)
-     │       └─ deps: flowrail-core + clap + miette[fancy-no-backtrace]
+     ├──▶ belt-dev (developer bin, Phase 1 MVP)
+     │       ├─ deps: belt-core + clap + miette[fancy-no-backtrace]
+     │       └─ lint rules は本 crate 内 private module (追加外部依存なし)
      │
-     └──▶ flowrail-tui (human bin, UI deps isolated)
-             └─ deps: flowrail-core + ratatui + crossterm + miette[fancy-no-backtrace]
+     ├──▶ belt     (agent runtime bin, Phase 2)
+     │       ├─ deps: belt-core + clap + miette[fancy-no-backtrace]
+     │       └─ lint/fmt ロジックは **一切含まない**
+     │
+     └──▶ belt-tui (human TUI bin, Phase 3)
+             └─ deps: belt-core + ratatui + crossterm + miette[fancy-no-backtrace]
 ```
 
-**重要**: `flowrail` と `flowrail-tui` の間に依存関係は**存在しない**。両者は独立して `flowrail-core` を参照する。
+**重要**: `belt-dev`, `belt`, `belt-tui` の 3 binary 間に依存関係は**存在しない**。3 者は独立して `belt-core` を参照する。
 
 これにより:
-- `cargo build -p flowrail` で agent バイナリのみビルド → ratatui/crossterm を一切取り込まない
-- `cargo tree -p flowrail` で agent 用依存グラフを独立に audit 可能
+- `cargo build -p belt-dev` で developer CLI のみビルド (Phase 1 MVP の主な artifact)
+- `cargo build -p belt` で agent runtime のみビルド → lint/fmt コードも ratatui/crossterm も一切取り込まない
+- `cargo tree -p belt` で agent 用依存グラフを独立に audit 可能
 - `cargo audit` / `cargo deny` を crate 単位で適用可能
-- バイナリサイズ削減 (agent CLI は TUI 依存を含まないため)
+- バイナリサイズ削減 (agent CLI は developer tooling も TUI 依存も含まないため)
 
-### Agent CLI と Human CLI の要求の違い
+### 3 audience の要求の違い
 
-| 項目 | `flowrail` (agent) | `flowrail-tui` (human) |
-|------|-------------------|----------------------|
-| 重視 | security, minimal deps, determinism, scriptability | UX, interactivity, visualization |
-| I/O | JSON / plain text (パイプ前提) | rich terminal UI |
-| 起動 | per-command, fast startup | long-running session |
-| 依存数 | 最小限 | UI 要件で必要なもの |
-| 監査 | `cargo audit` は常時 green を維持 | 情報参照 (許容範囲は広い) |
+| 項目 | `belt-dev` (developer) | `belt` (agent runtime) | `belt-tui` (human) |
+|------|-----------------------|----------------------|---------------------|
+| 対象 | rule set 作者 | LLM / CI/CD / script | 運用者 (手動監視) |
+| 主コマンド | `pipeline lint`, `pipeline fmt` | `run *`, `state *`, `snapshot *` | rich TUI session |
+| 重視 | authoring UX, fast feedback, diagnostics | security, minimal deps, determinism, scriptability | UX, interactivity, visualization |
+| I/O | 人向け (色付き miette output) | JSON / plain text (パイプ前提) | rich terminal UI |
+| 起動 | per-command, fast startup | per-command, fast startup | long-running session |
+| 依存数 | belt-core + clap + miette[fancy] | belt-core + clap + miette[fancy] | + ratatui + crossterm |
+| lint/fmt コード | **本 crate に含む** | **一切含まない** | 含まない |
+| 監査 | `cargo audit` green | **`cargo audit` 常時 green を最優先** | 情報参照 (許容範囲は広い) |
 
 ### Feature Flag ではなく Crate 分離を選ぶ理由
 
-単一 crate + feature flag (`--features tui`) で TUI を切り替える案もあり得たが**却下**した:
+単一 crate + feature flag (`--features tui`, `--features dev`) で切り替える案もあり得たが**却下**した:
 
-1. **ビルド時分離の保証**: feature flag では「間違って TUI feature を enable したまま agent ビルド」が起こり得る。別 crate なら不可能
-2. **依存グラフの明確さ**: `cargo tree -p flowrail` で agent の依存を独立に確認できる (feature flag だと条件分岐を手動でトレース必要)
+1. **ビルド時分離の保証**: feature flag では「間違って TUI feature を enable したまま agent ビルド」「dev feature を有効化したまま agent ビルド」が起こり得る。別 crate なら不可能
+2. **依存グラフの明確さ**: `cargo tree -p belt` で agent の依存を独立に確認できる (feature flag だと条件分岐を手動でトレース必要)
 3. **audit の独立性**: `cargo audit` の結果を crate 単位で解釈できる
 4. **MSRV の独立管理**: 将来 TUI crate だけ MSRV 1.88 に bump する等の自由度 (現状は workspace 統一)
-5. **リリースサイクルの独立**: agent CLI と TUI CLI を別タイミングで release 可能
+5. **リリースサイクルの独立**: 3 binary を別タイミングで release 可能 (belt-dev は頻繁に、belt は慎重に、belt-tui は Phase 3 以降)
+6. **Phase 分離**: Phase 1 では belt-dev のみ active 実装、belt/belt-tui は placeholder (空 main.rs)。crate 分離なら各 Phase の MVP スコープを物理的に表現できる
 
 ## Subcommands
 
@@ -1233,13 +1245,13 @@ flowrail-core (pure library)
 
 Linux 哲学「Do One Thing and Do It Well」に準拠し、サブコマンドは **リソース + 動詞** の形式で統一する (kubectl / helm / AWS CLI の設計慣習)。
 
-1. 全 subcommand は `flowrail <resource> <verb>` 形式 (`flowrail help` の独立トップレベルを除く)
+1. 全 subcommand は `belt <resource> <verb>` 形式 (`belt help` の独立トップレベルを除く)
 2. トップレベルリソース: `pipeline` / `run` / `state` / `snapshot` / `help` の **5 つ**
 3. `snapshot` は独立リソース (state に対する操作ではない、独立ライフサイクルを持つ)
-4. **TUI は別バイナリ `flowrail-tui` として提供** (Cargo workspace の別 crate、Phase 3 で実装)。agent CLI (`flowrail`) の supply chain attack 面を最小化するため、TUI 依存 (ratatui, crossterm 等) を同一バイナリに混ぜない (原則 8 "Separation by Audience" 参照)
+4. **TUI は別バイナリ `belt-tui` として提供** (Cargo workspace の別 crate、Phase 3 で実装)。agent CLI (`belt`) の supply chain attack 面を最小化するため、TUI 依存 (ratatui, crossterm 等) を同一バイナリに混ぜない (原則 8 "Separation by Audience" 参照)
 4. 動詞の慣習: `init` (新規リソース作成) / `create` (子リソース追加) / `restore` (外部状態から戻す) / `show` / `list` / `reset` / `prune` / `diff` / `test` は kubectl 準拠
 5. 引数名は slug-case + long form (`--rule-set`, `--to-phase`, `--validation-result`, `--classifier-response`)
-6. `flowrail help` は独立トップレベル (man page 的役割)
+6. `belt help` は独立トップレベル (man page 的役割)
 
 ### 全コマンド一覧
 
@@ -1249,48 +1261,48 @@ Linux 哲学「Do One Thing and Do It Well」に準拠し、サブコマンド�
 # ========================================
 
 # Pipeline リソース — pipeline.yml と rule set の静的ツーリング
-flowrail pipeline lint [path...]
-flowrail pipeline fmt  [path...] [--check|--diff]
-flowrail pipeline init <name> --template <template>     # Phase 4 で実装
+belt-dev pipeline lint [path...]
+belt-dev pipeline fmt  [path...] [--check|--diff]
+belt-dev pipeline init <name> --template <template>     # Phase 4 で実装
 
 # Run リソース — パイプラインの駆動
-flowrail run init   --pipeline <path> [<pipeline-declared flag>...]
+belt run init   --pipeline <path> [<pipeline-declared flag>...]
                [--dry-run] [--deterministic]
-flowrail run next   [--format md|json] [--dry-run]
-flowrail run verify [--rule-set <name>] [--report <check>=pass|fail]
+belt run next   [--format md|json] [--dry-run]
+belt run verify [--rule-set <name>] [--report <check>=pass|fail]
                [--dry-run] [--deterministic]
-flowrail run step   [--validation-result <id>=pass|fail|skip]... # repeatable
+belt run step   [--validation-result <id>=pass|fail|skip]... # repeatable
                [--validation-result-file <path>]             # JSON 配列から読む
                [--classifier-response <label>]
                [--dry-run] [--deterministic]
 
 # State リソース — 実行状態の観察・整理
-flowrail state show  [--format md|json]
-flowrail state list
-flowrail state reset --to-phase <id>
-flowrail state prune [--completed]
+belt state show  [--format md|json]
+belt state list
+belt state reset --to-phase <id>
+belt state prune [--completed]
 
 # Snapshot リソース — 独立 checkpoint (独立ライフサイクル)
-flowrail snapshot create  [--label <name>] [--force]  # same-label は error, --force で上書き
-flowrail snapshot restore <label>
-flowrail snapshot list
-flowrail snapshot prune   [--older-than <days>] [--all]
+belt snapshot create  [--label <name>] [--force]  # same-label は error, --force で上書き
+belt snapshot restore <label>
+belt snapshot list
+belt snapshot prune   [--older-than <days>] [--all]
 
 # TUI / Help
-flowrail tui                                            # Phase 3 で実装
-flowrail help [<resource>] [<verb>]
+belt-tui                                            # Phase 3 で実装
+belt help [<resource>] [<verb>]
 
 # ========================================
 # Phase 2: Testing Framework (延期)
 # ========================================
 
 # Phase 2 で追加される Testing 系コマンド / フラグ
-flowrail pipeline test [path...] [--filter <pattern>]   # Phase 2: rule set の tests: 実行
-flowrail state diff    <a> <b> [--ignore <fields>]       # Phase 2: state.json 差分比較
+belt-dev pipeline test [path...] [--filter <pattern>]   # Phase 2: rule set の tests: 実行
+belt state diff    <a> <b> [--ignore <fields>]       # Phase 2: state.json 差分比較
 
 # Phase 2 で追加される run サブコマンドのフラグ
-flowrail run verify --replay-from <path>                 # Phase 2: recording replay
-flowrail run step   --record <path>                      # Phase 2: 1 run を JSONL 記録
+belt run verify --replay-from <path>                 # Phase 2: recording replay
+belt run step   --record <path>                      # Phase 2: 1 run を JSONL 記録
                --replay-from <path>                 # Phase 2: YAML scenario or recording.jsonl
                --assert-recording <baseline>        # Phase 2: baseline と比較
                --assert-level strict|loose          # Phase 2: 比較レベル
@@ -1298,14 +1310,14 @@ flowrail run step   --record <path>                      # Phase 2: 1 run を JS
 
 **グローバルフラグ (全 subcommand で有効):**
 - `--deterministic`: Deterministic Mode 有効化 (Phase 1 Infrastructure)
-- `FLOWRAIL_EVENTS_FILE=<path>`: Event Stream 出力先 (環境変数、Phase 1 Infrastructure)
-- `FLOWRAIL_NOW=<iso8601>`, `FLOWRAIL_SEED=<seed>`: Deterministic Mode 用環境変数
+- `BELT_EVENTS_FILE=<path>`: Event Stream 出力先 (環境変数、Phase 1 Infrastructure)
+- `BELT_NOW=<iso8601>`, `BELT_SEED=<seed>`: Deterministic Mode 用環境変数
 
 ---
 
 ### Pipeline リソース
 
-#### `flowrail pipeline lint [path...]`
+#### `belt-dev pipeline lint [path...]`
 
 pipeline.yml + rule set のスキーマ + セマンティック検証。
 
@@ -1327,7 +1339,7 @@ pipeline.yml + rule set のスキーマ + セマンティック検証。
 **出力例:**
 
 ```
-$ flowrail pipeline lint
+$ belt-dev pipeline lint
 ✗ claude/skills/feature-dev/pipeline.yml
   error[E001]: unknown rule set in `uses`
     --> claude/skills/feature-dev/pipeline.yml:42:5
@@ -1346,7 +1358,7 @@ $ flowrail pipeline lint
 
 終了コード: `0` = clean, `1` = warnings, `2` = errors
 
-#### `flowrail pipeline fmt [path...] [--check|--diff]`
+#### `belt-dev pipeline fmt [path...] [--check|--diff]`
 
 YAML 正規化フォーマット。rule set と pipeline 両方に適用。
 
@@ -1362,7 +1374,7 @@ YAML 正規化フォーマット。rule set と pipeline 両方に適用。
 - `--check`: フォーマット済みか確認のみ（CI 用）
 - `--diff`: 差分表示
 
-#### `flowrail pipeline test [path...] [--filter <pattern>]` — **Phase 2**
+#### `belt-dev pipeline test [path...] [--filter <pattern>]` — **Phase 2**
 
 > **Phase 2 で実装**。Phase 1 では未提供。
 
@@ -1381,7 +1393,7 @@ rule set に宣言された `tests:` セクションを一括実行。
 **出力例:**
 
 ```
-$ flowrail pipeline test rules/recipes/audit-gate.yml
+$ belt-dev pipeline test rules/recipes/audit-gate.yml
 PASS  rules/recipes/audit-gate.yml::valid spec file passes
 FAIL  rules/recipes/audit-gate.yml::missing sections fails
        expected: verdict=FAIL, failed_checks=[check-sections-present]
@@ -1392,7 +1404,7 @@ FAIL  rules/recipes/audit-gate.yml::missing sections fails
 
 終了コード: `0` = all passed, `1` = any failure
 
-#### `flowrail pipeline init <name> --template <template>` — **Phase 4**
+#### `belt-dev pipeline init <name> --template <template>` — **Phase 4**
 
 新パイプラインのスキャフォールド（Phase 4 で実装）。
 
@@ -1400,11 +1412,11 @@ FAIL  rules/recipes/audit-gate.yml::missing sections fails
 
 ### Run リソース
 
-#### `flowrail run init --pipeline <path> [<pipeline-declared flag>...]`
+#### `belt run init --pipeline <path> [<pipeline-declared flag>...]`
 
 パイプライン実行開始。pipeline.yml を lint し、state.json を初期化。`on_pipeline_start` hook 発火。pipeline.yml の `flags:` セクションで宣言されたフラグ（例: `--linear`、`--accept`、`--iterations 5`）を直接指定できる。
 
-#### `flowrail run next [--format md|json]`
+#### `belt run next [--format md|json]`
 
 次に実行すべき phase の情報を出力（rule set 評価結果を含む）。read-only。
 
@@ -1436,7 +1448,7 @@ FAIL  rules/recipes/audit-gate.yml::missing sections fails
 }
 ```
 
-#### `flowrail run verify [--rule-set <name>] [--report <check>=pass|fail]`
+#### `belt run verify [--rule-set <name>] [--report <check>=pass|fail]`
 
 現 phase の rule set を評価、checks を実行。
 
@@ -1446,9 +1458,9 @@ FAIL  rules/recipes/audit-gate.yml::missing sections fails
 - `when` / `for-each` を評価
 - 結果を verification_results として state.json に記録
 
-`--report <check>=pass|fail` は LLM 側で外部検証した結果を flowrail の verification 結果に注入するためのオプション。
+`--report <check>=pass|fail` は LLM 側で外部検証した結果を belt の verification 結果に注入するためのオプション。
 
-#### `flowrail run step [options]`
+#### `belt run step [options]`
 
 状態機械を 1 ステップ進める。verify 通過後の phase 完了、triggers の自動評価、次 phase への遷移 or regate/pause/complete の実行を一元的に処理する。
 
@@ -1473,7 +1485,7 @@ FAIL  rules/recipes/audit-gate.yml::missing sections fails
 
 **Stdin JSON input (Phase 1)**: 複数 validation の結果を stdin から JSON で受け取る:
 ```bash
-echo '{"validations":[{"id":"req-capture","result":"pass"},{"id":"test-coverage","result":"fail","evidence":"3 questions missing"}]}' | flowrail run step
+echo '{"validations":[{"id":"req-capture","result":"pass"},{"id":"test-coverage","result":"fail","evidence":"3 questions missing"}]}' | belt run step
 ```
 
 `--validation-result`, `--validation-result-file`, stdin JSON は排他。同時指定はエラー。
@@ -1495,7 +1507,7 @@ echo '{"validations":[{"id":"req-capture","result":"pass"},{"id":"test-coverage"
 
 ### State リソース
 
-#### `flowrail state show [--format md|json]`
+#### `belt state show [--format md|json]`
 
 ```
 Pipeline: feature-dev (branch: feat/add-auth)
@@ -1523,11 +1535,11 @@ Triggers fired: 1 (verify_failure@execute_verify → execute_impl [impl_bug])
 Snapshots: 2 (pre-refactor, mid-impl)
 ```
 
-#### `flowrail state list`
+#### `belt state list`
 
 現プロジェクト配下の state ファイル (各 pipeline × 各 branch) を一覧表示。
 
-#### `flowrail state diff <a> <b> [--ignore <fields>]` — **Phase 2**
+#### `belt state diff <a> <b> [--ignore <fields>]` — **Phase 2**
 
 > **Phase 2 で実装**。Phase 1 では未提供。Testing Framework の 4 番目 primitive。
 
@@ -1540,11 +1552,11 @@ Snapshots: 2 (pre-refactor, mid-impl)
 
 **用途:** baseline recording と current recording の比較、異なるセッション間の整合性確認。
 
-#### `flowrail state reset --to-phase <id>`
+#### `belt state reset --to-phase <id>`
 
 指定 phase 以降を `pending` に戻す。引数 `--to-phase` は**必須** (scope を明示する設計原則)。既にその状態なら no-op。
 
-#### `flowrail state prune [--completed]`
+#### `belt state prune [--completed]`
 
 完了済みの古い state エントリを掃除する。`--completed` フラグで完了済みの過去 state を一括削除。冪等。
 
@@ -1552,9 +1564,9 @@ Snapshots: 2 (pre-refactor, mid-impl)
 
 ### Snapshot リソース
 
-`snapshot` は state に対する操作ではなく独立したリソース (独立ライフサイクルを持つ)。state.json は現在の実行状態の SSOT、snapshot は任意時点での state の不変コピー。保存先は `.flowrail/snapshots/<label>.json`。
+`snapshot` は state に対する操作ではなく独立したリソース (独立ライフサイクルを持つ)。state.json は現在の実行状態の SSOT、snapshot は任意時点での state の不変コピー。保存先は `.belt/snapshots/<label>.json`。
 
-#### `flowrail snapshot create [--label <name>] [--force]`
+#### `belt snapshot create [--label <name>] [--force]`
 
 現在の state を checkpoint として独立ファイルに保存。session インクリメント。`on_snapshot_created` hook 発火。`snapshot_history` にエントリ追加。
 
@@ -1564,54 +1576,54 @@ Snapshots: 2 (pre-refactor, mid-impl)
 
 不変 checkpoint としての信頼性を担保するため、silently 上書きは避ける設計。
 
-#### `flowrail snapshot restore <label>`
+#### `belt snapshot restore <label>`
 
-指定 snapshot を現在の state として復元。`.flowrail/snapshots/<label>.json` を読み込み、artifact の存在を再検証。次の `flowrail run next` で中断 phase から再開。`on_snapshot_restored` hook 発火。
+指定 snapshot を現在の state として復元。`.belt/snapshots/<label>.json` を読み込み、artifact の存在を再検証。次の `belt run next` で中断 phase から再開。`on_snapshot_restored` hook 発火。
 
-#### `flowrail snapshot list`
+#### `belt snapshot list`
 
 保存済み snapshot の一覧 (label、作成時刻、session、phase)。read-only。
 
-#### `flowrail snapshot prune [--older-than <days>] [--all]`
+#### `belt snapshot prune [--older-than <days>] [--all]`
 
 古い snapshot の選別削除。`--older-than N` で N 日以上前の snapshot を削除、`--all` で全 snapshot 削除。冪等。
 
 ---
 
-### `flowrail-tui` (別バイナリ、Phase 3)
+### `belt-tui` (別バイナリ、Phase 3)
 
-TUI は **`flowrail` とは別バイナリ `flowrail-tui`** として提供される (Cargo workspace の別 crate、Phase 3 で実装)。`flowrail tui` というサブコマンドは**存在しない**。
+TUI は **`belt` とは別バイナリ `belt-tui`** として提供される (Cargo workspace の別 crate、Phase 3 で実装)。`belt-tui` というサブコマンドは**存在しない**。
 
-ratatui ベースのインタラクティブ TUI で、state.json を watch してリアルタイムに phase / artifact / trigger の状態を表示する。ratatui + crossterm 等の UI 依存は `flowrail-tui` crate のみに局在し、`flowrail` (agent CLI) の依存グラフには一切含まれない。
+ratatui ベースのインタラクティブ TUI で、state.json を watch してリアルタイムに phase / artifact / trigger の状態を表示する。ratatui + crossterm 等の UI 依存は `belt-tui` crate のみに局在し、`belt` (agent CLI) の依存グラフには一切含まれない。
 
 詳細は "Binary Separation" セクションおよび原則 8 "Separation by Audience" を参照。
 
 ---
 
-### `flowrail help [<resource>] [<verb>]`
+### `belt help [<resource>] [<verb>]`
 
 独立トップレベルコマンド。man page 的な役割を持つ。
 
-- `flowrail help` — 全コマンドの概要
-- `flowrail help run` — `run` リソース配下の全 verb の説明
-- `flowrail help run step` — `flowrail run step` の詳細 (オプション、動作、用例)
-- `flowrail help snapshot create` — 個別 verb の詳細
+- `belt help` — 全コマンドの概要
+- `belt help run` — `run` リソース配下の全 verb の説明
+- `belt help run step` — `belt run step` の詳細 (オプション、動作、用例)
+- `belt help snapshot create` — 個別 verb の詳細
 
 clap の derive API + 静的生成の man page コンテンツを利用。Testing Framework 関連オプションの用例もここに集約される。
 
 ## 設計判断と代替案 (Alternatives Considered)
 
-高影響な設計判断について代替案・選定理由・トレードオフを記録する。詳細な brainstorming 履歴は **[Linear CLA-19](https://linear.app/neko-neko/issue/CLA-19/flowrail-cli-rule-set-architecture-brainstorming-決定事項-2026-04-05)** 本文 + [comment-9fbad1d8](https://linear.app/neko-neko/issue/CLA-19#comment-9fbad1d8) を参照。ここでは要点のみ記載。
+高影響な設計判断について代替案・選定理由・トレードオフを記録する。詳細な brainstorming 履歴は **[Linear CLA-19](https://linear.app/neko-neko/issue/CLA-19/belt-cli-rule-set-architecture-brainstorming-決定事項-2026-04-05)** 本文 + [comment-9fbad1d8](https://linear.app/neko-neko/issue/CLA-19#comment-9fbad1d8) を参照。ここでは要点のみ記載。
 
 ### 1. Approach C 採用 (最小 core + rule set 拡張 + Testing Framework)
 
 | 代替案 | 概要 | 捨てた理由 |
 |--------|------|-----------|
 | **Approach A** (超ミニマリスト、~1,500 LOC) | 4 primitive + state machine のみ、rule set は外部ツール | 拡張性と標準 catalog の欠如、rule set の評価エンジンが存在しないと pipeline.yml を書いても実行できない |
-| **Approach B** (primitive 内蔵、~3,000 LOC) | 10 種類の高次 check (sections_present, tests_pass, build_passes 等) を flowrail core に内蔵 | Linux 哲学違反、check 追加のたびに flowrail release が必要、OSS 化時の拡張性欠如 |
+| **Approach B** (primitive 内蔵、~3,000 LOC) | 10 種類の高次 check (sections_present, tests_pass, build_passes 等) を belt core に内蔵 | Linux 哲学違反、check 追加のたびに belt release が必要、OSS 化時の拡張性欠如 |
 | **Approach C** ✓ (Phase 1: ~3,500-3,800 LOC, Phase 2 完了: ~4,400 LOC) | 最小 core + rule set resolver + 4 primitive + Phase 2 で Testing Framework | 決定論性と拡張性のバランス、rule set で高次機能を追加可能、標準 recipe catalog 同梱 |
 
-**選定理由**: 決定論性 (Approach A 超え) と拡張性 (Approach B 超え) のバランス。rule set による拡張で flowrail release に依存せず機能追加が可能。
+**選定理由**: 決定論性 (Approach A 超え) と拡張性 (Approach B 超え) のバランス。rule set による拡張で belt release に依存せず機能追加が可能。
 
 ### 2. 言語: Rust
 
@@ -1633,17 +1645,17 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 **選定理由**: LLM と人間の両方に可読、静的解析容易、エコシステム成熟、Jinja2 風 template (minijinja) で動的値も表現可能。DoS 対策は serde-saphyr の budget control で担保。
 
-### 4. Testing Framework を flowrail core に含める (Phase 2)
+### 4. Testing Framework を belt core に含める (Phase 2)
 
 | 代替案 | 捨てた理由 |
 |--------|-----------|
-| 外部 CLI `flowrail-test` として分離 | flowrail との data model 共有コスト、CLI 分断によるユーザー混乱 |
+| 外部 CLI `belt-test` として分離 | belt との data model 共有コスト、CLI 分断によるユーザー混乱 |
 | Phase 2 以降も延期、外部シェルスクリプトで代替 | rule set 作者の品質保証が弱い、LLM 揺らぎ検知の標準化不能 |
-| **Phase 2 で 5 primitives を flowrail core に含める** ✓ | rule set 作者の品質保証を標準化、N 回実行・統計・可視化は外部ツールに委譲 (原則 7 維持) |
+| **Phase 2 で 5 primitives を belt core に含める** ✓ | rule set 作者の品質保証を標準化、N 回実行・統計・可視化は外部ツールに委譲 (原則 7 維持) |
 
 **選定理由**: Phase 1 では最小限 (5 concepts only)、Phase 2 で Testing Framework を追加。原則 7 の「複雑な assertion DSL は non-goal」を維持しつつ、rule set 作者の基本的な品質保証ニーズをカバー。
 
-### 5. `flowrail snapshot create` の冪等性: Same-Label Error (Last-Write-Wins ではなく)
+### 5. `belt snapshot create` の冪等性: Same-Label Error (Last-Write-Wins ではなく)
 
 | 代替案 | 捨てた理由 |
 |--------|-----------|
@@ -1656,14 +1668,14 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 - **serde_yml 0.0.12 → serde-saphyr**: 0.0.x + unmaintained (RUSTSEC-2025-0068) のため、panic-free + budget control + merge key 対応の serde-saphyr に差し替え。薄い抽象層 `src/yaml/` で将来の差し替え可能性を担保
 - **minijinja**: Jinja2 互換の軽量 template engine (~50KB)、LLM が理解しやすい syntax
-- **git CLI 直接呼び出し (git2/gix ではなく)**: C 依存を排除、ユーザーの git 設定との完全一致、flowrail の git 操作は軽量なため CLI オーバーヘッドを受容可能
+- **git CLI 直接呼び出し (git2/gix ではなく)**: C 依存を排除、ユーザーの git 設定との完全一致、belt の git 操作は軽量なため CLI オーバーヘッドを受容可能
 - **4 Core Primitive Checks**: `file_exists` / `cmd_exit` / `regex_match` / `git_status` の 4 つで高次 check を全て合成可能 (例: `tests_pass` = `cmd_exit` with `expected: 0`)。5 個目以降を追加するなら rule set 側で合成する方針
 
 ---
 
 ## Feasibility Mapping (Phase A 前完成版)
 
-> **Phase A 実装開始前の必須 gate**。本セクションは、現行 dotfiles の `workflow-engine/modules/*.md` + `feature-dev/regate/*.md` + 4 パイプライン (feature-dev / debug-flow / triage / linear-sync) に存在する非自明機能を flowrail core + rule set で表現可能かを 7 × 4 の mapping 表で評価し、各機能について **救済 (flowrail core / rule set schema で実装)** または **退行 (許容された機能低下)** のいずれかに分類する。
+> **Phase A 実装開始前の必須 gate**。本セクションは、現行 dotfiles の `workflow-engine/modules/*.md` + `feature-dev/regate/*.md` + 4 パイプライン (feature-dev / debug-flow / triage / linear-sync) に存在する非自明機能を belt core + rule set で表現可能かを 7 × 4 の mapping 表で評価し、各機能について **救済 (belt core / rule set schema で実装)** または **退行 (許容された機能低下)** のいずれかに分類する。
 
 ### 評価方法
 
@@ -1715,13 +1727,13 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 **救済/退行の詳細**:
 
-- **[救済 a3]** `audit_target` projection: flowrail core の built-in directive `validation_question` を上流 artifact にも適用できるよう拡張する。done-criteria 相当の recipe で `audit_target: <upstream_name>` を宣言できる形に schema を拡張（本 spec の "8 Built-in Directives" §validation_question を参照）。これは audit-only phase (plan-review / fix-plan-review) の存在価値そのものなので救済必須
-- **[救済 a7]** `validation_record` 累積: flowrail core の `state.phases[].validation_record` フィールドで保持し、後続 phase の directive 評価時に自動注入する。本 spec §State Schema に定義済み
-- **[部分救済 a4]** `cumulative_diagnosis`: flowrail core の `state.phases[].audit.attempts[]` として最低限の attempt 履歴を保持するが、`diff_from_previous` の自動算出までは Phase 1-2 では対象外。rule set が `classifier_question` で diff を LLM に算出させる形で代替
-- **[退行 a1, a2]** phase-auditor / Audit Team swarm: flowrail core は Agent を起動しない (Agent 起動は Claude Code の役目)。代わりに rule set の `hook_command` directive で phase-auditor 相当の外部スクリプト呼び出しを宣言する。`--swarm` は rule set 作者が swarm 版 hook を用意する責任
+- **[救済 a3]** `audit_target` projection: belt core の built-in directive `validation_question` を上流 artifact にも適用できるよう拡張する。done-criteria 相当の recipe で `audit_target: <upstream_name>` を宣言できる形に schema を拡張（本 spec の "8 Built-in Directives" §validation_question を参照）。これは audit-only phase (plan-review / fix-plan-review) の存在価値そのものなので救済必須
+- **[救済 a7]** `validation_record` 累積: belt core の `state.phases[].validation_record` フィールドで保持し、後続 phase の directive 評価時に自動注入する。本 spec §State Schema に定義済み
+- **[部分救済 a4]** `cumulative_diagnosis`: belt core の `state.phases[].audit.attempts[]` として最低限の attempt 履歴を保持するが、`diff_from_previous` の自動算出までは Phase 1-2 では対象外。rule set が `classifier_question` で diff を LLM に算出させる形で代替
+- **[退行 a1, a2]** phase-auditor / Audit Team swarm: belt core は Agent を起動しない (Agent 起動は Claude Code の役目)。代わりに rule set の `hook_command` directive で phase-auditor 相当の外部スクリプト呼び出しを宣言する。`--swarm` は rule set 作者が swarm 版 hook を用意する責任
 - **[退行 a6]** Evidence Plan 動的生成: 各 rule set recipe の params として activity type を受け取り、静的な evidence collection 指示を rule set 作者が記述する。動的生成は非対応
 - **[退行 a8]** Fix Dispatch 戦略: rule set の `produce_artifact` directive で fix executor を phase 毎に宣言する。現行の「phase 別テーブル」は rule set 側の責務
-- **[退行 a9]** Re-gate + Re-review ループ: rule set の `regate_action` directive + `verification_chain` recipe で表現可能だが、現行の複雑な step フロー (Step 1→2→3→4→5) は rule set 作者が書く責任。flowrail core は単に `rewind_to` に従う
+- **[退行 a9]** Re-gate + Re-review ループ: rule set の `regate_action` directive + `verification_chain` recipe で表現可能だが、現行の複雑な step フロー (Step 1→2→3→4→5) は rule set 作者が書く責任。belt core は単に `rewind_to` に従う
 - **[退行 a10]** Audit Gate Lite: rule set の `cmd_exit` primitive で `git status` / `git diff --check` を直接呼び出す
 
 ---
@@ -1742,8 +1754,8 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 **救済/退行の詳細**:
 
-- **[救済 b6, b7]** `inner_loop_state` の mid-phase resume: flowrail core の state schema に `phases[].sub_phase` と `phases[].completed_tasks[] / remaining_tasks[]` を追加する (本 spec §State Schema に定義済み)。これは最重要の救済候補。理由: execute フェーズは最もコンテキストを消費するため handover 中断が頻発する。sub_phase を持たないと、Impl 完了後の TestEnrich から再開できず、Impl を 2 回実行してしまう
-- **[部分救済 b2]** 同一テスト 2 連続同理由 PAUSE: flowrail core は state に `failure_history[]` を保持するが、「同理由」の判定は LLM / rule set が `classifier_question` directive で実施する。flowrail core は history を提供するだけ
+- **[救済 b6, b7]** `inner_loop_state` の mid-phase resume: belt core の state schema に `phases[].sub_phase` と `phases[].completed_tasks[] / remaining_tasks[]` を追加する (本 spec §State Schema に定義済み)。これは最重要の救済候補。理由: execute フェーズは最もコンテキストを消費するため handover 中断が頻発する。sub_phase を持たないと、Impl 完了後の TestEnrich から再開できず、Impl を 2 回実行してしまう
+- **[部分救済 b2]** 同一テスト 2 連続同理由 PAUSE: belt core は state に `failure_history[]` を保持するが、「同理由」の判定は LLM / rule set が `classifier_question` directive で実施する。belt core は history を提供するだけ
 - **[退行 b1, b3, b4]** HARD-GATE / 要件曖昧さ検出 / Impl 1 回制約: rule set の phase 遷移条件 + `classify_then_regate` directive で表現する。3 sub-phase 展開 (execute-impl / execute-test-enrich / execute-verify) は本 spec §Inner Loop 3 Sub-phase Expansion に定義済み
 - **[退行 b5]** lint/fmt 自動修正: rule set の `hook_command` directive で `cargo fmt` / `cargo clippy --fix` 等を phase pre hook として呼び出す
 - **[退行 b8, b9]** Failure Router / 3 iteration PAUSE: rule set の `classify_then_regate` directive でテスト失敗を分類し、`settings.max_failure_iterations: 3` で PAUSE を制御
@@ -1769,10 +1781,10 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 - **[退行 (全体)]** autonomy の 30+ if-then ルールは、rule set の `phase_confirm` primitive + `classifier_question` directive で 1:1 移植する方針。LOC は 143 → ~200 行に増えるが (rule set の冗長性)、静的検証可能な形式に変換されるメリットがある
 - **[退行 c3, c4]** UI キーワード検出 / VRT 差分検出: rule set の pre_phase hook で `cmd_exit` + `regex_match` primitive を組み合わせて実装 (rule set 作者の責任)
-- **[退行 c6]** Context 逼迫検出: flowrail core は文字数計測を行わないため、rule set の `context-budget` recipe で `settings.max_phase_context: 150k` を宣言し、閾値超過時に `phase_confirm` で handover を提案する
-- **[退行 c10]** 3 Mode 分類: rule set の phase metadata で `autonomy_mode: interactive | autonomous | autonomous_gate` を宣言できるように schema を拡張。flowrail core はこのフラグを参照して `phase_confirm` directive のデフォルト動作を切り替える
+- **[退行 c6]** Context 逼迫検出: belt core は文字数計測を行わないため、rule set の `context-budget` recipe で `settings.max_phase_context: 150k` を宣言し、閾値超過時に `phase_confirm` で handover を提案する
+- **[退行 c10]** 3 Mode 分類: rule set の phase metadata で `autonomy_mode: interactive | autonomous | autonomous_gate` を宣言できるように schema を拡張。belt core はこのフラグを参照して `phase_confirm` directive のデフォルト動作を切り替える
 
-> **補足**: autonomy の「動的状況判定 (LLM が if-then 条件を評価する)」は flowrail core では対応しない。rule set 側で明示的な `classifier_question` + `classify_then_regate` の組み合わせで表現するため、rule set 作者が条件を静的に書き下す必要がある。これは tiny 原則との trade-off
+> **補足**: autonomy の「動的状況判定 (LLM が if-then 条件を評価する)」は belt core では対応しない。rule set 側で明示的な `classifier_question` + `classify_then_regate` の組み合わせで表現するため、rule set 作者が条件を静的に書き下す必要がある。これは tiny 原則との trade-off
 
 ---
 
@@ -1789,14 +1801,14 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 **救済/退行の詳細**:
 
-- **[救済 d1, d2, d3, d4, d5]** flowrail core の `state.phases[]` に以下のフィールドを追加することで全て救済する (本 spec §State Schema に定義済み):
+- **[救済 d1, d2, d3, d4, d5]** belt core の `state.phases[]` に以下のフィールドを追加することで全て救済する (本 spec §State Schema に定義済み):
   - `state.phases[].concerns[]` (target_phase 付き)
   - `state.phases[].directives[]` (target_phase 付き)
   - `state.phases[].validation_record[]` (criterion / verdict / evidence)
   - `state.phases[].sub_phase` + `state.phases[].inner_loop_state` (completed_tasks, remaining_tasks, failure_history)
   - `state.phases[].evidence[]` (type, content, linear_sync 区分)
   - `state.phases[].regate_history[]`
-- **[退行 d6]** 個別 YAML ファイル (`phase-summaries/{phase_id}.yml`) は廃止。flowrail の `state.json` に統合される (本 spec §Migration Strategy 参照)。continue skill は `state.json` から直接 Phase 情報を読み出すように更新される
+- **[退行 d6]** 個別 YAML ファイル (`phase-summaries/{phase_id}.yml`) は廃止。belt の `state.json` に統合される (本 spec §Migration Strategy 参照)。continue skill は `state.json` から直接 Phase 情報を読み出すように更新される
 
 ---
 
@@ -1815,12 +1827,12 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 **救済/退行の詳細**:
 
-- **[救済 e1]** `resolve_ticket` 対話: flowrail core の `pre_pipeline_start` hook phase + built-in directive `classifier_question` で表現する。rule set 作者が「linear-resolve-ticket」recipe を定義し、feature-dev / debug-flow の pipeline 冒頭で `uses: linear-resolve-ticket` と宣言する
-- **[救済 e3]** `linear_ticket_id` 持続化: flowrail core の `state.integrations.linear.{ticket_id, document_id}` で保持 (本 spec §State Schema に定義済み)。この persistence がないと毎セッション resolve_ticket を再実行することになり体験が悪い
-- **[部分救済 e4]** `read_phase_summary` fallback: flowrail の `state.json` が single source of truth なら、Linear からの復元は不要になる (ローカル state.json が欠損した場合の disaster recovery としてのみ必要)。Phase 1-2 では非対応、Phase 3+ の検討事項
-- **[退行 e2, e5, e6, e7, e8]** 各種 sync_* / Workflow Report Document / 冪等性 / Error handling: hook 実装側 (シェルスクリプト or 外部ツール) の責務。flowrail core は hook の成功/失敗を監視するだけ。hook は `FLOWRAIL_STATE_FILE` 環境変数で `state.json` を受け取り、必要な情報を抽出して Linear API を叩く
+- **[救済 e1]** `resolve_ticket` 対話: belt core の `pre_pipeline_start` hook phase + built-in directive `classifier_question` で表現する。rule set 作者が「linear-resolve-ticket」recipe を定義し、feature-dev / debug-flow の pipeline 冒頭で `uses: linear-resolve-ticket` と宣言する
+- **[救済 e3]** `linear_ticket_id` 持続化: belt core の `state.integrations.linear.{ticket_id, document_id}` で保持 (本 spec §State Schema に定義済み)。この persistence がないと毎セッション resolve_ticket を再実行することになり体験が悪い
+- **[部分救済 e4]** `read_phase_summary` fallback: belt の `state.json` が single source of truth なら、Linear からの復元は不要になる (ローカル state.json が欠損した場合の disaster recovery としてのみ必要)。Phase 1-2 では非対応、Phase 3+ の検討事項
+- **[退行 e2, e5, e6, e7, e8]** 各種 sync_* / Workflow Report Document / 冪等性 / Error handling: hook 実装側 (シェルスクリプト or 外部ツール) の責務。belt core は hook の成功/失敗を監視するだけ。hook は `BELT_STATE_FILE` 環境変数で `state.json` を受け取り、必要な情報を抽出して Linear API を叩く
 
-> **再設計の方向性**: `linear-sync` skill は、(1) `pre_pipeline_start` に相当する `resolve_ticket.md` (LLM 対話) と (2) 各 hook イベント用の CLI スクリプト (`sync_phase.sh`, `sync_regate.sh` 等) に分解する。(1) は rule set として他 pipeline から再利用可能、(2) は hook 実装として flowrail core の hook_command directive から呼ばれる
+> **再設計の方向性**: `linear-sync` skill は、(1) `pre_pipeline_start` に相当する `resolve_ticket.md` (LLM 対話) と (2) 各 hook イベント用の CLI スクリプト (`sync_phase.sh`, `sync_regate.sh` 等) に分解する。(1) は rule set として他 pipeline から再利用可能、(2) は hook 実装として belt core の hook_command directive から呼ばれる
 
 ---
 
@@ -1837,12 +1849,12 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 **救済/退行の詳細**:
 
-- **[救済 f1 (再定義)]** 4 Phase フロー: flowrail の pipeline.yml で再定義する。`triage/pipeline.yml` を新規作成し、`phases: [data-collection, context-exploration, analysis, linear-registration]` として宣言。現行 `triage/SKILL.md` 単体動作は廃止し、薄い entry wrapper にする
-- **[救済 f3]** AskUserQuestion 探索選択: flowrail core の built-in directive `classifier_question` で表現。`options: [推奨1, 推奨2, 任意3, none, all]` 相当を指定可能にする
-- **[救済 f4 (再定義)]** pipeline.yml 不在動作: 廃止。triage も他 pipeline と同じく pipeline.yml を持つ形に統一。理由: flowrail core の一貫性 (原則 3 "One Source of Truth")
+- **[救済 f1 (再定義)]** 4 Phase フロー: belt の pipeline.yml で再定義する。`triage/pipeline.yml` を新規作成し、`phases: [data-collection, context-exploration, analysis, linear-registration]` として宣言。現行 `triage/SKILL.md` 単体動作は廃止し、薄い entry wrapper にする
+- **[救済 f3]** AskUserQuestion 探索選択: belt core の built-in directive `classifier_question` で表現。`options: [推奨1, 推奨2, 任意3, none, all]` 相当を指定可能にする
+- **[救済 f4 (再定義)]** pipeline.yml 不在動作: 廃止。triage も他 pipeline と同じく pipeline.yml を持つ形に統一。理由: belt core の一貫性 (原則 3 "One Source of Truth")
 - **[救済 f6]** Issue 作成承認フロー: built-in directive `confirm` で preview 表示 + 承認待ち
 - **[退行 f2]** 外部リンク探索: phase hook で `cmd_exit` primitive を使って `slack search <keyword>` / `gh issue list --search <keyword>` を呼ぶ。具体的なコマンドとパース処理は rule set 作者が書く責任
-- **[退行 f5]** ツール選択の LLM 判断: flowrail core は LLM を起動しない。rule set が明示的に「urlpattern=slack.com なら slack CLI を使う、それ以外は WebFetch」という条件分岐を `classify_then_regate` directive で記述する責任
+- **[退行 f5]** ツール選択の LLM 判断: belt core は LLM を起動しない。rule set が明示的に「urlpattern=slack.com なら slack CLI を使う、それ以外は WebFetch」という条件分岐を `classify_then_regate` directive で記述する責任
 
 ---
 
@@ -1865,7 +1877,7 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
   - `rewind_to: <phase_id>` は `regate_action` の params
   - `verification_chain: [<phase_ids>]` は rule set の settings
   - severity threshold は `classifier_question` の `threshold: 3` params
-- **[部分救済 g1]** flaky 検出: flowrail core は `state.phases[].test_results[]` の履歴を 2 回分保持するが、「2 回交互で flaky」の判定は rule set の `classifier_question` directive で LLM に委ねる。理由: test runner 出力の多様性を flowrail core がパースするのは tiny 原則に反する
+- **[部分救済 g1]** flaky 検出: belt core は `state.phases[].test_results[]` の履歴を 2 回分保持するが、「2 回交互で flaky」の判定は rule set の `classifier_question` directive で LLM に委ねる。理由: test runner 出力の多様性を belt core がパースするのは tiny 原則に反する
 
 ---
 
@@ -1885,14 +1897,14 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 **判断原則** (Phase A 適用):
 
 1. **救済優先順位**:
-   - **最優先** (原則 2 "flowrail core は低次語彙を知る" 準拠): State Schema 拡張で救済できる機能群 — d1-d5 (concerns/directives/validation_record/inner_loop_state/evidence), e3 (linear ticket_id persistence)
+   - **最優先** (原則 2 "belt core は低次語彙を知る" 準拠): State Schema 拡張で救済できる機能群 — d1-d5 (concerns/directives/validation_record/inner_loop_state/evidence), e3 (linear ticket_id persistence)
    - **第二優先** (built-in directive で救済): a3 (audit_target), a7 (validation_record), b6-b7 (inner_loop_state resume), e1 (resolve_ticket 対話), f1/f3/f4/f6 (triage 再定義), g2-g8 (regate 全般)
    - **第三優先 (部分救済で妥協)**: a4 (cumulative_diagnosis の diff 算出は rule set 責任), b2 (同一テスト 2 連続判定は LLM), e4 (Linear 読み戻しは Phase 3+), g1 (flaky 判定は LLM)
 
 2. **退行の許容理由**:
-   - **Agent 起動 (a1, a2)**: flowrail core は LLM を呼ばない。hook 経由で Claude Code 側に任せる
+   - **Agent 起動 (a1, a2)**: belt core は LLM を呼ばない。hook 経由で Claude Code 側に任せる
    - **動的判断 (c1-c10 の大半)**: 30+ if-then は rule set の静的記述で書き下す。LOC は増えるが静的検証可能
-   - **hook 実装 (a6, a8, b5, e2, e5-e8, f2, f5)**: 外部スクリプト or CLI に外出し。flowrail core は hook_command directive で起動するだけ
+   - **hook 実装 (a6, a8, b5, e2, e5-e8, f2, f5)**: 外部スクリプト or CLI に外出し。belt core は hook_command directive で起動するだけ
    - **`--swarm` (a2)**: rule set 作者が swarm 版 hook を別途用意
 
 3. **非対応機能リスト** (spec の公開時にユーザーに明示同意を取る項目):
@@ -1904,8 +1916,8 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 4. **LOC 影響**:
    - rule set への外出しで LOC が増加: dotfiles 散文 ~1,079 行 → rule set YAML ~400 行 + built-in directive 相当のコード ~600 行 = ~1,000 行 (実質イーブン、ただし静的検証可能な形式になる)
-   - State Schema 拡張で flowrail core に追加: ~200 行 (serde model + state transition validator)
-   - 本 Feasibility Mapping を反映した最終見積: flowrail core Phase 1 は ~3,500-3,800 LOC 維持、Phase 2 Testing Primitives 完了時 ~4,400 LOC (原則 7 tiny by constraint の boundary 内)
+   - State Schema 拡張で belt core に追加: ~200 行 (serde model + state transition validator)
+   - 本 Feasibility Mapping を反映した最終見積: belt core Phase 1 は ~3,500-3,800 LOC 維持、Phase 2 Testing Primitives 完了時 ~4,400 LOC (原則 7 tiny by constraint の boundary 内)
 
 ### Phase A 着手条件チェックリスト
 
@@ -1915,7 +1927,7 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 - [x] Built-in Directive で救済される機能の特定 (15 機能: a3, b2*, b6-b7, c (部分), e1, f1/f3/f4/f6, g2-g8)
 - [x] 非対応機能リストをユーザー同意前提として明示
 - [x] LOC 影響の再見積 (原則 7 tiny の boundary 内に収まることを確認)
-- [ ] **残タスク (Phase A 着手時)**: 本 mapping を元に、flowrail-core の新規 module (`crates/flowrail-core/src/directives/` 等) の責務分割設計
+- [ ] **残タスク (Phase A 着手時)**: 本 mapping を元に、belt-core の新規 module (`crates/belt-core/src/directives/` 等) の責務分割設計
 
 ---
 
@@ -1931,12 +1943,12 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 | 分類 | ファイル | 影響 LOC | 更新内容 |
 |------|---------|---------|---------|
-| **workflow-engine 本体** | `claude/skills/workflow-engine/SKILL.md` | ~114 行 | flowrail run ループに書き換え (~30 行に削減) |
+| **workflow-engine 本体** | `claude/skills/workflow-engine/SKILL.md` | ~114 行 | belt run ループに書き換え (~30 行に削減) |
 | **workflow-engine modules** | `claude/skills/workflow-engine/modules/audit.md` | 463 | rule set `audit-gate` recipe + `validation_question` directive に置換 |
 | | `claude/skills/workflow-engine/modules/inner-loop.md` | 219 | 3 sub-phase 展開 + `regate-router` recipe に置換 |
 | | `claude/skills/workflow-engine/modules/autonomy.md` | 143 | rule set の `phase_confirm` primitive + 30+ `classifier_question` に展開 |
 | | `claude/skills/workflow-engine/modules/regate.md` | 29 | `rules/recipes/regate-*.yml` + `classify_then_regate` directive に置換 |
-| | `claude/skills/workflow-engine/modules/resume.md` | 80 | `flowrail snapshot restore` + `state.integrations` に置換 |
+| | `claude/skills/workflow-engine/modules/resume.md` | 80 | `belt snapshot restore` + `state.integrations` に置換 |
 | | `claude/skills/workflow-engine/modules/phase-summary.md` | 100 | `state.phases[].{concerns,directives,validation_record}` 統合 |
 | | `claude/skills/workflow-engine/modules/context-budget.md` | 45 | `settings.default_snapshot_hint_after_phases` に置換 |
 | **feature-dev** | `claude/skills/feature-dev/pipeline.yml` | ~210 | 新形式 (`imports`, `uses`, `params`) で書き換え |
@@ -1957,36 +1969,36 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 | ファイル | 現行責務 | 影響箇所 (file:line) | 更新内容 |
 |---------|---------|------------------|---------|
-| `claude/skills/continue/SKILL.md` | Pipeline Detection、resume | L51 (`pipeline` フィールド読み取り)、L90-94 (phase-summaries fallback)、L122 (project-state.json 読み込み)、L147 (更新)、L153 (handover.md 再生成)、L185 (cleanup 7 days) | flowrail `state.json` スキーマ認識を追加。現行 `.agents/handover/{branch}/{fingerprint}/` 構造と新 `.flowrail/{pipeline}-{branch}.state.json` の両方を読める形に拡張 |
-| `claude/skills/handover/SKILL.md` | project-state.json 生成、handover.md 生成、phase-summaries/ 管理 | L31-34 (保存先)、L127-128 (phase_summaries マッピング)、L157 (linear.issue_id)、L165-200 (pipeline 判定と phase-summaries ディレクトリ作成)、L254 (cleanup) | flowrail state との責務分担を確立。handover skill は "session summary + kanban" に特化、flowrail は "pipeline run state" を担当 |
-| `claude/skills/kanban/SKILL.md` | タスク管理、handover 同期 | L35-38 (`.agents/handover/` 配下の project-state.json 読み込み、active_tasks 参照) | flowrail state からの active_tasks 読み出しに対応 (project-state.json と併存可能) |
-| `claude/skills/doc-check/SKILL.md` | md frontmatter `depends-on` 走査 | L5-7 (depends-on + 本文 Markdown リンク)、L14 (scripts/doc-check.sh 起動) | 新 `docs/specs/` / `docs/plans/` のパス構造に対応 (flowrail プロジェクトでは dotfiles との path convention が異なる) |
+| `claude/skills/continue/SKILL.md` | Pipeline Detection、resume | L51 (`pipeline` フィールド読み取り)、L90-94 (phase-summaries fallback)、L122 (project-state.json 読み込み)、L147 (更新)、L153 (handover.md 再生成)、L185 (cleanup 7 days) | belt `state.json` スキーマ認識を追加。現行 `.agents/handover/{branch}/{fingerprint}/` 構造と新 `.belt/{pipeline}-{branch}.state.json` の両方を読める形に拡張 |
+| `claude/skills/handover/SKILL.md` | project-state.json 生成、handover.md 生成、phase-summaries/ 管理 | L31-34 (保存先)、L127-128 (phase_summaries マッピング)、L157 (linear.issue_id)、L165-200 (pipeline 判定と phase-summaries ディレクトリ作成)、L254 (cleanup) | belt state との責務分担を確立。handover skill は "session summary + kanban" に特化、belt は "pipeline run state" を担当 |
+| `claude/skills/kanban/SKILL.md` | タスク管理、handover 同期 | L35-38 (`.agents/handover/` 配下の project-state.json 読み込み、active_tasks 参照) | belt state からの active_tasks 読み出しに対応 (project-state.json と併存可能) |
+| `claude/skills/doc-check/SKILL.md` | md frontmatter `depends-on` 走査 | L5-7 (depends-on + 本文 Markdown リンク)、L14 (scripts/doc-check.sh 起動) | 新 `docs/specs/` / `docs/plans/` のパス構造に対応 (belt プロジェクトでは dotfiles との path convention が異なる) |
 | post-commit hook | state 参照 | N/A (現行 dotfiles に hook 未設置、将来追加時に考慮) | 該当なし (2026-04-05 時点で `/Users/nishikataseiichi/.claude/hooks/` ディレクトリは未作成) |
 
-**間接依存の総括**: 現行 continue / handover / kanban は `.agents/handover/` + `phase-summaries/*.yml` 構造に密結合しているため、flowrail への移行では migration strategy Phase D (skill 薄いラッパー化) で段階的に対応する。
+**間接依存の総括**: 現行 continue / handover / kanban は `.agents/handover/` + `phase-summaries/*.yml` 構造に密結合しているため、belt への移行では migration strategy Phase D (skill 薄いラッパー化) で段階的に対応する。
 
 ### 2. Shared State (共有状態)
 
 #### 2.1 State Schema 対比
 
-| 状態カテゴリ | 現行 (dotfiles) | 新設計 (flowrail) | 共存戦略 |
+| 状態カテゴリ | 現行 (dotfiles) | 新設計 (belt) | 共存戦略 |
 |------|------|-------|---------|
-| Pipeline 実行状態 | `.agents/handover/{branch}/{fingerprint}/project-state.json` | `.flowrail/state.json` (worktree root 基準) | Phase D まで両方書き込み、Phase E で一斉切替 |
-| Phase Summary | `.agents/handover/{branch}/{fingerprint}/phase-summaries/{phase_id}.yml` (individual YAML) | `state.json.phases[].{concerns,directives,validation_record,inner_loop_state,evidence,regate_history}` に統合 | `flowrail state export --format yaml` で個別 YAML への変換ツールを Phase D で提供 (continue skill との互換性維持用) |
-| Snapshot | `.agents/handover/.../handover.md` (human-readable) | `.flowrail/snapshots/{label}.json` (machine-readable) + `flowrail state view > handover.md` (人間向け export) | 別ドメインとして独立運用 |
+| Pipeline 実行状態 | `.agents/handover/{branch}/{fingerprint}/project-state.json` | `.belt/state.json` (worktree root 基準) | Phase D まで両方書き込み、Phase E で一斉切替 |
+| Phase Summary | `.agents/handover/{branch}/{fingerprint}/phase-summaries/{phase_id}.yml` (individual YAML) | `state.json.phases[].{concerns,directives,validation_record,inner_loop_state,evidence,regate_history}` に統合 | `belt state export --format yaml` で個別 YAML への変換ツールを Phase D で提供 (continue skill との互換性維持用) |
+| Snapshot | `.agents/handover/.../handover.md` (human-readable) | `.belt/snapshots/{label}.json` (machine-readable) + `belt state view > handover.md` (人間向け export) | 別ドメインとして独立運用 |
 | Linear 連携状態 | 未 persist (hook が毎回 `resolve_ticket` を実行) | `state.json.integrations.linear.{ticket_id, document_id, last_synced_phase}` | `pre_pipeline_start` の `resolve_ticket` で初期設定、以降 persist |
 | inner_loop_state | `phase-summaries/execute.yml` 内に埋め込み | `state.phases[<execute>].inner_loop_state.{current_substep, impl_progress, loop_iteration, failure_history}` | schema 変換ツールで移行 |
-| 実行中ログ | 未構造化 (Claude 自身のコンテキスト) | `.flowrail/runs/{run_id}/events.jsonl` (JSONL event stream) | 新機能、現行に相当なし |
+| 実行中ログ | 未構造化 (Claude 自身のコンテキスト) | `.belt/runs/{run_id}/events.jsonl` (JSONL event stream) | 新機能、現行に相当なし |
 
-#### 2.2 `.flowrail/` ディレクトリ構造
+#### 2.2 `.belt/` ディレクトリ構造
 
 ```
 <workspace-root>/            # git worktree root
-├── .flowrail/
+├── .belt/
 │   ├── state.json           # current pipeline state (single source of truth)
 │   ├── state.json.tmp.*     # atomic write temp files (起動時に検出・削除)
 │   ├── snapshots/
-│   │   ├── pre-execute.json # user-created snapshots (flowrail snapshot create)
+│   │   ├── pre-execute.json # user-created snapshots (belt snapshot create)
 │   │   └── auto-{ts}.json   # auto snapshots (phase 遷移時)
 │   └── runs/
 │       └── {run_id}/        # UUID v7 (時系列順)
@@ -2007,34 +2019,34 @@ clap の derive API + 静的生成の man page コンテンツを利用。Testin
 
 | 環境変数 | 設定者 | 用途 | 競合リスク |
 |---------|-------|------|-----------|
-| `FLOWRAIL_NOW` | flowrail core (Deterministic Mode) | 現在時刻の決定論的固定 | 他ツールと競合なし (prefix で固有) |
-| `FLOWRAIL_SEED` | flowrail core | 乱数 seed 固定 | 同上 |
-| `FLOWRAIL_STATE_FILE` | flowrail core → hook | hook に state.json path を渡す | 同上 |
-| `FLOWRAIL_RUN_ID` | flowrail core → hook | 現在の run_id (UUID v7) | 同上 |
-| `FLOWRAIL_PHASE` | flowrail core → hook | 現在の phase_id | 同上 |
-| `CLAUDE_PROJECT_DIR` | Claude Code | プロジェクトルート | flowrail は読み取るのみ、設定しない |
+| `BELT_NOW` | belt core (Deterministic Mode) | 現在時刻の決定論的固定 | 他ツールと競合なし (prefix で固有) |
+| `BELT_SEED` | belt core | 乱数 seed 固定 | 同上 |
+| `BELT_STATE_FILE` | belt core → hook | hook に state.json path を渡す | 同上 |
+| `BELT_RUN_ID` | belt core → hook | 現在の run_id (UUID v7) | 同上 |
+| `BELT_PHASE` | belt core → hook | 現在の phase_id | 同上 |
+| `CLAUDE_PROJECT_DIR` | Claude Code | プロジェクトルート | belt は読み取るのみ、設定しない |
 | `CLAUDE_SESSION_ID` | Claude Code | セッション ID | 同上 (linear-sync hook が参照) |
 
-**結論**: `FLOWRAIL_*` prefix で全環境変数を名前空間化しているため、Claude Code やシェル環境との競合リスクはない。ただし linear-sync hook は `CLAUDE_SESSION_ID` を既存契約として使い続ける必要がある (下記 §3 参照)。
+**結論**: `BELT_*` prefix で全環境変数を名前空間化しているため、Claude Code やシェル環境との競合リスクはない。ただし linear-sync hook は `CLAUDE_SESSION_ID` を既存契約として使い続ける必要がある (下記 §3 参照)。
 
 ### 3. Implicit Contracts (暗黙の契約)
 
-Phase A 着手前に明示的に宣言すべき契約。現行 dotfiles では暗黙的に維持されていた規約が、flowrail 移行で破壊されないかを検証する。
+Phase A 着手前に明示的に宣言すべき契約。現行 dotfiles では暗黙的に維持されていた規約が、belt 移行で破壊されないかを検証する。
 
 #### 3.1 linear-sync hook との env var 互換性
 
 現行 linear-sync は以下の環境変数を参照する (commit 591c21c 時点の `claude/skills/linear-sync/SKILL.md` L189-200 参照):
 
-| 既存変数 | 用途 | flowrail での扱い |
+| 既存変数 | 用途 | belt での扱い |
 |---------|------|------------------|
-| `CLAUDE_SESSION_ID` | Layer 3 session 情報の記録 | **維持必須**。flowrail hook は Claude 側が設定した変数をそのまま transparent に hook script に渡す |
-| branch name (`git rev-parse --abbrev-ref HEAD`) | `resolve_ticket` の推定 | **維持**。flowrail は branch を state に記録するが、hook が直接 git を呼ぶことも許容 |
+| `CLAUDE_SESSION_ID` | Layer 3 session 情報の記録 | **維持必須**。belt hook は Claude 側が設定した変数をそのまま transparent に hook script に渡す |
+| branch name (`git rev-parse --abbrev-ref HEAD`) | `resolve_ticket` の推定 | **維持**。belt は branch を state に記録するが、hook が直接 git を呼ぶことも許容 |
 
-**新規変数**: flowrail が hook に渡す `FLOWRAIL_*` 変数は **追加のみ**、既存 `CLAUDE_*` 変数は変更・削除しない。既存 linear-sync の sync_session 関数 (L236-254) は hook スクリプトに 1:1 移植される (環境変数契約は維持)。
+**新規変数**: belt が hook に渡す `BELT_*` 変数は **追加のみ**、既存 `CLAUDE_*` 変数は変更・削除しない。既存 linear-sync の sync_session 関数 (L236-254) は hook スクリプトに 1:1 移植される (環境変数契約は維持)。
 
 #### 3.2 既存 session.session_id フォーマット
 
-現行 `project-state.json` の `session.session_id` は free-form string (例: `"unknown"`, `"claude-<uuid>"`)。flowrail state の `session.session_id` は同じ形式を引き継ぎ、フォーマット制約を追加しない (continue/handover skill が互換性を保つため)。
+現行 `project-state.json` の `session.session_id` は free-form string (例: `"unknown"`, `"claude-<uuid>"`)。belt state の `session.session_id` は同じ形式を引き継ぎ、フォーマット制約を追加しない (continue/handover skill が互換性を保つため)。
 
 #### 3.3 既存 Phase Summary スキーマ
 
@@ -2057,7 +2069,7 @@ validation_record: [...]
 regate_history: [...]
 ```
 
-flowrail state の `state.phases[]` 要素は **このスキーマの全フィールドを superset として含む**。変換は 1:1 の field projection で可能 (損失なし)。新フィールド (`sub_phase`, `run_id_ref` 等) は新規追加のみ。
+belt state の `state.phases[]` 要素は **このスキーマの全フィールドを superset として含む**。変換は 1:1 の field projection で可能 (損失なし)。新フィールド (`sub_phase`, `run_id_ref` 等) は新規追加のみ。
 
 #### 3.4 `phases/*.md` のセクション見出し規約
 
@@ -2067,11 +2079,11 @@ flowrail state の `state.phases[]` 要素は **このスキーマの全フィ�
 - `## 成果物定義`
 - `## Phase Summary テンプレート`
 
-flowrail 移行後も、rule set が `phases[].phase_file` でこれらの phase.md を Read する以上、見出し規約は維持される (rule set 作者が phase.md を書き直す場合も同じ規約に従う)。
+belt 移行後も、rule set が `phases[].phase_file` でこれらの phase.md を Read する以上、見出し規約は維持される (rule set 作者が phase.md を書き直す場合も同じ規約に従う)。
 
 #### 3.5 done-criteria の `audit: required | lite` 契約
 
-現行 `done-criteria/*.md` frontmatter の `audit: required` / `audit: lite` は workflow-engine が直接参照する。flowrail では `rules/recipes/audit-gate.yml` recipe の params として受け取る (migration は 1:1 の字句置換)。
+現行 `done-criteria/*.md` frontmatter の `audit: required` / `audit: lite` は workflow-engine が直接参照する。belt では `rules/recipes/audit-gate.yml` recipe の params として受け取る (migration は 1:1 の字句置換)。
 
 ```yaml
 # before (done-criteria/execute.md)
@@ -2086,18 +2098,18 @@ phases:
           level: required
 ```
 
-#### 3.6 `.agents/handover/` と `.flowrail/` の coexistence
+#### 3.6 `.agents/handover/` と `.belt/` の coexistence
 
 **移行期間中の契約**:
-- Phase C-D: 両方書き込み (flowrail が `.flowrail/state.json` を正として書き、同時に `.agents/handover/.../project-state.json` にも mirror 書き込み)
-- Phase E: `.flowrail/` のみ。`.agents/handover/` は continue/handover/kanban skill 側で一定期間読み取り互換性を維持した後に廃止
-- kanban / continue / handover skill は、両方のパスが存在する場合は `.flowrail/state.json` を優先する
+- Phase C-D: 両方書き込み (belt が `.belt/state.json` を正として書き、同時に `.agents/handover/.../project-state.json` にも mirror 書き込み)
+- Phase E: `.belt/` のみ。`.agents/handover/` は continue/handover/kanban skill 側で一定期間読み取り互換性を維持した後に廃止
+- kanban / continue / handover skill は、両方のパスが存在する場合は `.belt/state.json` を優先する
 
 ### 4. Side Effect Risks (副作用リスク)
 
 #### 4.1 Cargo 初回ビルド時のネットワーク依存
 
-**リスク**: flowrail を初めて clone した環境で `cargo build --workspace` を実行すると、workspace dependencies (clap, serde, serde-saphyr, jsonschema, minijinja, miette, thiserror, notify, uuid, regex, glob 等) を crates.io からダウンロード + ソースビルドするため、**初回 5-10 分程度のネットワーク I/O + CPU 負荷**が発生する。
+**リスク**: belt を初めて clone した環境で `cargo build --workspace` を実行すると、workspace dependencies (clap, serde, serde-saphyr, jsonschema, minijinja, miette, thiserror, notify, uuid, regex, glob 等) を crates.io からダウンロード + ソースビルドするため、**初回 5-10 分程度のネットワーク I/O + CPU 負荷**が発生する。
 
 **緩和策**:
 - `Cargo.lock` をコミット対象 (`.gitignore` から除外済み、`CLAUDE.md` に明記) にして、依存 crate のバージョンを固定
@@ -2109,7 +2121,7 @@ phases:
 
 #### 4.2 git 操作の副作用
 
-flowrail core は以下の git CLI を直接呼び出す (git2/gix 等の C 依存ライブラリは `CLAUDE.md` で禁止):
+belt core は以下の git CLI を直接呼び出す (git2/gix 等の C 依存ライブラリは `CLAUDE.md` で禁止):
 
 | git 操作 | 呼び出し場所 | 副作用 |
 |---------|-------------|-------|
@@ -2120,24 +2132,24 @@ flowrail core は以下の git CLI を直接呼び出す (git2/gix 等の C 依�
 | `git log --oneline -<N>` | continue skill 互換の commit 履歴表示 | 読み取りのみ |
 | `git worktree list` | worktree 検出 | 読み取りのみ |
 
-**重要**: flowrail core は **git への書き込み操作を一切行わない** (commit / branch / push / reset / rebase 等は禁止)。rule set が hook 経由で `git commit` 等を呼ぶ場合は、rule set 作者の責任。
+**重要**: belt core は **git への書き込み操作を一切行わない** (commit / branch / push / reset / rebase 等は禁止)。rule set が hook 経由で `git commit` 等を呼ぶ場合は、rule set 作者の責任。
 
 #### 4.3 Snapshot ファイルによる file system pressure
 
-**リスク**: `flowrail snapshot create` を頻繁に呼ぶと `.flowrail/snapshots/` 配下に JSON ファイルが累積し、大きなパイプラインでは数百 KB × 数十 snapshot = 数 MB の file system pressure。
+**リスク**: `belt snapshot create` を頻繁に呼ぶと `.belt/snapshots/` 配下に JSON ファイルが累積し、大きなパイプラインでは数百 KB × 数十 snapshot = 数 MB の file system pressure。
 
 **緩和策**:
-- `flowrail snapshot prune --older-than 7d` サブコマンドで古い snapshot を削除
-- `.gitignore` で `.flowrail/` 配下を常に除外 (git リポジトリへの混入防止)
+- `belt snapshot prune --older-than 7d` サブコマンドで古い snapshot を削除
+- `.gitignore` で `.belt/` 配下を常に除外 (git リポジトリへの混入防止)
 - 自動 snapshot は phase 遷移時のみ、手動 snapshot は user-initiated のみ
 - `settings.max_auto_snapshots: 10` で自動 snapshot の上限を宣言
 
 #### 4.4 Atomic write crash
 
-**リスク**: `.flowrail/state.json` を書き込み中にプロセスが kill されると `.flowrail/state.json.tmp.*` が orphan として残る。次回起動時に整合性が崩れる。
+**リスク**: `.belt/state.json` を書き込み中にプロセスが kill されると `.belt/state.json.tmp.*` が orphan として残る。次回起動時に整合性が崩れる。
 
 **緩和策**:
-- flowrail core は起動時に `.flowrail/*.tmp.*` を検出・ログ出力・削除する (Phase 1 の Task として実装)
+- belt core は起動時に `.belt/*.tmp.*` を検出・ログ出力・削除する (Phase 1 の Task として実装)
 - 書き込みは常に `tmp + rename` の 2 段階 (POSIX の `rename(2)` atomic 保証を利用)
 - crash recovery テストを Phase 1 Task 22 の統合検証に含める
 
@@ -2146,61 +2158,61 @@ flowrail core は以下の git CLI を直接呼び出す (git2/gix 等の C 依�
 **リスク**: linear-sync hook など integration の処理失敗が workflow をブロックしない設計 (linear-sync/SKILL.md L305 の Error Handling 方針) のため、重要な sync エラーが気付かれずに流れる。
 
 **緩和策**:
-- hook 実行結果を `.flowrail/runs/{run_id}/hook-logs/{hook_name}.log` に常に記録
-- exit code != 0 の hook はログに warning として記録し、`flowrail run next` の出力で human readable に警告
-- Phase 1 では flowrail core は exit code を見るだけ、詳細な監視は Phase 2+
+- hook 実行結果を `.belt/runs/{run_id}/hook-logs/{hook_name}.log` に常に記録
+- exit code != 0 の hook はログに warning として記録し、`belt run next` の出力で human readable に警告
+- Phase 1 では belt core は exit code を見るだけ、詳細な監視は Phase 2+
 
-#### 4.6 Worktree 内の `.flowrail/` 配置
+#### 4.6 Worktree 内の `.belt/` 配置
 
-**リスク**: git worktree で作業している場合、`.flowrail/` を **worktree root** に置くか **git common dir** に置くかで snapshot の scope が変わる。
+**リスク**: git worktree で作業している場合、`.belt/` を **worktree root** に置くか **git common dir** に置くかで snapshot の scope が変わる。
 
 **決定 (本 spec での確定事項)**: **worktree root** に配置する。理由:
 - 各 worktree は独立したパイプラインを実行する想定 (feature branch 単位)
 - worktree 間で state を共有する必要がない
-- `git worktree add` で新しい worktree を作る時に `.flowrail/` が空で初期化される (既存 worktree の state を引き継がない)
+- `git worktree add` で新しい worktree を作る時に `.belt/` が空で初期化される (既存 worktree の state を引き継がない)
 
-**トレードオフ**: worktree を削除すると `.flowrail/` も消える。ユーザーが worktree 削除前に `flowrail snapshot export --to <path>` で外部にバックアップする運用を README で案内。
+**トレードオフ**: worktree を削除すると `.belt/` も消える。ユーザーが worktree 削除前に `belt snapshot export --to <path>` で外部にバックアップする運用を README で案内。
 
 #### 4.7 既存 project-state.json との混在
 
-**リスク**: Phase C-D の移行期間中、handover skill が `.agents/handover/.../project-state.json` を書き、flowrail が `.flowrail/state.json` を書く。両方が同じ pipeline run を記録する場合、どちらが正か不明瞭。
+**リスク**: Phase C-D の移行期間中、handover skill が `.agents/handover/.../project-state.json` を書き、belt が `.belt/state.json` を書く。両方が同じ pipeline run を記録する場合、どちらが正か不明瞭。
 
 **緩和策**:
-- flowrail が最新の書き込み先 (`source_of_truth: flowrail | handover_skill`) を `state.json.meta` に記録
-- handover skill は flowrail state を読んで自分の project-state.json を生成する形に段階的に移行 (Phase D)
+- belt が最新の書き込み先 (`source_of_truth: belt | handover_skill`) を `state.json.meta` に記録
+- handover skill は belt state を読んで自分の project-state.json を生成する形に段階的に移行 (Phase D)
 - 両方を同時に手動編集することは非推奨 (README で明記)
 
 ### 5. Must-Verify Checklist (Phase A 完了時に検証)
 
-Phase A (flowrail 実装) 完了時、以下の 15 項目を全て PASS させてから Phase B (Standard Rule Set Catalog) に進む。各項目は具体的な検証コマンド or 手順を持つ。
+Phase A (belt 実装) 完了時、以下の 15 項目を全て PASS させてから Phase B (Standard Rule Set Catalog) に進む。各項目は具体的な検証コマンド or 手順を持つ。
 
-- [ ] **V1: continue skill 互換性** — `/continue` skill が flowrail `.flowrail/state.json` を Pipeline Detection で認識し、`pipeline` フィールドを正しく読み取れる
-  - 検証: handover で flowrail state を生成 → 新セッションで `/continue` 起動 → Pipeline Detection が発火することを確認
-- [ ] **V2: handover skill 互換性** — `/handover` skill の project-state.json 生成が flowrail state と coexist できる (両方が同時に存在しても互いを壊さない)
-  - 検証: flowrail state 存在下で `/handover` 実行 → `.agents/handover/.../project-state.json` が flowrail state を mirror した内容で作成されることを確認
+- [ ] **V1: continue skill 互換性** — `/continue` skill が belt `.belt/state.json` を Pipeline Detection で認識し、`pipeline` フィールドを正しく読み取れる
+  - 検証: handover で belt state を生成 → 新セッションで `/continue` 起動 → Pipeline Detection が発火することを確認
+- [ ] **V2: handover skill 互換性** — `/handover` skill の project-state.json 生成が belt state と coexist できる (両方が同時に存在しても互いを壊さない)
+  - 検証: belt state 存在下で `/handover` 実行 → `.agents/handover/.../project-state.json` が belt state を mirror した内容で作成されることを確認
 - [ ] **V3: linear-sync resolve_ticket** — linear-sync の `resolve_ticket` が `pre_pipeline_start` phase で AskUserQuestion を発火でき、確定した `ticket_id` が `state.integrations.linear.ticket_id` に persist される
-  - 検証: `flowrail run init --pipeline feature-dev --linear` → AskUserQuestion が出る → ticket 選択後に state.json を確認
-- [ ] **V4: kanban skill 互換性** — kanban skill の handover 同期が flowrail state の `active_tasks` を読み出せる
-  - 検証: flowrail state に active_tasks がある状態で kanban skill を起動 → tasks が表示されることを確認
-- [ ] **V5: worktree 内の state 参照** — 複数 worktree が同時に存在する場合、`flowrail run step` が正しい worktree の state.json を参照する (他 worktree の state を誤読しない)
+  - 検証: `belt run init --pipeline feature-dev --linear` → AskUserQuestion が出る → ticket 選択後に state.json を確認
+- [ ] **V4: kanban skill 互換性** — kanban skill の handover 同期が belt state の `active_tasks` を読み出せる
+  - 検証: belt state に active_tasks がある状態で kanban skill を起動 → tasks が表示されることを確認
+- [ ] **V5: worktree 内の state 参照** — 複数 worktree が同時に存在する場合、`belt run step` が正しい worktree の state.json を参照する (他 worktree の state を誤読しない)
   - 検証: 2 つの worktree を作成 → 各々で別 pipeline を実行 → state.json が worktree root に隔離されることを確認
-- [ ] **V6: flowrail run step 冪等性** — 同一 phase の `flowrail run step` を 2 回実行しても副作用が二重にならない (中断点再開、partial failure からの回復)
+- [ ] **V6: belt run step 冪等性** — 同一 phase の `belt run step` を 2 回実行しても副作用が二重にならない (中断点再開、partial failure からの回復)
   - 検証: phase 実行中に kill → 再度 step → state が前回の続きから再開されることを確認
-- [ ] **V7: paused 遷移 + `--classifier-response`** — `classifier_question` directive が発火した phase で pipeline が paused 状態になり、`flowrail run step --classifier-response <id>=<value>` で resume できる
+- [ ] **V7: paused 遷移 + `--classifier-response`** — `classifier_question` directive が発火した phase で pipeline が paused 状態になり、`belt run step --classifier-response <id>=<value>` で resume できる
   - 検証: 分類質問が発火する rule set を実行 → paused 確認 → response 指定で resume → 正しい分岐に進むことを確認
-- [ ] **V8: fmt の key order** — `flowrail pipeline fmt` が pipeline.yml と rule-set.yml で異なる key order を適用する (kind: pipeline vs kind: rule-set で区別)
+- [ ] **V8: fmt の key order** — `belt-dev pipeline fmt` が pipeline.yml と rule-set.yml で異なる key order を適用する (kind: pipeline vs kind: rule-set で区別)
   - 検証: 両方の YAML を作成 → fmt 実行 → 出力の key 順序が各々の規約に従うことを確認
 - [ ] **V9: 標準 rule set catalog 一貫性** — `rules/primitives/*.yml` (15 個) と `rules/recipes/*.yml` (10 個) が spec の定義と完全一致
-  - 検証: `flowrail pipeline lint rules/primitives/*.yml rules/recipes/*.yml` が 0 エラー、かつ spec の "Standard Rule Set Catalog" 表との diff が 0
-- [ ] **V10: atomic write crash recovery** — `.flowrail/state.json.tmp.*` が残っている状態で flowrail 起動 → 検出・削除される
-  - 検証: tmp ファイルを手動で作成 → `flowrail run next` → tmp が削除され warning がログ出力される
-- [ ] **V11: env var pass-through** — `CLAUDE_SESSION_ID`, `CLAUDE_PROJECT_DIR` が flowrail 経由で hook script に transparent に渡る
-  - 検証: `echo "$CLAUDE_SESSION_ID" > /tmp/test` を実行する hook を仕込む → flowrail 経由で実行 → /tmp/test に値が書かれることを確認
-- [ ] **V12: schema migration — phase-summaries → state.json** — 現行の `phase-summaries/*.yml` を `flowrail state import` で読み込めて、`state.phases[]` に正しく projection される
-  - 検証: 既存 phase-summaries/design.yml + spec-review.yml を `flowrail state import` → state.json の phases[0], phases[1] に同等情報が入ることを確認
-- [ ] **V13: Determinism Mode** — `FLOWRAIL_NOW=<fixed>` + `FLOWRAIL_SEED=<fixed>` で同一入力から同一出力が得られる (JSON output のバイト一致)
+  - 検証: `belt-dev pipeline lint rules/primitives/*.yml rules/recipes/*.yml` が 0 エラー、かつ spec の "Standard Rule Set Catalog" 表との diff が 0
+- [ ] **V10: atomic write crash recovery** — `.belt/state.json.tmp.*` が残っている状態で belt 起動 → 検出・削除される
+  - 検証: tmp ファイルを手動で作成 → `belt run next` → tmp が削除され warning がログ出力される
+- [ ] **V11: env var pass-through** — `CLAUDE_SESSION_ID`, `CLAUDE_PROJECT_DIR` が belt 経由で hook script に transparent に渡る
+  - 検証: `echo "$CLAUDE_SESSION_ID" > /tmp/test` を実行する hook を仕込む → belt 経由で実行 → /tmp/test に値が書かれることを確認
+- [ ] **V12: schema migration — phase-summaries → state.json** — 現行の `phase-summaries/*.yml` を `belt state import` で読み込めて、`state.phases[]` に正しく projection される
+  - 検証: 既存 phase-summaries/design.yml + spec-review.yml を `belt state import` → state.json の phases[0], phases[1] に同等情報が入ることを確認
+- [ ] **V13: Determinism Mode** — `BELT_NOW=<fixed>` + `BELT_SEED=<fixed>` で同一入力から同一出力が得られる (JSON output のバイト一致)
   - 検証: 同じ pipeline を 2 回実行 → JSON output の sha256 が一致することを確認
-- [ ] **V14: Event Stream 構造** — `.flowrail/runs/{run_id}/events.jsonl` が各 step 毎に 1 行の JSON event を記録し、`command.invoked` / `command.completed` を含む
+- [ ] **V14: Event Stream 構造** — `.belt/runs/{run_id}/events.jsonl` が各 step 毎に 1 行の JSON event を記録し、`command.invoked` / `command.completed` を含む
   - 検証: 1 pipeline 実行 → JSONL が生成 → `jq '.event_type'` で全 event type が定義通り列挙されることを確認
 - [ ] **V15: Cargo.lock の固定** — `Cargo.lock` がコミット対象であり、clone 直後の `cargo build --locked --workspace` が成功する
   - 検証: CI で `--locked` flag 付きビルドを常時実行
@@ -2221,7 +2233,7 @@ Impact Analysis の結果を Phase 1 Plan に以下の形で反映する:
 
 ### Phase 1-2 MVP: macOS + Linux のみ
 
-flowrail は **POSIX shell** を前提とする実装を含むため、Phase 1-2 では macOS および Linux のみをサポートする。
+belt は **POSIX shell** を前提とする実装を含むため、Phase 1-2 では macOS および Linux のみをサポートする。
 
 **POSIX 依存箇所**:
 - `cmd_exit` primitive: `sh -c "<command>"` で外部コマンド実行
@@ -2237,16 +2249,16 @@ Windows サポートは以下のアプローチで Phase 2 以降に検討する
 2. **WSL 要求**: エラーメッセージで WSL 利用を promote
 3. **Native fallback**: `cmd /C` + Windows 特有のパス正規化
 
-ただし `ratatui` + `crossterm` (Phase 3 TUI) は Windows native サポート済みのため、Phase 3 で Windows 対応を検討する際は core subcommand (`flowrail pipeline lint/fmt`) から段階的に対応する。
+ただし `ratatui` + `crossterm` (Phase 3 TUI) は Windows native サポート済みのため、Phase 3 で Windows 対応を検討する際は core subcommand (`belt-dev pipeline lint/fmt`) から段階的に対応する。
 
 ### 明示的な Non-Support (Phase 1-2)
 
 - Windows (Git Bash 除く): `cmd_exit` / hook の `sh -c` が動作しない
 - Bare Windows: 上記の fallback なし
 
-ユーザーが Windows で flowrail を起動すると、起動時に明示的なエラーメッセージ:
+ユーザーが Windows で belt を起動すると、起動時に明示的なエラーメッセージ:
 ```
-Error: flowrail currently supports macOS and Linux only.
+Error: belt currently supports macOS and Linux only.
        Windows support is planned for Phase 2+ (tracked in CLA-X).
        For now, please use WSL2 or Git Bash as a workaround.
 ```
@@ -2257,13 +2269,13 @@ Error: flowrail currently supports macOS and Linux only.
 
 現行 `workflow-engine/` + `feature-dev/` + `debug-flow/` + `linear-sync/` + `triage/` を新アーキテクチャに移行する手順。
 
-### Phase A: flowrail 実装
+### Phase A: belt 実装
 
-1. Rust プロジェクト `tools/flowrail/` 作成
-2. Phase 1: `flowrail pipeline lint` + `flowrail pipeline fmt`（現行 pipeline.yml に対応）
-3. Phase 2: `flowrail run` + `flowrail state` + `flowrail snapshot` + `flowrail pipeline test` + rule set resolver + 4 core primitive + Testing Framework
-4. Phase 3: `flowrail tui`
-5. Phase 4: `flowrail pipeline init` + 安定化
+1. Rust プロジェクト `tools/belt/` 作成
+2. Phase 1: `belt-dev pipeline lint` + `belt-dev pipeline fmt`（現行 pipeline.yml に対応）
+3. Phase 2: `belt run` + `belt state` + `belt snapshot` + `belt-dev pipeline test` + rule set resolver + 4 core primitive + Testing Framework
+4. Phase 3: `belt-tui`
+5. Phase 4: `belt-dev pipeline init` + 安定化
 
 ### Phase B: Standard Rule Set Catalog 作成
 
@@ -2279,14 +2291,14 @@ Error: flowrail currently supports macOS and Linux only.
 
 ### Phase D: Skill の薄いラッパー化
 
-1. `workflow-engine/SKILL.md` を ~30 行に削減（flowrail 呼び出しループのみ）
+1. `workflow-engine/SKILL.md` を ~30 行に削減（belt 呼び出しループのみ）
 2. `workflow-engine/modules/*.md` を全削除（rule set が代替）
 3. `feature-dev/SKILL.md` / `debug-flow/SKILL.md` を薄いエントリーポイントに
 4. `linear-sync/SKILL.md` を、`resolve_ticket.md`（LLM 対話）と CLI スクリプト（hook 実装）に分解
 
 ### Phase E: 検証と切り替え
 
-1. flowrail + 新 rule set で feature-dev / debug-flow / triage を実行
+1. belt + 新 rule set で feature-dev / debug-flow / triage を実行
 2. 現行と新の動作差分を確認
 3. snapshot (create/restore) / trigger 発火 / linear 統合 の確認
 4. 旧ファイルを archive、新ファイルに一斉置換
@@ -2295,36 +2307,36 @@ Error: flowrail currently supports macOS and Linux only.
 
 | 削除対象 | 行数 | 代替 |
 |----------|------|------|
-| `workflow-engine/modules/audit.md` | 463 | `rules/recipes/audit-gate.yml` + `flowrail run verify` |
-| `workflow-engine/modules/inner-loop.md` | 219 | 3 sub-phase 展開 + `regate-router` recipe (triggers は `flowrail run step` が自動評価) |
+| `workflow-engine/modules/audit.md` | 463 | `rules/recipes/audit-gate.yml` + `belt run verify` |
+| `workflow-engine/modules/inner-loop.md` | 219 | 3 sub-phase 展開 + `regate-router` recipe (triggers は `belt run step` が自動評価) |
 | `workflow-engine/modules/autonomy.md` | 143 | `phases[].confirm` + rule set の `phase-confirm-*` primitive |
-| `workflow-engine/modules/regate.md` | 29 | `rules/recipes/regate-*.yml` + `flowrail run step` (triggers 統合) |
-| `workflow-engine/modules/resume.md` | 80 | `flowrail snapshot restore` + state.integrations |
+| `workflow-engine/modules/regate.md` | 29 | `rules/recipes/regate-*.yml` + `belt run step` (triggers 統合) |
+| `workflow-engine/modules/resume.md` | 80 | `belt snapshot restore` + state.integrations |
 | `workflow-engine/modules/phase-summary.md` | 100 | `rules/recipes/phase-summary-yaml.yml` + state.phases[].{concerns,directives,validation_record} |
 | `workflow-engine/modules/context-budget.md` | 45 | `settings.default_snapshot_hint_after_phases` |
-| **合計** | **1,079 行** | rule set + flowrail core |
+| **合計** | **1,079 行** | rule set + belt core |
 
 > **計測時点**: commit `591c21c` (2026-04-05)。初期開発時点のスナップショットであり、以降 `modules/*.md` の軽微な変更に spec の数値を追従させない。再計測する場合は `wc -l claude/skills/workflow-engine/modules/*.md` で実施する。
 
-**ネット削減**: ~1,079 行散文を削除、代わりに ~400 行の rule set YAML + flowrail core code に置き換え。散文の曖昧性がなくなり、`flowrail pipeline lint` で静的検証可能になる。
+**ネット削減**: ~1,079 行散文を削除、代わりに ~400 行の rule set YAML + belt core code に置き換え。散文の曖昧性がなくなり、`belt-dev pipeline lint` で静的検証可能になる。
 
 ### SKILL.md 移行例
 
-現行の `claude/skills/workflow-engine/SKILL.md`（114 行、commit `591c21c` 時点）は、flowrail 呼び出しループのみの ~30 行に縮小される。例:
+現行の `claude/skills/workflow-engine/SKILL.md`（114 行、commit `591c21c` 時点）は、belt 呼び出しループのみの ~30 行に縮小される。例:
 
 ```markdown
 # workflow-engine (thin skill)
 
-1. `flowrail run init --pipeline {pipeline-path} {flags}` で開始
+1. `belt run init --pipeline {pipeline-path} {flags}` で開始
 2. ループ:
-   - `flowrail run next` で次 phase の情報を取得
+   - `belt run next` で次 phase の情報を取得
    - phase の実行指示に従い作業
-   - `flowrail run verify` で checks を実行
+   - `belt run verify` で checks を実行
    - LLM が validation を実施
-   - `flowrail run step --validation-result pass|fail` で前進
+   - `belt run step --validation-result pass|fail` で前進
    - 状態が `paused` / classifier question が返ってきたらユーザーに escalation
-3. context budget が近づいたら `flowrail snapshot create --label mid-impl`
-4. 次セッションでは `flowrail snapshot restore mid-impl` で再開
+3. context budget が近づいたら `belt snapshot create --label mid-impl`
+4. 次セッションでは `belt snapshot restore mid-impl` で再開
 ```
 
 regate / audit / handover / inner-loop はすべて rule set が処理するため、SKILL.md からは対応する散文が全て消える。
@@ -2390,7 +2402,7 @@ flags:
 ### `phases[].skip_unless` との関係
 
 - `phases[].skip_unless: --accept` は**廃止**。`flags.--accept.enables.phases: [accept-test]` で代替する
-- 移行期間中は両方サポートし、`flowrail pipeline lint` で `skip_unless` に warning を発し `flags.enables.phases` への移行を promote
+- 移行期間中は両方サポートし、`belt-dev pipeline lint` で `skip_unless` に warning を発し `flags.enables.phases` への移行を promote
 
 ### clap への実装戦略
 
@@ -2406,7 +2418,7 @@ flags は pipeline.yml を読まないと内容が分からない動的フラグ
 ### 呼び出し例
 
 ```bash
-flowrail run init --pipeline claude/skills/feature-dev/pipeline.yml --linear --accept --iterations 5
+belt run init --pipeline claude/skills/feature-dev/pipeline.yml --linear --accept --iterations 5
 ```
 
 state.json に `flags: ["--linear", "--accept", "--iterations=5"]` が記録される。
@@ -2439,7 +2451,7 @@ state.json に `flags: ["--linear", "--accept", "--iterations=5"]` が記録さ�
 
 - `schema/pipeline.schema.json` — Pipeline YAML
 - `schema/rule-set.schema.json` — Rule Set YAML
-- `schema/flowrail-state.schema.json` — state.json
+- `schema/belt-state.schema.json` — state.json
 
 ## Technology Stack
 
@@ -2472,7 +2484,7 @@ edition = "2024"
 rust-version = "1.86"
 authors = ["neko-neko"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/neko-neko/flowrail"
+repository = "https://github.com/neko-neko/belt"
 
 [workspace.dependencies]
 # --- serialization / YAML ---
@@ -2487,10 +2499,10 @@ jsonschema = { version = "=0.45.0", default-features = false, features = ["resol
 minijinja = { version = "2.19", default-features = false, features = ["builtins", "macros", "deserialization"] }
 
 # --- error handling ---
-miette = "7.6"  # plain, for flowrail-core
+miette = "7.6"  # plain, for belt-core
 thiserror = "2.0.18"
 
-# --- CLI (flowrail binary only) ---
+# --- CLI (belt binary only) ---
 clap = { version = "4.6", features = ["derive"] }
 
 # --- filesystem watcher ---
@@ -2502,14 +2514,14 @@ regex = "1.12"
 glob = "0.3"
 toml = "0.9"
 
-# --- TUI (flowrail-tui only, Phase 3) ---
+# --- TUI (belt-tui only, Phase 3) ---
 ratatui = "=0.30.0"  # 0.x, pinned (monolithic → modular workspace 再構成)
 crossterm = "=0.29.0"  # 0.x, pinned (ratatui backend)
 ```
 
 ### 依存 crate (各 crate 別)
 
-**`flowrail-core`** (library, Phase 1):
+**`belt-core`** (library, Phase 1):
 ```toml
 [dependencies]
 serde.workspace = true
@@ -2525,19 +2537,19 @@ regex.workspace = true
 glob.workspace = true
 ```
 
-**`flowrail`** (agent CLI binary, Phase 1):
+**`belt`** (agent CLI binary, Phase 1):
 ```toml
 [dependencies]
-flowrail-core = { path = "../flowrail-core" }
+belt-core = { path = "../belt-core" }
 clap.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }  # fancy は top-level binary のみ
 # ⚠ TUI 系依存 (ratatui, crossterm) は一切追加禁止
 ```
 
-**`flowrail-tui`** (human CLI binary, Phase 3):
+**`belt-tui`** (human CLI binary, Phase 3):
 ```toml
 [dependencies]
-flowrail-core = { path = "../flowrail-core" }
+belt-core = { path = "../belt-core" }
 ratatui.workspace = true
 crossterm.workspace = true
 miette = { workspace = true, features = ["fancy-no-backtrace"] }
@@ -2584,7 +2596,7 @@ pub struct YamlError { /* ... */ }
 - 他モジュールは `yaml::parse::<T>(...)` / `yaml::serialize(...)` のみを使用
 - `serde-saphyr` の型 (`Options`, `Budget`) は `yaml::*` 経由で公開
 - 将来 `serde-saphyr` から別 crate (例: `serde_yaml_bw`, `serde_yaml_ng`, `serde_norway`) への差し替えは `src/yaml/mod.rs` のみの変更で完結
-- `flowrail pipeline lint` は YAML subset (duplicate keys / merge keys / anchors / source-span) の contract テストを持つ
+- `belt-dev pipeline lint` は YAML subset (duplicate keys / merge keys / anchors / source-span) の contract テストを持つ
 
 ### YAML Parser Contract (保証すべき振る舞い)
 
@@ -2626,20 +2638,36 @@ pub struct YamlError { /* ... */ }
 **完全ピン対象 (0.x)**: `serde-saphyr`, `jsonschema`, `ratatui`, `crossterm`
 **caret 許容 (1.x+)**: `clap`, `serde`, `minijinja`, `miette`, `thiserror`, `uuid`, `regex`, `notify`
 
-**Cargo.lock**: flowrail は binary project (library 公開ではない) のため `Cargo.lock` を**コミット対象**とする。再現可能なビルドを保証。
+**Cargo.lock**: belt は binary project (library 公開ではない) のため `Cargo.lock` を**コミット対象**とする。再現可能なビルドを保証。
 
 **更新ポリシー**:
 - 0.x crates の更新は **必ず spec/CLAUDE.md と同時に commit** (changelog 確認必須)
 - 1.x crates の更新は `cargo update` + `cargo audit` + テスト PASS で自動適用可
 - 新規依存追加時は `cargo audit` と `cargo deny` を通す
 
-**agent CLI (`flowrail`) の依存追加制限** (原則 8 "Separation by Audience" に基づく):
+**agent CLI (`belt`) の依存追加制限** (原則 8 "Separation by Audience" に基づく):
 
 - **TUI/GUI ライブラリ追加禁止**: `ratatui`, `crossterm`, `tui-rs`, `iced`, `egui` 等
 - **ネットワーク通信ライブラリ原則禁止**: `reqwest`, `hyper`, `tonic` 等。必要な場合は spec に justification を記載
 - **非同期ランタイム原則禁止**: `tokio`, `async-std`, `smol` 等。同期実行を基本
-- **unsafe code 原則禁止**: `#![forbid(unsafe_code)]` をクレート root に
-- これらの制限は `flowrail-tui` (human CLI) には適用されない
+- **unsafe code 原則禁止**: `[workspace.lints.rust]` の `unsafe_code = "forbid"` で workspace 全体で宣言的に強制
+- **lint / fmt ロジックの混入禁止**: lint rules は `belt-dev` binary crate にのみ配置。`belt-core` / `belt` には含めない
+- これらの制限は `belt-tui` (human CLI) には適用されない
+
+**developer CLI (`belt-dev`) の依存追加制限**:
+- TUI/GUI ライブラリ追加禁止 (原則 8)
+- HTTP / async runtime 原則禁止 (authoring-time ツールでの spawn は避ける)
+- lint rules は本 crate 内で完結、外部 plugin loading は不可
+- `[workspace.lints.clippy]` / `[workspace.lints.rust]` を継承 (`[lints] workspace = true`)
+
+**workspace lints policy** (`[workspace.lints.*]` in root `Cargo.toml`):
+
+- `clippy::all` + `clippy::pedantic` = warn (CI で `cargo clippy --workspace -- -D warnings` により error 化)
+- `clippy::unwrap_used` / `expect_used` / `panic` = warn (tiny + fail-loud 方針)
+- `rust::unsafe_code` = forbid
+- `rust::unreachable_pub` / `missing_debug_implementations` = warn
+- 各 crate は `[lints] workspace = true` で継承
+- `rust-toolchain.toml` の `components = ["rustfmt", "clippy", "rust-src"]` で toolchain 環境も保証
 
 ### Known Risks (要監視)
 
@@ -2653,13 +2681,13 @@ pub struct YamlError { /* ... */ }
 
 ## Crate 構造 (Cargo Workspace)
 
-flowrail は Cargo workspace として構成される。**3 つの crate** に分離することで、agent CLI と human CLI を audience ごとに依存関係レベルで分離する (原則 8 参照)。
+belt は Cargo workspace として構成される。**4 つの crate** (1 library + 3 binaries) に分離することで、3 audience (Developer / Agent / Human) を依存関係レベルで分離する (原則 8 参照)。
 
 ```
-flowrail/                             # workspace root
-├── Cargo.toml                        # [workspace] + [workspace.dependencies]
+belt/                                 # workspace root
+├── Cargo.toml                        # [workspace] + [workspace.dependencies] + [workspace.lints.*]
 ├── Cargo.lock                        # コミット対象
-├── rust-toolchain.toml               # Rust 1.94.1 を固定
+├── rust-toolchain.toml               # Rust 1.94.1 + components=[rustfmt, clippy, rust-src]
 ├── README.md
 ├── CLAUDE.md
 ├── .gitignore
@@ -2667,8 +2695,8 @@ flowrail/                             # workspace root
 │   ├── specs/
 │   └── plans/
 ├── crates/
-│   ├── flowrail-core/                # 📦 pure library (Phase 1)
-│   │   ├── Cargo.toml
+│   ├── belt-core/                    # 📦 pure runtime library (Phase 1)
+│   │   ├── Cargo.toml                # lints.workspace = true
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── pipeline/
@@ -2680,7 +2708,7 @@ flowrail/                             # workspace root
 │   │       │   ├── mod.rs
 │   │       │   ├── model.rs          # rule set の型定義
 │   │       │   ├── loader.rs         # パース + schema 検証
-│   │       │   ├── resolver.rs       # imports 解決 (max_depth による循環検出のみ)
+│   │       │   ├── resolver.rs       # imports 解決 (max_depth ガードのみ、cycle detection なし)
 │   │       │   ├── binder.rs         # parameter binding
 │   │       │   ├── template.rs       # minijinja 統合
 │   │       │   └── evaluator.rs      # checks / uses / triggers の評価
@@ -2697,29 +2725,23 @@ flowrail/                             # workspace root
 │   │       │   └── git_status.rs
 │   │       ├── engine/
 │   │       │   ├── mod.rs
-│   │       │   ├── next.rs           # flowrail run next の core logic
+│   │       │   ├── next.rs           # belt run next の core logic (Phase 2 で使用)
 │   │       │   ├── verify.rs         # rule set 評価とチェック実行
-│   │       │   └── step.rs           # flowrail run step: phase 進行 + triggers 自動評価
+│   │       │   └── step.rs           # belt run step: phase 進行 + triggers 自動評価 (Phase 2)
 │   │       ├── snapshot/
 │   │       │   ├── mod.rs
-│   │       │   ├── store.rs          # .flowrail/snapshots/<label>.json の読み書き
+│   │       │   ├── store.rs          # .belt/snapshots/<label>.json の読み書き
 │   │       │   └── lifecycle.rs      # create / restore / list / prune
 │   │       ├── hook/
 │   │       │   ├── mod.rs
 │   │       │   ├── executor.rs       # env + stdin JSON
 │   │       │   └── context.rs        # HookContext 構造体
-│   │       ├── lint/
-│   │       │   ├── mod.rs
-│   │       │   ├── rules.rs          # セマンティック検証ルール
-│   │       │   └── diagnostic.rs     # miette 統合
-│   │       ├── fmt/
-│   │       │   └── mod.rs            # YAML 正規化
 │   │       ├── yaml/                 # serde-saphyr 抽象層 (直接呼び出し禁止)
 │   │       │   └── mod.rs            # parse<T> / parse_with_options<T> / serialize<T>
 │   │       ├── event/                # Phase 1 Infrastructure: JSONL event stream
 │   │       │   ├── mod.rs
 │   │       │   └── logger.rs
-│   │       ├── deterministic/        # Phase 1 Infrastructure: FLOWRAIL_NOW/SEED
+│   │       ├── deterministic/        # Phase 1 Infrastructure: BELT_NOW / BELT_SEED
 │   │       │   └── mod.rs
 │   │       ├── test/                 # Phase 2: Testing Framework (5 primitives)
 │   │       │   ├── mod.rs
@@ -2728,22 +2750,54 @@ flowrail/                             # workspace root
 │   │       │   ├── assertion.rs
 │   │       │   └── diff.rs
 │   │       └── error.rs              # thiserror + miette
+│   │   #
+│   │   # ⚠ belt-core には lint/ と fmt/ モジュールを置かない (原則 8)。
+│   │   #   lint rules は belt-dev binary crate の private module として実装する。
 │   │
-│   ├── flowrail/                     # 🤖 agent 用 CLI binary (Phase 1)
-│   │   ├── Cargo.toml                # 依存: flowrail-core + clap のみ (TUI 系一切なし)
+│   ├── belt-dev/                     # 🛠 developer CLI binary (Phase 1 MVP)
+│   │   ├── Cargo.toml                # 依存: belt-core + clap + miette[fancy-no-backtrace]
 │   │   └── src/
-│   │       ├── main.rs               # entrypoint
+│   │       ├── main.rs               # entrypoint + clap CLI ≒ belt-dev pipeline lint/fmt
 │   │       ├── cli/                  # clap definitions
 │   │       │   ├── mod.rs
 │   │       │   └── subcommands.rs
-│   │       ├── json_io.rs            # stdin/stdout JSON protocol
+│   │       ├── lint/                 # 🔒 private module (Phase 1 MVP の主要実装)
+│   │       │   ├── mod.rs            # driver (E001/E003-E008/W001 aggregate)
+│   │       │   ├── rules/
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── unknown_rule_set.rs    # E001
+│   │       │   │   ├── param_type_mismatch.rs # E003
+│   │       │   │   ├── unresolved_template.rs # E004
+│   │       │   │   ├── invalid_produced_consumed.rs # E005
+│   │       │   │   ├── invalid_trigger_rewind.rs    # E006
+│   │       │   │   ├── invalid_hook_event.rs  # E007
+│   │       │   │   ├── schema_error.rs        # E008
+│   │       │   │   └── unused_param.rs        # W001
+│   │       │   └── diagnostic.rs     # miette 統合
+│   │       ├── fmt/                  # 🔒 private module (YAML 正規化)
+│   │       │   └── mod.rs
 │   │       └── output/
 │   │           ├── mod.rs
-│   │           ├── json.rs
-│   │           └── markdown.rs
+│   │           └── markdown.rs       # human-readable diagnostics
 │   │
-│   └── flowrail-tui/                 # 👤 human 用 TUI binary (Phase 3)
-│       ├── Cargo.toml                # 依存: flowrail-core + ratatui + crossterm
+│   ├── belt/                         # 🤖 agent runtime CLI binary (Phase 2)
+│   │   ├── Cargo.toml                # 依存: belt-core + clap + miette[fancy-no-backtrace]
+│   │   └── src/
+│   │       ├── main.rs               # Phase 1 時点: placeholder ("coming in Phase 2")
+│   │       ├── cli/                  # Phase 2: clap definitions (run/state/snapshot)
+│   │       │   ├── mod.rs
+│   │       │   └── subcommands.rs
+│   │       ├── json_io.rs            # Phase 2: stdin/stdout JSON protocol
+│   │       └── output/
+│   │           ├── mod.rs
+│   │           ├── json.rs           # Phase 2
+│   │           └── markdown.rs       # Phase 2
+│   │   #
+│   │   # ⚠ belt crate には lint/ と fmt/ モジュールを置かない (原則 8)。
+│   │   #   lint/fmt は belt-dev binary crate にのみ存在する。
+│   │
+│   └── belt-tui/                     # 👤 human TUI binary (Phase 3)
+│       ├── Cargo.toml                # Phase 3: 依存 belt-core + ratatui + crossterm + miette[fancy]
 │       └── src/
 │           ├── main.rs               # Phase 1 時点: placeholder
 │           ├── app.rs                # Phase 3: main loop
@@ -2764,58 +2818,61 @@ flowrail/                             # workspace root
 └── schema/                           # JSON schemas
     ├── pipeline.schema.json
     ├── rule-set.schema.json
-    └── flowrail-state.schema.json
+    └── belt-state.schema.json
 ```
 
 ### 依存関係フロー
 
 ```
-flowrail-core (pure library)
+belt-core (pure runtime library)
      │
-     ├──▶ flowrail (agent bin, minimal deps)
+     ├──▶ belt-dev (developer bin, Phase 1 MVP) ─ lint/fmt を private module として保持
      │
-     └──▶ flowrail-tui (human bin, UI deps isolated)
+     ├──▶ belt     (agent bin,     Phase 2)     ─ lint/fmt 一切なし、TUI deps 一切なし
+     │
+     └──▶ belt-tui (human bin,     Phase 3)     ─ UI deps (ratatui/crossterm) isolated
 ```
 
-**重要**: `flowrail` と `flowrail-tui` の間に依存関係は**存在しない**。両者は独立して `flowrail-core` を参照する。
+**重要**: `belt-dev`, `belt`, `belt-tui` の 3 binary 間に依存関係は**存在しない**。3 者は独立して `belt-core` を参照する。
 
 これにより:
-- `cargo build -p flowrail` で agent バイナリのみビルド → ratatui/crossterm を一切取り込まない
-- `cargo tree -p flowrail` で agent 用依存グラフを独立に audit 可能
+- `cargo build -p belt-dev` で developer CLI のみビルド (Phase 1 MVP の主な artifact)
+- `cargo build -p belt` で agent runtime のみビルド → lint/fmt も ratatui/crossterm も一切取り込まない
+- `cargo tree -p <crate>` で各 audience の依存を独立に確認
 - `cargo audit` / `cargo deny` を crate 単位で適用可能
 
 ## リポジトリ構成
 
-flowrail は独立したリポジトリ `https://github.com/neko-neko/flowrail` として管理される (local path: `~/go/src/github.com/neko-neko/flowrail/`)。
+belt は独立したリポジトリ `https://github.com/neko-neko/belt` として管理される (local path: `~/go/src/github.com/neko-neko/belt/`)。
 
-元々は `~/.dotfiles/claude/skills/workflow-engine/` 内の workflow engine として発足したが、OSS 公開と自己完結化を見据えて 2026-04-05 に独立リポジトリへ分離された。
+元々は `~/.dotfiles/claude/skills/workflow-engine/` 内の workflow engine として発足したが、OSS 公開と自己完結化を見据えて 2026-04-05 に独立リポジトリへ分離された (当時の名称は `belt`、2026-04-05 の 3-audience 拡張とともに `belt` にリネーム)。
 
 **`dotfiles` との関係**:
 - dotfiles の `claude/skills/workflow-engine/` は本 spec の設計インスピレーション元 (upstream)
-- flowrail は dotfiles から完全に独立したプロダクトとして発展する
-- 将来、dotfiles の既存 pipeline.yml (feature-dev, debug-flow, triage 等) を flowrail の rule set として書き換える可能性はあるが、それは別プロジェクト
+- belt は dotfiles から完全に独立したプロダクトとして発展する
+- 将来、dotfiles の既存 pipeline.yml (feature-dev, debug-flow, triage 等) を belt の rule set として書き換える可能性はあるが、それは別プロジェクト
 
 ## Testability
 
-flowrail は **Phase 1 で最小限の observability infrastructure** を提供し、**Phase 2 で rule set 作者向けの Testing Framework (5 primitives)** を追加する。両フェーズの境界を明確にし、Phase 1 の flowrail core を tiny に保つ。
+belt は **Phase 1 で最小限の observability infrastructure** を提供し、**Phase 2 で rule set 作者向けの Testing Framework (5 primitives)** を追加する。両フェーズの境界を明確にし、Phase 1 の belt core を tiny に保つ。
 
 ### 責務分離（Phase 1 / Phase 2 / 外部ツール）
 
 | 機能 | Phase 1 | Phase 2 | 外部ツール |
 |------|---------|---------|-----------|
 | Event Stream (`run.id` 付き JSONL) | ✓ | — | — |
-| Deterministic Mode (`FLOWRAIL_NOW` / `FLOWRAIL_SEED`) | ✓ | — | — |
-| Dry-Run Mode (`flowrail run <verb> --dry-run`) | ✓ | — | — |
+| Deterministic Mode (`BELT_NOW` / `BELT_SEED`) | ✓ | — | — |
+| Dry-Run Mode (`belt run <verb> --dry-run`) | ✓ | — | — |
 | Recording Mode (`--record`) | — | ✓ | — |
 | Recording Replay (`--replay-from`) | — | ✓ | — |
 | Assertion Mode (`--assert-recording`) | — | ✓ | — |
-| State Diff (`flowrail state diff`) | — | ✓ | — |
-| Pipeline Test Runner (`flowrail pipeline test`) | — | ✓ | — |
-| N 回実行 + consistency 計算 | — | — | ✓ (shell / Python ループで flowrail を呼び集計) |
+| State Diff (`belt state diff`) | — | ✓ | — |
+| Pipeline Test Runner (`belt-dev pipeline test`) | — | ✓ | — |
+| N 回実行 + consistency 計算 | — | — | ✓ (shell / Python ループで belt を呼び集計) |
 | Golden file 管理 / diff visualization | — | — | ✓ (専用ツール or CI) |
 | LLM バージョン tracking | — | — | ✓ (外部メタデータ管理) |
 
-flowrail は N 回実行の概念を持たない。外部ツールがループで flowrail を呼び、event stream (`run.id` 付き) を集約して consistency score、分散、回帰を計算する。
+belt は N 回実行の概念を持たない。外部ツールがループで belt を呼び、event stream (`run.id` 付き) を集約して consistency score、分散、回帰を計算する。
 
 ---
 
@@ -2823,11 +2880,11 @@ flowrail は N 回実行の概念を持たない。外部ツールがループ�
 
 #### Event Stream
 
-全 `flowrail` 呼び出しは構造化 event を JSONL で発行。全 event に `run.id` (UUID) を付与し、外部ツールが N run を識別できるようにする。出力先は `FLOWRAIL_EVENTS_FILE=<path>` で指定。未指定時は stderr に fallback (human-readable フィルタ可能)。
+全 `belt` 呼び出しは構造化 event を JSONL で発行。全 event に `run.id` (UUID) を付与し、外部ツールが N run を識別できるようにする。出力先は `BELT_EVENTS_FILE=<path>` で指定。未指定時は stderr に fallback (human-readable フィルタ可能)。
 
 共通フィールド:
 - `run.id` (UUID v7、同一 run 内の全 event で共通)
-- `timestamp` (ISO8601、`FLOWRAIL_NOW` で固定可能)
+- `timestamp` (ISO8601、`BELT_NOW` で固定可能)
 - `event` (種別)
 - `payload` (種別ごとの構造化データ)
 
@@ -2850,24 +2907,24 @@ flowrail は N 回実行の概念を持たない。外部ツールがループ�
 
 #### Deterministic Mode
 
-`--deterministic` フラグまたは `FLOWRAIL_DETERMINISTIC=1` で有効化:
-- **時刻固定**: `FLOWRAIL_NOW=2026-04-05T10:00:00Z` (未指定なら現在時刻、有効化時はエラー)
-- **UUID 決定化**: `FLOWRAIL_SEED=<seed>` で `run.id` 生成を seeded RNG 化 (v7 ではなく seeded v5 を使用)
+`--deterministic` フラグまたは `BELT_DETERMINISTIC=1` で有効化:
+- **時刻固定**: `BELT_NOW=2026-04-05T10:00:00Z` (未指定なら現在時刻、有効化時はエラー)
+- **UUID 決定化**: `BELT_SEED=<seed>` で `run.id` 生成を seeded RNG 化 (v7 ではなく seeded v5 を使用)
 - **JSON/YAML canonical 出力**: キー順固定、空白・改行正規化、byte-identical 保証
 - **用途**: Phase 2 の Assertion Mode (strict) の前提、CI での regression detection
 
 #### Dry-Run Mode
 
-`flowrail run <verb> --dry-run`:
+`belt run <verb> --dry-run`:
 - checks を実行しない（予定のみ出力）
 - hook を発火しない（予定のみ出力）
 - state.json への書き込みなし
-- 各 subcommand ごとに独立したフラグ (`flowrail run init --dry-run`, `flowrail run step --dry-run` 等)
+- 各 subcommand ごとに独立したフラグ (`belt run init --dry-run`, `belt run step --dry-run` 等)
 
 ### 観測すべき観点 (Phase 1 でカバーされる 6 項目 + Phase 2 で追加の 1 項目)
 
 1. **ノイズ** (Phase 1) — LLM が不要な出力を出していないか → `output.emitted` イベントの `stdout_bytes`
-2. **コンテキスト** (Phase 1) — LLM に何が渡されたか → `flowrail run next` の出力 + event stream
+2. **コンテキスト** (Phase 1) — LLM に何が渡されたか → `belt run next` の出力 + event stream
 3. **判断** (Phase 1) — LLM がどういう validation / classifier 判断を下したか → `validation.received`, `llm_response.received` イベント
 4. **進行** (Phase 1) — step したか、regate したか、止まったか → `phase.transition` イベント
 5. **指摘** (Phase 1) — どんな findings が出てきたか → `verification.check` の失敗結果 + `trigger_history`
@@ -2882,11 +2939,11 @@ Phase 2 で以下の 5 primitives を追加する。Phase 1 では **未実装**
 
 | # | Primitive | 概要 | CLI |
 |---|-----------|------|-----|
-| **1** | Recording Mode | 実 LLM 応答 + event stream + check 詳細 + 最終 state を JSONL に記録 | `flowrail run <verb> --record <path>` |
-| **2** | Recording Replay | 記録済み JSONL から LLM 呼び出しなしで完全再現 | `flowrail run <verb> --replay-from <path>` (YAML scenario または recording.jsonl 両対応) |
-| **3** | Assertion Mode | baseline recording と current recording を比較 | `flowrail run <verb> --assert-recording <baseline> --assert-level strict\|loose` |
-| **4** | State Diff | 2 つの state.json を byte-level / semantic diff | `flowrail state diff <a> <b> [--ignore <fields>]` |
-| **5** | Pipeline Test Runner | rule set の `tests:` セクションを一括実行 | `flowrail pipeline test [path...] [--filter <pattern>]` |
+| **1** | Recording Mode | 実 LLM 応答 + event stream + check 詳細 + 最終 state を JSONL に記録 | `belt run <verb> --record <path>` |
+| **2** | Recording Replay | 記録済み JSONL から LLM 呼び出しなしで完全再現 | `belt run <verb> --replay-from <path>` (YAML scenario または recording.jsonl 両対応) |
+| **3** | Assertion Mode | baseline recording と current recording を比較 | `belt run <verb> --assert-recording <baseline> --assert-level strict\|loose` |
+| **4** | State Diff | 2 つの state.json を byte-level / semantic diff | `belt state diff <a> <b> [--ignore <fields>]` |
+| **5** | Pipeline Test Runner | rule set の `tests:` セクションを一括実行 | `belt-dev pipeline test [path...] [--filter <pattern>]` |
 
 #### Phase 2 設計ルール (原則 7「最小限」の定量境界)
 
@@ -2929,14 +2986,14 @@ tests:
       failed_checks: [check-sections-present]
 ```
 
-`flowrail pipeline test` が rule set を再帰的に collect し、各テストを replay + assertion で実行する。
+`belt-dev pipeline test` が rule set を再帰的に collect し、各テストを replay + assertion で実行する。
 
 #### N 回実行 + 揺らぎ測定の外部連携例 (Phase 2 完了後)
 
 ```bash
 # 外部シェルスクリプト例: N=20 回 LLM を呼んで consistency 測定
 for i in $(seq 1 20); do
-  flowrail run step \
+  belt run step \
     --validation-result req-capture=pass \
     --record "runs/run-$i.jsonl" \
     --deterministic \
@@ -2947,27 +3004,27 @@ done
 python consistency.py runs/*.jsonl
 ```
 
-flowrail 自身は N 回実行の概念を持たない。run.id 付きの event stream を出力するだけで、集約・統計・可視化は外部ツールの責務。
+belt 自身は N 回実行の概念を持たない。run.id 付きの event stream を出力するだけで、集約・統計・可視化は外部ツールの責務。
 
 ## 実装フェーズ
 
-### Phase 1: `flowrail pipeline lint` + `flowrail pipeline fmt`（MVP）— **flowrail core ~3,500-3,800 LOC**
+### Phase 1: `belt-dev pipeline lint` + `belt-dev pipeline fmt`（MVP）— **belt core ~3,500-3,800 LOC**
 
 - Rust プロジェクト初期化（MSRV 1.85, edition 2024）
 - pipeline.yml + rule set の型定義（serde）
 - YAML abstraction layer (`src/yaml/mod.rs`) — serde-saphyr を wrap
 - JSON Schema 検証（jsonschema crate、`default-features = false, features = ["resolve-file"]`）
-- rule set の imports 解決（`max_depth` による再帰深度制限のみ、事前 cycle detection は行わない。layer metadata による逆依存検証は flowrail core の関心外 — Conventions & Best Practices 参照）
+- rule set の imports 解決（`max_depth` による再帰深度制限のみ、事前 cycle detection は行わない。layer metadata による逆依存検証は belt core の関心外 — Conventions & Best Practices 参照）
 - Template 静的解析（regex ベースで `{{ ... }}` 参照抽出、minijinja machinery 非依存）
 - セマンティック lint ルール
 - YAML フォーマッタ
 - **Phase 1 Infrastructure**:
-  - Event Stream（全イベント型、`run.id` 付き JSONL、`FLOWRAIL_EVENTS_FILE`）
-  - Deterministic Mode（`FLOWRAIL_NOW` / `FLOWRAIL_SEED` / JSON/YAML canonical 出力）
-  - Dry-Run Mode（各 `flowrail run <verb> --dry-run`）
+  - Event Stream（全イベント型、`run.id` 付き JSONL、`BELT_EVENTS_FILE`）
+  - Deterministic Mode（`BELT_NOW` / `BELT_SEED` / JSON/YAML canonical 出力）
+  - Dry-Run Mode（各 `belt run <verb> --dry-run`）
 - 既存の feature-dev / debug-flow pipeline.yml + 新 rule set 試作で動作確認
 
-### Phase 2: `flowrail run` + `flowrail state` + `flowrail snapshot` + Rule Set Evaluation + Testing Framework — **flowrail core 合計 ~4,400 LOC**
+### Phase 2: `belt run` + `belt state` + `belt snapshot` + Rule Set Evaluation + Testing Framework — **belt core 合計 ~4,400 LOC**
 
 - state.json / snapshot ファイル の型定義・永続化（atomic write + compare-and-set、single-write transaction）
 - `run init` / `next` / `verify` / `step`（triggers 自動評価、action 実行、pipeline-root `uses:` の global-trigger 展開）
@@ -2982,25 +3039,25 @@ flowrail 自身は N 回実行の概念を持たない。run.id 付きの event 
   - Recording Mode (`--record`)
   - Recording Replay (`--replay-from`、YAML scenario と recording.jsonl 両対応)
   - Assertion Mode (`--assert-recording`, `--assert-level strict|loose`)
-  - `flowrail state diff` (byte-level / semantic diff)
-  - `flowrail pipeline test` (rule set の `tests:` セクション実行)
+  - `belt state diff` (byte-level / semantic diff)
+  - `belt-dev pipeline test` (rule set の `tests:` セクション実行)
 - Rule Set Schema 拡張 (`tests:` セクション、Phase 2 で追加)
 - SKILLS 再設計（workflow-engine SKILL.md の薄い化）
 - Standard Rule Set Catalog 作成（~15 primitive + ~10 recipe）
 
-### Phase 3: `flowrail-tui` (別 binary crate)
+### Phase 3: `belt-tui` (別 binary crate)
 
-- 新しい workspace member `crates/flowrail-tui/` を実装 (Phase 1 では placeholder のみ)
+- 新しい workspace member `crates/belt-tui/` を実装 (Phase 1 では placeholder のみ)
 - ratatui アプリケーション (MSRV 1.86 要求、crate は既に workspace 統一 1.86 のため影響なし)
 - state.json watch + リアルタイム phase/artifact/trigger 表示
 - crossterm による key event handling
-- 依存は `flowrail-core` + `ratatui` + `crossterm` のみ。`flowrail` (agent CLI) とは依存関係を持たない (原則 8 参照)
+- 依存は `belt-core` + `ratatui` + `crossterm` のみ。`belt` (agent CLI) とは依存関係を持たない (原則 8 参照)
 
-### Phase 4: `flowrail pipeline init` + `flowrail help` + 安定化
+### Phase 4: `belt-dev pipeline init` + `belt help` + 安定化
 
 - スキャフォールド生成（pipeline テンプレート）
-- `flowrail help` の man page 風コンテンツ整備
-- `.flowrail/config.toml` 対応（build/test/lint コマンド設定）
+- `belt help` の man page 風コンテンツ整備
+- `.belt/config.toml` 対応（build/test/lint コマンド設定）
 - エラーメッセージ磨き込み
 - ドキュメント
 
@@ -3008,22 +3065,22 @@ flowrail 自身は N 回実行の概念を持たない。run.id 付きの event 
 
 > **計測時点**: commit `591c21c` (2026-04-05)。行数・バイト数基準は初期開発時点のスナップショットで、以降保守しない。
 
-1. `flowrail pipeline lint` が既存 + 新 pipeline.yml のスキーマ変更波及漏れを検出できる（0 false-negative）
-2. `flowrail run` でパイプラインを駆動し、SKILLS のコンテキスト消費が削減される (commit `591c21c` 時点の実測 `workflow-engine/SKILL.md` 114 + `modules/*.md` 1,079 = **1,193 行 → ~30 行**)
+1. `belt-dev pipeline lint` が既存 + 新 pipeline.yml のスキーマ変更波及漏れを検出できる（0 false-negative）
+2. `belt run` でパイプラインを駆動し、SKILLS のコンテキスト消費が削減される (commit `591c21c` 時点の実測 `workflow-engine/SKILL.md` 114 + `modules/*.md` 1,079 = **1,193 行 → ~30 行**)
 3. phase 遷移・trigger 発火・snapshot が LLM の解釈に依存せず、state.json で決定論的に管理される (**検証条件**: `--deterministic` + replay で N 回実行した結果の state.json が byte-identical)
-4. `workflow-engine/modules/*.md` の散文 **1,079 行** (commit `591c21c` 実測、audit 463 + autonomy 143 + context-budget 45 + inner-loop 219 + phase-summary 100 + regate 29 + resume 80) が削除され、rule set YAML + flowrail core code に置き換わる
+4. `workflow-engine/modules/*.md` の散文 **1,079 行** (commit `591c21c` 実測、audit 463 + autonomy 143 + context-budget 45 + inner-loop 219 + phase-summary 100 + regate 29 + resume 80) が削除され、rule set YAML + belt core code に置き換わる
 5. **冪等性**: 全サブコマンドが Idempotency Contract の表通りに動作する (**検証条件**: 表の全 17 行について 2 回連続実行で state.json が byte-identical)
-6. **拡張性**: 新しい rule set（例: カスタム audit gate、新 regate 戦略）を、flowrail のコード変更なしで追加できる (**検証条件**: `rules/recipes/<custom>.yml` を追加し `flowrail pipeline lint` が通れば OK)
+6. **拡張性**: 新しい rule set（例: カスタム audit gate、新 regate 戦略）を、belt のコード変更なしで追加できる (**検証条件**: `rules/recipes/<custom>.yml` を追加し `belt-dev pipeline lint` が通れば OK)
 7. **再現性**: feature-dev / debug-flow / triage / linear-sync hooks の全機能が新アーキテクチャで再現可能である ([Feasibility Mapping セクション参照](#feasibility-mapping-tbd-before-phase-a)、**Phase A 着手前に別セッションで完成予定**)
 8. **テスト可能性 (Phase 2)**: 既存の feature-dev pipeline.yml の完全な実行を、LLM を呼び出さずに replay + deterministic mode で再現できる (byte-identical state.json、timestamps のみ ignore)
 9. **バイナリサイズ**: Phase 2 完了時点で release ビルドが 20MB 以下。計測条件: `cargo build --release --target x86_64-unknown-linux-gnu` + strip symbols、`jsonschema` は `default-features = false, features = ["resolve-file"]`
-10. **Rule set カタログ**: 標準 primitive (~15 個) と recipe (~10 個) が同梱され、`flowrail pipeline init --template feature-dev` で新パイプラインが生成される (Phase 4)
-11. **Rule set 作者の品質保証 (Phase 2)**: rule set 作者が flowrail 標準機能のみで以下を実現できる:
+10. **Rule set カタログ**: 標準 primitive (~15 個) と recipe (~10 個) が同梱され、`belt-dev pipeline init --template feature-dev` で新パイプラインが生成される (Phase 4)
+11. **Rule set 作者の品質保証 (Phase 2)**: rule set 作者が belt 標準機能のみで以下を実現できる:
     - a. 実 LLM を呼んだ 1 run の全応答 + event stream を recording file (`--record`) に保存 (JSONL、Event Stream 全種別 + `llm_response.received`)
     - b. recording file を replay (`--replay-from`) として後日完全再現 (strict mode で byte-identical)
     - c. baseline recording と current recording を比較 (`--assert-recording`) して回帰検出 (strict / loose mode)
-    - d. rule set に `tests:` セクションを宣言し、`flowrail pipeline test` で一括検証 (assertion は verdict + checks_passed / failed_checks の set 比較のみ)
-12. **外部ツールとの連携による揺らぎ検証 (Phase 2 完了後)**: 外部ツールが flowrail の event stream (`run.id` 付き) を集約して以下を実現できる:
+    - d. rule set に `tests:` セクションを宣言し、`belt-dev pipeline test` で一括検証 (assertion は verdict + checks_passed / failed_checks の set 比較のみ)
+12. **外部ツールとの連携による揺らぎ検証 (Phase 2 完了後)**: 外部ツールが belt の event stream (`run.id` 付き) を集約して以下を実現できる:
     - a. N 回実行による LLM 応答の分散測定 (consistency score)
     - b. LLM バージョン変更の回帰検出 (baseline recording との差分)
-    - c. flowrail 自身は N 回実行の概念を持たない (tiny 原則維持)
+    - c. belt 自身は N 回実行の概念を持たない (tiny 原則維持)

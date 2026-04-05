@@ -1,3 +1,15 @@
+# Rust toolchain 固定。belt の全 crate がこの channel でビルドされる。
+#
+# channel 1.94.1: CVE-2026-33055/33056 (Cargo 同梱 tar crate 脆弱性) を修正済みの
+# 最小バージョン。1.94.0 は使用禁止。
+#
+# components:
+#   - rustfmt: 必須。各 crate の `cargo fmt` で整形
+#   - clippy:  必須。workspace.lints.clippy と連携、`cargo clippy --workspace -- -D warnings`
+#   - rust-src: rust-analyzer / IDE 補完用 (dev UX)
+#
+# profile = "minimal": rustc のみを基本にして上記 components を明示追加する構成。
+# rustup の profile=default より軽量かつ構成が明示的。
 [toolchain]
 channel = "1.94.1"
 components = ["rustfmt", "clippy", "rust-src"]
