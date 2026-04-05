@@ -15,14 +15,44 @@
 //!   - `belt-dev pipeline fmt  [path...] [--check|--diff]`
 //!   - `belt-dev help`
 
-use belt_core::error::Result;
+mod cli;
 
-// Task 2 時点では `?` 演算子を使う fallible 呼び出しがないため、clippy::unnecessary_wraps が
-// 発火する。`Result<()>` を返す signature は Task 3 以降で ruleset loader / jsonschema validator
-// 等の Result を `?` で伝播させるための forward-compatible な placeholder なので、ここでは
-// function-level の allow で抑制する。Task 3 以降で `?` 使用箇所が増えた時点で外せる。
-#[allow(clippy::unnecessary_wraps)]
-fn main() -> Result<()> {
-    println!("belt-dev 0.1.0");
-    Ok(())
+use std::process::ExitCode;
+
+use clap::Parser;
+
+use cli::{Cli, PipelineVerb, TopLevel};
+
+// Exit codes (POSIX sysexits.h):
+//   0  success
+//   1  warnings only (Task 17 以降で使用)
+//   2  lint errors (Task 17 以降で使用)
+//   64 command/invocation error (EX_USAGE: clap parse error, missing file, schema load fail)
+fn main() -> ExitCode {
+    // `try_parse` を使うことで、clap parse error を自前の exit code 64 にマップする。
+    // `Cli::parse()` は内部で `std::process::exit(2)` を呼ぶため使わない。
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            // clap error には help/version request も含まれる:
+            //   - help/version は exit 0 (informational output → stdout)
+            //   - それ以外の parse error は exit 64 (EX_USAGE → stderr)
+            let exit_code = if err.use_stderr() { 64 } else { 0 };
+            let _ = err.print();
+            return ExitCode::from(exit_code);
+        }
+    };
+
+    match cli.command {
+        TopLevel::Pipeline(args) => match args.command {
+            PipelineVerb::Lint { paths } => {
+                eprintln!("(lint stub) paths={paths:?}");
+            }
+            PipelineVerb::Fmt { paths, check, diff } => {
+                eprintln!("(fmt stub) paths={paths:?} check={check} diff={diff}");
+            }
+        },
+    }
+
+    ExitCode::SUCCESS
 }
