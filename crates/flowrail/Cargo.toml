@@ -1,0 +1,27 @@
+[package]
+name = "flowrail"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tiny workflow engine CLI for LLM agents (agent CLI binary)"
+
+[[bin]]
+name = "flowrail"
+path = "src/main.rs"
+
+[dependencies]
+flowrail-core = { path = "../flowrail-core" }
+clap.workspace = true
+miette = { workspace = true, features = ["fancy-no-backtrace"] }
+# ⚠ TUI/GUI 系依存 (ratatui, crossterm, tui-*, iced, egui) は一切追加禁止。
+# ⚠ HTTP/gRPC (reqwest, hyper, tonic) は原則禁止、必要時は spec に justification。
+# ⚠ async runtime (tokio, async-std, smol) は原則禁止、同期実行を基本。
+# 詳細は spec の "Dependency Management Policy" および原則 8 参照。
+
+[dev-dependencies]
+insta.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true

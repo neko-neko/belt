@@ -1,0 +1,20 @@
+[package]
+name = "flowrail-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Human-facing TUI for flowrail (Phase 3 — placeholder in Phase 1)"
+
+[[bin]]
+name = "flowrail-tui"
+path = "src/main.rs"
+
+[dependencies]
+flowrail-core = { path = "../flowrail-core" }
+# Phase 3 で以下を追加:
+# ratatui.workspace = true
+# crossterm.workspace = true
+# miette = { workspace = true, features = ["fancy-no-backtrace"] }

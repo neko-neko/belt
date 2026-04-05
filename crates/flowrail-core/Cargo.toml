@@ -1,0 +1,27 @@
+[package]
+name = "flowrail-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tiny workflow engine library — state machine, rule set resolver, primitives, hook executor"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde-saphyr.workspace = true
+jsonschema.workspace = true
+minijinja.workspace = true
+miette.workspace = true
+thiserror.workspace = true
+notify.workspace = true
+uuid.workspace = true
+regex.workspace = true
+glob.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+pretty_assertions.workspace = true
+tempfile.workspace = true
