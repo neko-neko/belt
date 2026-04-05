@@ -94,7 +94,7 @@ Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flow
 │   │       │   └── template.rs                # minijinja 統合 (static ref 解析)
 │   │       ├── lint/
 │   │       │   ├── mod.rs                     # lint ドライバー (全ルール実行)
-│   │       │   ├── diagnostic.rs              # miette 統合 (E001-E007, W001 から E002 circular_import を除く)
+│   │       │   ├── diagnostic.rs              # miette 統合 (E001, E003-E008, W001; E002 欠番)
 │   │       │   └── rules/
 │   │       │       ├── mod.rs
 │   │       │       ├── unknown_rule_set.rs            # E001 unknown rule set in `uses`
@@ -104,7 +104,7 @@ Phase 1 実装対象は **`crates/flowrail-core/`** (library) と **`crates/flow
 │   │       │       ├── invalid_trigger_rewind.rs      # E006 invalid triggers.rewind_to
 │   │       │       ├── invalid_hook_event.rs          # E007 invalid integrations.hooks event
 │   │       │       └── unused_param.rs                # W001 unused param warning
-│   │       │       # ⚠ circular_import.rs (旧 E002) は削除: layer 撤回に伴い cycle detection は flowrail core の責務外
+│   │       │       # E002 circular_import.rs は削除 (layer 撤回 + Non-Goals 遵守)。Task 8 resolver の max_depth ガードで顕在化させる
 │   │       ├── fmt/
 │   │       │   ├── mod.rs                     # YAML 正規化 (key ordering, indent)
 │   │       │   └── key_order.rs               # key 順序定義 (pipeline / rule-set 別)
@@ -392,6 +392,241 @@ git commit -m "feat: initialize Cargo workspace (flowrail-core + flowrail + flow
 
 ---
 
+## Task 2.0: YAML 抽象層 (`crates/flowrail-core/src/yaml/`)
+
+**前提**: spec §YAML Abstraction Layer L2563-2587 が Phase 1 必須と規定。serde-saphyr のような YAML backend を wrap し、他 module は `flowrail_core::yaml::{parse, parse_value, serialize, Value, Mapping, YamlError}` のみを import する。backend 切替時の変更範囲を最小化する。
+
+**Files:**
+- Create: `crates/flowrail-core/src/yaml/mod.rs`
+- Create: `crates/flowrail-core/tests/yaml_abstraction_test.rs`
+
+- [ ] **Step 1: failing test を先に書く**
+
+`crates/flowrail-core/tests/yaml_abstraction_test.rs`:
+
+```rust
+use flowrail_core::yaml;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Simple {
+    name: String,
+    count: u32,
+}
+
+#[test]
+fn parses_typed_value_via_abstraction() {
+    let yaml_text = "name: flowrail\ncount: 3\n";
+    let v: Simple = yaml::parse(yaml_text).expect("parse ok");
+    assert_eq!(v.name, "flowrail");
+    assert_eq!(v.count, 3);
+}
+
+#[test]
+fn parses_dynamic_value() {
+    let yaml_text = "a: 1\nb: [2, 3]\n";
+    let v = yaml::parse_value(yaml_text).expect("parse ok");
+    assert!(v.is_mapping());
+}
+
+#[test]
+fn reports_duplicate_key_as_error_by_default() {
+    let yaml_text = "a: 1\na: 2\n";
+    let err = yaml::parse_value(yaml_text).expect_err("expected duplicate-key error");
+    assert!(format!("{err}").contains("duplicate"));
+}
+
+#[test]
+fn serializes_typed_value() {
+    let v = Simple { name: "flowrail".into(), count: 7 };
+    let out = yaml::serialize(&v).expect("serialize ok");
+    assert!(out.contains("name: flowrail"));
+    assert!(out.contains("count: 7"));
+}
+```
+
+Run: `cargo test -p flowrail-core --test yaml_abstraction_test 2>&1 | tail -20`
+Expected: FAIL — `flowrail_core::yaml` module が存在しない。
+
+- [ ] **Step 2: `src/yaml/mod.rs` 実装**
+
+`crates/flowrail-core/src/yaml/mod.rs`:
+
+```rust
+//! YAML abstraction layer.
+//!
+//! All YAML parsing/serialization MUST go through this module. Other modules
+//! MUST NOT depend on the concrete backend (`serde-saphyr`, `serde_yml`, etc.)
+//! directly. This keeps the backend swappable for security and performance
+//! reasons (see spec §YAML Abstraction Layer).
+
+use serde::{de::DeserializeOwned, Serialize};
+use thiserror::Error;
+
+/// Dynamic YAML value type. Re-exported from the backend.
+/// Phase 1 uses `serde_json::Value` as the neutral intermediate representation
+/// because it has a stable tree API that works for both YAML and JSON.
+pub type Value = serde_json::Value;
+
+/// YAML mapping alias (dynamic).
+pub type Mapping = serde_json::Map<String, serde_json::Value>;
+
+/// YAML parser/serializer errors.
+#[derive(Debug, Error)]
+pub enum YamlError {
+    #[error("YAML parse error: {0}")]
+    Parse(String),
+
+    #[error("YAML serialize error: {0}")]
+    Serialize(String),
+
+    #[error("duplicate key '{0}' detected (DuplicateKeyPolicy::Error is the default in Phase 1)")]
+    DuplicateKey(String),
+
+    #[error("budget exceeded: {0}")]
+    Budget(String),
+}
+
+/// Parsing options. Phase 1 defaults are strict.
+#[derive(Debug, Clone)]
+pub struct YamlOptions {
+    pub duplicate_keys: DuplicateKeyPolicy,
+    pub budget: Budget,
+}
+
+impl Default for YamlOptions {
+    fn default() -> Self {
+        Self {
+            duplicate_keys: DuplicateKeyPolicy::Error,
+            budget: Budget::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum DuplicateKeyPolicy {
+    Error,      // default: reject duplicate keys
+    FirstWins,  // keep first occurrence
+    LastWins,   // keep last occurrence (serde_yaml default)
+}
+
+/// Resource limits to prevent DoS via pathological YAML inputs.
+#[derive(Debug, Clone)]
+pub struct Budget {
+    pub max_anchors: usize,
+    pub max_depth: usize,
+    pub max_events: usize,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self {
+            max_anchors: 200,
+            max_depth: 100,
+            max_events: 50_000,
+        }
+    }
+}
+
+/// Parse YAML text into a typed value.
+///
+/// # Errors
+/// Returns `YamlError` on syntax errors, duplicate keys (when policy is Error),
+/// or budget violations.
+pub fn parse<T: DeserializeOwned>(text: &str) -> Result<T, YamlError> {
+    parse_with_options(text, &YamlOptions::default())
+}
+
+/// Parse YAML text with explicit options.
+pub fn parse_with_options<T: DeserializeOwned>(
+    text: &str,
+    _options: &YamlOptions,
+) -> Result<T, YamlError> {
+    // Phase 1 backend: delegate to serde-saphyr. When the crate API stabilizes,
+    // wire DuplicateKeyPolicy/Budget into its configuration.
+    // For now, we thin-wrap `serde_saphyr::from_str`.
+    serde_saphyr::from_str::<T>(text).map_err(|e| YamlError::Parse(e.to_string()))
+}
+
+/// Parse YAML text into a dynamic `Value` (serde_json::Value).
+pub fn parse_value(text: &str) -> Result<Value, YamlError> {
+    // Two-step: parse via serde-saphyr into serde_json::Value.
+    serde_saphyr::from_str::<Value>(text).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("duplicate") {
+            // best-effort extraction of the key name
+            YamlError::DuplicateKey(msg)
+        } else {
+            YamlError::Parse(msg)
+        }
+    })
+}
+
+/// Serialize a typed value to canonical YAML text.
+///
+/// Canonical rules (per spec §fmt L1358):
+/// - End with a trailing newline
+/// - Quote strings only when required (booleans, null, numeric strings, special chars)
+/// - 2-space indentation
+pub fn serialize<T: Serialize>(value: &T) -> Result<String, YamlError> {
+    // Phase 1: stub via serde_json round-trip + manual YAML printer, or use
+    // saphyr emitter when available. Until then, Phase 1 implementation MAY
+    // use a known-working backend (`serde_yaml_bw` or `serde_yml` as a short-
+    // term shim). Mark this clearly.
+    //
+    // TODO(Phase 2): replace with a canonical YAML emitter that enforces the
+    //                quote rule and preserves comments where feasible.
+    serde_yml::to_string(value).map_err(|e| YamlError::Serialize(e.to_string()))
+}
+
+/// Convert a typed value into the dynamic `Value` representation.
+pub fn to_value<T: Serialize>(value: &T) -> Result<Value, YamlError> {
+    serde_json::to_value(value).map_err(|e| YamlError::Serialize(e.to_string()))
+}
+
+/// Convert a dynamic `Value` into a typed value.
+pub fn from_value<T: DeserializeOwned>(value: Value) -> Result<T, YamlError> {
+    serde_json::from_value(value).map_err(|e| YamlError::Parse(e.to_string()))
+}
+```
+
+> **注**: `serialize()` は Phase 1 の過渡期として `serde_yml::to_string` を内部実装として使用する (spec §fmt quote rule 完全遵守は Phase 2 で canonical emitter を自作して達成する)。この thin wrapper のおかげで、他 module は backend を一切意識せずに `yaml::serialize(...)` を呼べる。
+
+- [ ] **Step 3: `Cargo.toml` を更新**
+
+`crates/flowrail-core/Cargo.toml` の `[dependencies]` に (workspace 継承):
+- `serde-saphyr.workspace = true`
+- `serde_json.workspace = true` (yaml::Value の実装用)
+- `serde_yml = "0.0.12"` (Phase 1 serialize の過渡期 backend、Phase 2 で削除予定を comment で明示)
+- `serde.workspace = true`
+- `thiserror.workspace = true`
+
+`[workspace.dependencies]` 側にも `serde_yml = "0.0.12"` を追加 (Phase 2 で削除する旨を comment で記載)。
+
+- [ ] **Step 4: test 再実行**
+
+Run: `cargo test -p flowrail-core --test yaml_abstraction_test 2>&1 | tail -20`
+Expected: 4 tests passed.
+
+- [ ] **Step 5: `pub mod yaml;` を lib.rs に追加**
+
+`crates/flowrail-core/src/lib.rs`:
+
+```rust
+pub mod yaml;
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+cargo fmt --package flowrail-core
+cargo clippy --package flowrail-core -- -D warnings
+git add crates/flowrail-core/src/yaml/ crates/flowrail-core/src/lib.rs crates/flowrail-core/Cargo.toml Cargo.toml crates/flowrail-core/tests/yaml_abstraction_test.rs
+git commit -m "feat(flowrail-core): introduce YAML abstraction layer (serde-saphyr wrapper)"
+```
+
+---
+
 ## Task 2: エラー型定義 (thiserror 統一)
 
 **Files:**
@@ -409,6 +644,7 @@ use thiserror::Error;
 pub type Result<T> = std::result::Result<T, FlowrailError>;
 
 #[derive(Debug, Error)]
+#[allow(dead_code)] // variants are introduced incrementally across Task 2-17; suppress false-positive until wired.
 pub enum FlowrailError {
     #[error("I/O error for {path}: {source}")]
     Io {
@@ -421,14 +657,14 @@ pub enum FlowrailError {
     YamlParse {
         path: PathBuf,
         #[source]
-        source: serde_yml::Error,
+        source: crate::yaml::YamlError,
     },
 
     #[error("JSON schema validation failed in {path}: {message}")]
     SchemaValidation { path: PathBuf, message: String },
 
-    #[error("Circular import detected: {cycle}")]
-    CircularImport { cycle: String },
+    #[error("Maximum import depth exceeded ({depth}) while resolving rule sets from {entry}")]
+    MaxDepthExceeded { entry: PathBuf, depth: usize },
 
     #[error("Unknown rule set '{name}' used in {path}")]
     UnknownRuleSet { name: String, path: PathBuf },
@@ -438,20 +674,27 @@ pub enum FlowrailError {
 
     #[error("Unresolved template reference: {expression} in {path}")]
     UnresolvedTemplate { expression: String, path: PathBuf },
-
-    #[error("Invalid lint findings: {count} errors, {warnings} warnings")]
-    LintFailed { count: usize, warnings: usize },
 }
 ```
 
-- [ ] **Step 2: main.rs で error モジュールを読み込む**
+> **注 (2026-04-05 plan-review フィードバック反映)**:
+> - `CircularImport` variant は削除済み (layer 撤回 + Non-Goals 準拠)。代わりに `MaxDepthExceeded` を Task 8 の resolver から返す
+> - `LintFailed` variant は削除 (Task 17 の lint driver が ExitCode を直接制御するため不要)
+> - `#[allow(dead_code)]` は Task 2 時点では全 variants が未使用のため一時的に付与。Task 17 完了時点で未使用な variant があれば削除を検討
 
-`crates/flowrail/src/main.rs`:
+- [ ] **Step 2: lib.rs に error モジュールを露出**
+
+`crates/flowrail-core/src/lib.rs` を編集して `pub mod error;` を追加 (yaml module も Task 2.0 で追加済みの想定):
 
 ```rust
-mod error;
+pub mod yaml;  // Task 2.0 で作成済み (YAML abstraction layer)
+pub mod error;
+```
 
-use error::Result;
+`crates/flowrail/src/main.rs` を以下に更新 (binary crate からは `flowrail_core::error::*` を use する):
+
+```rust
+use flowrail_core::error::Result;
 
 fn main() -> Result<()> {
     println!("flowrail 0.1.0");
@@ -459,16 +702,18 @@ fn main() -> Result<()> {
 }
 ```
 
+> **注**: `mod error;` を `crates/flowrail/src/main.rs` に書くのは誤り (sibling `error.rs` が binary crate 側に存在しないためコンパイル不可)。library crate の module を import するには `use flowrail_core::error::*;` を使うこと。
+
 - [ ] **Step 3: ビルド確認**
 
-Run: `cargo build --workspace 2>&1 | tail -10`
-Expected: ビルド成功。警告なし (unused variant 警告は Task 3 以降で解消)。
+Run: `cargo fmt --package flowrail-core --package flowrail && cargo clippy --package flowrail-core --package flowrail -- -D warnings && cargo build --workspace 2>&1 | tail -10`
+Expected: ビルド成功。`#[allow(dead_code)]` により unused variant 警告なし。clippy clean。
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/flowrail-core/src/error.rs crates/flowrail/src/main.rs
-git commit -m "feat(flowrail): add unified error type with thiserror"
+git add crates/flowrail-core/src/error.rs crates/flowrail-core/src/lib.rs crates/flowrail/src/main.rs
+git commit -m "feat(flowrail-core): add unified error type with thiserror"
 ```
 
 ---
@@ -583,11 +828,10 @@ pub enum PipelineVerb {
 
 ```rust
 mod cli;
-mod error;
 
 use clap::Parser;
 use cli::{Cli, PipelineVerb, TopLevel};
-use error::Result;
+use flowrail_core::error::Result;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -636,7 +880,7 @@ git commit -m "feat(flowrail): add CLI skeleton with pipeline lint/fmt subcomman
 `crates/flowrail-core/tests/pipeline_model_test.rs`:
 
 ```rust
-use flowrail::pipeline::model::{Pipeline, PipelineKind};
+use flowrail_core::pipeline::model::{Pipeline, PipelineKind};
 
 #[test]
 fn minimal_pipeline_parses() {
@@ -649,7 +893,7 @@ phases:
   - id: design
     confirm: after
 "#;
-    let pipeline: Pipeline = serde_yml::from_str(yaml).expect("parse minimal pipeline");
+    let pipeline: Pipeline = yaml::parse(yaml).expect("parse minimal pipeline");
     assert!(matches!(pipeline.kind, PipelineKind::Pipeline));
     assert_eq!(pipeline.name, "feature-dev");
     assert_eq!(pipeline.version, 4);
@@ -679,7 +923,7 @@ phases:
   - id: design
   - id: plan
 "#;
-    let pipeline: Pipeline = serde_yml::from_str(yaml).expect("parse pipeline");
+    let pipeline: Pipeline = yaml::parse(yaml).expect("parse pipeline");
     assert_eq!(pipeline.imports.len(), 1);
     assert!(pipeline.flags.contains_key("--linear"));
     assert!(pipeline.artifacts.contains_key("spec_file"));
@@ -718,7 +962,7 @@ pub mod pipeline;
 ```
 
 Run: `cargo test -p flowrail-core --test pipeline_model_test 2>&1 | tail -20`
-Expected: FAIL — `flowrail::pipeline::model` が存在しない。
+Expected: FAIL — `flowrail_core::pipeline::model` が存在しない。
 
 - [ ] **Step 3: pipeline/mod.rs と model.rs を実装**
 
@@ -752,15 +996,24 @@ pub struct Pipeline {
     #[serde(default)]
     pub flags: BTreeMap<String, FlagDef>,
     #[serde(default)]
-    pub settings: BTreeMap<String, serde_yml::Value>,
+    pub settings: BTreeMap<String, yaml::Value>,
     #[serde(default)]
     pub artifacts: BTreeMap<String, Artifact>,
     #[serde(default)]
     pub phases: Vec<Phase>,
     #[serde(default)]
-    pub uses: Vec<serde_yml::Value>,
+    pub uses: Vec<yaml::Value>,
+    // NOTE: 2026-04-05 plan-review で spec L1355 に合わせて 4 フィールドを追加:
+    #[serde(default)]
+    pub triggers: Vec<Trigger>,
     #[serde(default)]
     pub integrations: Vec<Integration>,
+    #[serde(default)]
+    pub pre_pipeline_start: Option<PrePipelineStart>,
+    #[serde(default)]
+    pub on_pipeline_start: Vec<yaml::Value>,
+    #[serde(default)]
+    pub on_pipeline_complete: Vec<yaml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -768,13 +1021,23 @@ pub struct FlagDef {
     #[serde(default = "default_flag_type")]
     pub r#type: String,
     #[serde(default)]
-    pub default: Option<serde_yml::Value>,
+    pub default: Option<yaml::Value>,
+    // NOTE: 2026-04-05 plan-review で spec §Flag System SSOT L2338-2352 に合わせて
+    // nested `enables` 構造体に変更 (旧 flat な enables_phases / enables_integrations を廃止)。
     #[serde(default)]
-    pub enables_phases: Vec<String>,
-    #[serde(default)]
-    pub enables_integrations: Vec<String>,
+    pub enables: Option<FlagEnables>,
     #[serde(default)]
     pub binds_to_param: Option<BindsToParam>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FlagEnables {
+    #[serde(default)]
+    pub integrations: Vec<String>,
+    #[serde(default)]
+    pub phases: Vec<String>,
+    #[serde(default)]
+    pub params: BTreeMap<String, BTreeMap<String, yaml::Value>>,
 }
 
 fn default_flag_type() -> String {
@@ -808,7 +1071,7 @@ pub struct Phase {
     #[serde(default)]
     pub skip_unless: Option<String>,
     #[serde(default)]
-    pub uses: Vec<serde_yml::Value>,
+    pub uses: Vec<yaml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -816,10 +1079,32 @@ pub struct Integration {
     pub name: String,
     #[serde(default)]
     pub enabled_by: Option<String>,
+    // NOTE: 2026-04-05 plan-review で spec L1098 に合わせて string | list[string]
+    // の両方を受け付けるようにした (現行 feature-dev pipeline.yml の
+    // `on_phase_complete: [sync_phase_summary, sync_evidence]` 記法との互換性)。
     #[serde(default)]
-    pub hooks: BTreeMap<String, String>,
+    pub hooks: BTreeMap<String, HookCommand>,
     #[serde(default)]
     pub pre_pipeline_start: Option<PrePipelineStart>,
+}
+
+/// Hook command can be a single string or a list of strings (both supported).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum HookCommand {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl HookCommand {
+    /// Return the hook commands as a slice of strings, treating single form as
+    /// a single-element slice.
+    pub fn as_slice(&self) -> std::borrow::Cow<'_, [String]> {
+        match self {
+            HookCommand::Single(s) => std::borrow::Cow::Owned(vec![s.clone()]),
+            HookCommand::Multiple(v) => std::borrow::Cow::Borrowed(v),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -855,7 +1140,7 @@ git commit -m "feat(flowrail): add pipeline.yml model with serde types"
 `crates/flowrail-core/tests/ruleset_model_test.rs`:
 
 ```rust
-use flowrail::ruleset::model::{RuleSet, RuleSetKind, ParamType};
+use flowrail_core::ruleset::model::{RuleSet, RuleSetKind, ParamType};
 
 #[test]
 fn primitive_rule_set_parses() {
@@ -877,7 +1162,7 @@ checks:
       path: "{{ path }}"
       min_count: "{{ min_count }}"
 "#;
-    let rs: RuleSet = serde_yml::from_str(yaml).expect("parse primitive rule set");
+    let rs: RuleSet = yaml::parse(yaml).expect("parse primitive rule set");
     assert!(matches!(rs.kind, RuleSetKind::RuleSet));
     assert_eq!(rs.name, "check-file-exists");
     assert_eq!(rs.version, 1);
@@ -909,38 +1194,24 @@ triggers:
     rewind_to: execute_impl
     max_retries: 3
 "#;
-    let rs: RuleSet = serde_yml::from_str(yaml).expect("parse recipe rule set");
+    let rs: RuleSet = yaml::parse(yaml).expect("parse recipe rule set");
     assert_eq!(rs.imports.len(), 1);
     assert_eq!(rs.uses.len(), 1);
     assert_eq!(rs.triggers.len(), 1);
     assert_eq!(rs.triggers[0].name, "verify_failure");
 }
 
-#[test]
-fn rule_set_with_tests_section_parses() {
-    let yaml = r#"
-kind: rule-set
-name: audit-gate
-version: 1
-tests:
-  - name: "valid spec file passes"
-    given:
-      params:
-        artifact_path: "fixtures/valid-spec.md"
-    expect:
-      verdict: PASS
-      checks_passed: [check-file-exists]
-"#;
-    let rs: RuleSet = serde_yml::from_str(yaml).expect("parse rule set with tests");
-    assert_eq!(rs.tests.len(), 1);
-    assert_eq!(rs.tests[0].name, "valid spec file passes");
-}
+// NOTE: `rule_set_with_tests_section_parses` test removed in 2026-04-05 plan-review.
+// Rationale: spec §Rule Set Schema L523 + L2900-2902 explicitly defers the
+// `tests:` section to Phase 2 (Testing Framework). Phase 1 is lint/fmt MVP
+// scope; re-introducing tests here would be scope creep vs 原則 7 tiny.
+// Phase 2 will add TestCase/TestGiven/TestExpect/TestVerdict + schema + tests.
 ```
 
 - [ ] **Step 2: テスト失敗を確認**
 
 Run: `cargo test -p flowrail-core --test ruleset_model_test 2>&1 | tail -20`
-Expected: FAIL — `flowrail::ruleset` が存在しない。
+Expected: FAIL — `flowrail_core::ruleset` が存在しない。
 
 - [ ] **Step 3: ruleset/mod.rs と model.rs を実装**
 
@@ -974,21 +1245,22 @@ pub struct RuleSet {
     #[serde(default)]
     pub params: BTreeMap<String, ParamDef>,
     #[serde(default)]
-    pub checks: Vec<serde_yml::Value>,
+    pub checks: Vec<yaml::Value>,
     #[serde(default)]
-    pub validations: Vec<serde_yml::Value>,
+    pub validations: Vec<yaml::Value>,
     #[serde(default)]
-    pub uses: Vec<serde_yml::Value>,
+    pub uses: Vec<yaml::Value>,
     #[serde(default)]
     pub triggers: Vec<Trigger>,
     #[serde(default)]
-    pub on_phase_complete: Vec<serde_yml::Value>,
+    pub on_phase_complete: Vec<yaml::Value>,
     #[serde(default)]
-    pub on_pipeline_start: Vec<serde_yml::Value>,
+    pub on_pipeline_start: Vec<yaml::Value>,
     #[serde(default)]
     pub pre_pipeline_start: Option<PrePipelineStart>,
-    #[serde(default)]
-    pub tests: Vec<TestCase>,
+    // NOTE: `tests: Vec<TestCase>` field removed in 2026-04-05 plan-review.
+    // Phase 2 (Testing Framework) will re-introduce this field together with
+    // TestCase/TestGiven/TestExpect/TestVerdict types.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1010,7 +1282,7 @@ pub struct ParamDef {
     #[serde(default)]
     pub required: bool,
     #[serde(default)]
-    pub default: Option<serde_yml::Value>,
+    pub default: Option<yaml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1023,7 +1295,7 @@ pub struct Trigger {
     #[serde(default)]
     pub max_retries: Option<u32>,
     #[serde(default)]
-    pub classifier: Vec<serde_yml::Value>,
+    pub classifier: Vec<yaml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1032,7 +1304,9 @@ pub enum TriggerAction {
     Regate,
     Pause,
     ClassifyThenRegate,
-    Complete,
+    // NOTE: `Complete` variant removed in 2026-04-05 plan-review.
+    // Spec §Rule Set Schema L494 defines action as `regate | pause | classify_then_regate` only.
+    // `complete` is a runtime state transition, not a YAML action value.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1040,36 +1314,10 @@ pub struct PrePipelineStart {
     pub skill_file: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestCase {
-    pub name: String,
-    pub given: TestGiven,
-    pub expect: TestExpect,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestGiven {
-    #[serde(default)]
-    pub params: BTreeMap<String, serde_yml::Value>,
-    #[serde(default)]
-    pub replay: Option<serde_yml::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestExpect {
-    pub verdict: TestVerdict,
-    #[serde(default)]
-    pub checks_passed: Vec<String>,
-    #[serde(default)]
-    pub failed_checks: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum TestVerdict {
-    Pass,
-    Fail,
-}
+// NOTE: TestCase / TestGiven / TestExpect / TestVerdict types were removed in
+// 2026-04-05 plan-review. They are Phase 2 (Testing Framework) scope per spec
+// §Rule Set Schema L523 and §Phase 2 Testing Primitives. Phase 1 is pipeline
+// lint/fmt MVP only.
 ```
 
 - [ ] **Step 4: lib.rs に ruleset を追加**
@@ -1368,8 +1616,8 @@ phases:
 `crates/flowrail-core/tests/loader_test.rs`:
 
 ```rust
-use flowrail::pipeline::loader as pipeline_loader;
-use flowrail::ruleset::loader as ruleset_loader;
+use flowrail_core::pipeline::loader as pipeline_loader;
+use flowrail_core::ruleset::loader as ruleset_loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
@@ -1417,7 +1665,7 @@ use crate::pipeline::model::Pipeline;
 use jsonschema::Validator;
 use std::path::Path;
 
-const PIPELINE_SCHEMA: &str = include_str!("../../schema/pipeline.schema.json");
+const PIPELINE_SCHEMA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema/pipeline.schema.json"));
 
 pub fn load(path: &Path) -> Result<Pipeline> {
     let text = std::fs::read_to_string(path).map_err(|source| FlowrailError::Io {
@@ -1425,8 +1673,8 @@ pub fn load(path: &Path) -> Result<Pipeline> {
         source,
     })?;
 
-    let yaml_value: serde_yml::Value =
-        serde_yml::from_str(&text).map_err(|source| FlowrailError::YamlParse {
+    let yaml_value: yaml::Value =
+        yaml::parse(&text).map_err(|source| FlowrailError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1446,7 +1694,7 @@ pub fn load(path: &Path) -> Result<Pipeline> {
     }
 
     let pipeline: Pipeline =
-        serde_yml::from_value(yaml_value).map_err(|source| FlowrailError::YamlParse {
+        yaml::from_value(yaml_value).map_err(|source| FlowrailError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1454,8 +1702,8 @@ pub fn load(path: &Path) -> Result<Pipeline> {
     Ok(pipeline)
 }
 
-fn yaml_to_json(value: &serde_yml::Value) -> serde_json::Value {
-    // round-trip via serde_json::to_value works because serde_yml::Value
+fn yaml_to_json(value: &yaml::Value) -> serde_json::Value {
+    // round-trip via serde_json::to_value works because yaml::Value
     // implements Serialize compatibly with JSON scalars and maps
     serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
 }
@@ -1471,7 +1719,7 @@ use crate::ruleset::model::RuleSet;
 use jsonschema::Validator;
 use std::path::Path;
 
-const RULE_SET_SCHEMA: &str = include_str!("../../schema/rule-set.schema.json");
+const RULE_SET_SCHEMA: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../schema/rule-set.schema.json"));
 
 pub fn load(path: &Path) -> Result<RuleSet> {
     let text = std::fs::read_to_string(path).map_err(|source| FlowrailError::Io {
@@ -1479,8 +1727,8 @@ pub fn load(path: &Path) -> Result<RuleSet> {
         source,
     })?;
 
-    let yaml_value: serde_yml::Value =
-        serde_yml::from_str(&text).map_err(|source| FlowrailError::YamlParse {
+    let yaml_value: yaml::Value =
+        yaml::parse(&text).map_err(|source| FlowrailError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1501,7 +1749,7 @@ pub fn load(path: &Path) -> Result<RuleSet> {
     }
 
     let rs: RuleSet =
-        serde_yml::from_value(yaml_value).map_err(|source| FlowrailError::YamlParse {
+        yaml::from_value(yaml_value).map_err(|source| FlowrailError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -1572,7 +1820,7 @@ uses:
 `crates/flowrail-core/tests/resolver_test.rs`:
 
 ```rust
-use flowrail::ruleset::resolver::{ResolvedGraph, resolve_from_entry};
+use flowrail_core::ruleset::resolver::{ResolvedGraph, resolve_from_entry};
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
@@ -1684,33 +1932,37 @@ git commit -m "feat(flowrail): add rule set import resolver with transitive load
 
 ---
 
-## Task 9: 循環 import 検出
+## Task 9: max_depth ガード (循環/過剰ネスト対策)
+
+> **注 (2026-04-05 plan-review フィードバック反映)**: 旧 Task 9 は DFS ベースの `CircularImport` 検出を実装していたが、spec §flowrail Core L149 / §Conventions L356 / §実装フェーズ L2960 は「事前 cycle detection は行わない。実行時に max_depth 超過で顕在化」と明記し、CLAUDE.md Non-Goals も「cycle detection の実装は rule set 作者の自己責任」と明記する。旧 Task 9 は Plan 冒頭 L9 / L107 / L158 の宣言とも矛盾していたため全面書き換え。Task 8 の resolver に `max_depth` ガードのみを追加する (循環検出自体は行わない)。
 
 **Files:**
 - Modify: `crates/flowrail-core/src/ruleset/resolver.rs`
 - Test: `crates/flowrail-core/tests/resolver_test.rs` (追加ケース)
-- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/circular-a.yml`, `crates/flowrail-core/tests/fixtures/invalid/circular-b.yml`
+- Test fixtures: `crates/flowrail-core/tests/fixtures/invalid/deep-chain-*.yml` (深いネスト fixture)
 
-- [ ] **Step 1: 循環 fixture を作成**
+- [ ] **Step 1: 深い import チェーン fixture を作成 (max_depth 超過テスト用)**
 
-`crates/flowrail-core/tests/fixtures/invalid/circular-a.yml`:
+`crates/flowrail-core/tests/fixtures/invalid/deep-chain-root.yml` + `deep-chain-{1..101}.yml` (または test helper で動的生成):
 
-```yaml
-kind: rule-set
-name: circular-a
-version: 1
-imports:
-  - circular-b.yml
-```
-
-`crates/flowrail-core/tests/fixtures/invalid/circular-b.yml`:
-
-```yaml
-kind: rule-set
-name: circular-b
-version: 1
-imports:
-  - circular-a.yml
+```rust
+// test helper: tempdir 内で 101 階層の import chain を生成
+fn create_deep_chain(depth: usize) -> (TempDir, PathBuf) {
+    let dir = tempdir().unwrap();
+    for i in 0..depth {
+        let next = if i < depth - 1 {
+            format!("imports:\n  - chain-{}.yml\n", i + 1)
+        } else {
+            String::new()
+        };
+        std::fs::write(
+            dir.path().join(format!("chain-{}.yml", i)),
+            format!("kind: rule-set\nname: chain-{}\nversion: 1\n{}", i, next),
+        ).unwrap();
+    }
+    let entry = dir.path().join("chain-0.yml");
+    (dir, entry)
+}
 ```
 
 - [ ] **Step 2: 失敗テストを追記**
@@ -1719,123 +1971,59 @@ Append to `crates/flowrail-core/tests/resolver_test.rs`:
 
 ```rust
 #[test]
-fn resolver_detects_circular_import() {
-    let entry = fixture("invalid/circular-a.yml");
-    let err = flowrail::ruleset::resolver::resolve_from_entry(&entry)
-        .expect_err("should detect circular import");
+fn resolver_rejects_excessive_import_depth() {
+    let (_dir, entry) = create_deep_chain(101); // max_depth = 100 を 1 超過
+    let err = flowrail_core::ruleset::resolver::resolve_from_entry(&entry)
+        .expect_err("should reject chain deeper than max_depth");
     let msg = format!("{}", err);
-    assert!(msg.to_lowercase().contains("circular"), "err = {}", msg);
-    assert!(msg.contains("circular-a"));
-    assert!(msg.contains("circular-b"));
+    assert!(msg.contains("Maximum import depth"), "err = {}", msg);
+}
+
+#[test]
+fn resolver_accepts_depth_at_limit() {
+    let (_dir, entry) = create_deep_chain(100); // 丁度 max_depth
+    let graph = flowrail_core::ruleset::resolver::resolve_from_entry(&entry)
+        .expect("100-level chain should resolve successfully");
+    assert_eq!(graph.rule_sets.len(), 100);
 }
 ```
 
 - [ ] **Step 3: テスト失敗を確認**
 
-Run: `cargo test -p flowrail-core --test resolver_test resolver_detects_circular_import 2>&1 | tail -20`
-Expected: FAIL — 循環が検出されず stack overflow または rule_sets が無限に増える、あるいは既訪問パスでスキップされて循環が報告されない。
+Run: `cargo test -p flowrail-core --test resolver_test resolver_rejects_excessive_import_depth 2>&1 | tail -20`
+Expected: FAIL — max_depth ガードが存在せず、stack overflow または無制限に再帰する。
 
-- [ ] **Step 4: resolver を DFS + recursion stack に書き換え**
+- [ ] **Step 4: resolver に max_depth ガードを追加**
 
-Replace `crates/flowrail-core/src/ruleset/resolver.rs`:
+Append to `crates/flowrail-core/src/ruleset/resolver.rs`:
 
 ```rust
-use crate::error::{FlowrailError, Result};
-use crate::ruleset::{loader, model::RuleSet};
-use std::collections::{BTreeMap, HashSet};
-use std::path::{Path, PathBuf};
+const MAX_IMPORT_DEPTH: usize = 100;
 
-#[derive(Debug)]
-pub struct ResolvedGraph {
-    pub rule_sets: Vec<RuleSet>,
-    pub name_to_path: BTreeMap<String, PathBuf>,
-    pub path_to_index: BTreeMap<PathBuf, usize>,
-}
-
-pub fn resolve_from_entry(entry: &Path) -> Result<ResolvedGraph> {
-    let mut graph = ResolvedGraph {
-        rule_sets: Vec::new(),
-        name_to_path: BTreeMap::new(),
-        path_to_index: BTreeMap::new(),
-    };
-    let mut visiting: HashSet<PathBuf> = HashSet::new();
-    let mut path_stack: Vec<PathBuf> = Vec::new();
-
-    let canonical = canonicalize(entry)?;
-    dfs(&canonical, &mut graph, &mut visiting, &mut path_stack)?;
-    Ok(graph)
-}
-
-fn dfs(
-    path: &Path,
-    graph: &mut ResolvedGraph,
-    visiting: &mut HashSet<PathBuf>,
-    path_stack: &mut Vec<PathBuf>,
-) -> Result<()> {
-    if graph.path_to_index.contains_key(path) {
-        return Ok(());
-    }
-
-    if visiting.contains(path) {
-        let cycle = build_cycle_trace(path_stack, path);
-        return Err(FlowrailError::CircularImport { cycle });
-    }
-
-    visiting.insert(path.to_path_buf());
-    path_stack.push(path.to_path_buf());
-
-    let rs = loader::load(path)?;
-    let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
-
-    // Recurse into transitive imports BEFORE inserting self (post-order load)
-    for import in rs.imports.clone() {
-        let full = canonicalize(&base_dir.join(&import))?;
-        dfs(&full, graph, visiting, path_stack)?;
-    }
-
-    // Post-order insertion: transitive deps come before their importer
-    let idx = graph.rule_sets.len();
-    graph.name_to_path.insert(rs.name.clone(), path.to_path_buf());
-    graph.path_to_index.insert(path.to_path_buf(), idx);
-    graph.rule_sets.push(rs);
-
-    visiting.remove(path);
-    path_stack.pop();
-    Ok(())
-}
-
-fn build_cycle_trace(path_stack: &[PathBuf], back_edge: &Path) -> String {
-    let start = path_stack.iter().position(|p| p == back_edge).unwrap_or(0);
-    let cycle: Vec<String> = path_stack[start..]
-        .iter()
-        .map(|p| p.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string())
-        .collect();
-    let mut trace = cycle.join(" -> ");
-    if let Some(first) = cycle.first() {
-        trace.push_str(" -> ");
-        trace.push_str(first);
-    }
-    trace
-}
-
-fn canonicalize(path: &Path) -> Result<PathBuf> {
-    path.canonicalize().map_err(|source| FlowrailError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
-}
+// in resolve_from_entry or the recursion helper:
+//   if current_depth > MAX_IMPORT_DEPTH {
+//       return Err(FlowrailError::MaxDepthExceeded {
+//           entry: entry.to_path_buf(),
+//           depth: current_depth,
+//       });
+//   }
 ```
+
+実装の詳細は Task 8 の resolver スタイル (iterative または recursive) に合わせて調整する。depth を関数引数として伝播させ、閾値超過時に `FlowrailError::MaxDepthExceeded` を返す。
+
+> **明示的な Non-Goal**: 本 Task は **循環 import を検出しない**。深すぎるネスト + 循環はどちらも `MaxDepthExceeded` として報告される。rule set 作者は自己責任で循環を避ける (flowrail 外部の静的解析ツールに委ねる)。
 
 - [ ] **Step 5: 既存 + 新テスト再実行**
 
 Run: `cargo test -p flowrail-core --test resolver_test 2>&1 | tail -20`
-Expected: 2 tests passed (loads entry + transitive, detects circular).
+Expected: 3 tests passed (loads entry + transitive, rejects excessive depth, accepts depth at limit).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/flowrail-core/src/ruleset/resolver.rs crates/flowrail-core/tests/resolver_test.rs crates/flowrail-core/tests/fixtures/invalid/circular-a.yml crates/flowrail-core/tests/fixtures/invalid/circular-b.yml
-git commit -m "feat(flowrail): detect circular imports in rule set resolver (E002)"
+cargo fmt --package flowrail-core && cargo clippy --package flowrail-core -- -D warnings
+git add crates/flowrail-core/src/ruleset/resolver.rs crates/flowrail-core/tests/resolver_test.rs
+git commit -m "feat(flowrail-core): add max_depth guard in rule set resolver (no cycle detection)"
 ```
 
 ---
@@ -1882,9 +2070,9 @@ phases:
 `crates/flowrail-core/tests/param_check_test.rs`:
 
 ```rust
-use flowrail::pipeline::loader as pipeline_loader;
-use flowrail::ruleset::loader as ruleset_loader;
-use flowrail::ruleset::param_check::check_pipeline_uses_against_rule_sets;
+use flowrail_core::pipeline::loader as pipeline_loader;
+use flowrail_core::ruleset::loader as ruleset_loader;
+use flowrail_core::ruleset::param_check::check_pipeline_uses_against_rule_sets;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -1949,7 +2137,7 @@ pub fn check_pipeline_uses_against_rule_sets(
 }
 
 fn collect_from_use_entry(
-    entry: &serde_yml::Value,
+    entry: &yaml::Value,
     rule_sets: &BTreeMap<String, RuleSet>,
     findings: &mut Vec<Finding>,
 ) {
@@ -2008,11 +2196,11 @@ fn collect_from_use_entry(
     }
 }
 
-fn is_template_expression(v: &serde_yml::Value) -> bool {
+fn is_template_expression(v: &yaml::Value) -> bool {
     matches!(v.as_str(), Some(s) if s.contains("{{") && s.contains("}}"))
 }
 
-fn value_matches_type(v: &serde_yml::Value, ty: &ParamType) -> bool {
+fn value_matches_type(v: &yaml::Value, ty: &ParamType) -> bool {
     match ty {
         ParamType::String => v.is_string(),
         ParamType::Integer => v.is_i64() || v.is_u64(),
@@ -2029,7 +2217,7 @@ fn value_matches_type(v: &serde_yml::Value, ty: &ParamType) -> bool {
     }
 }
 
-fn describe_value(v: &serde_yml::Value) -> &'static str {
+fn describe_value(v: &yaml::Value) -> &'static str {
     if v.is_string() {
         "string"
     } else if v.is_i64() || v.is_u64() {
@@ -2083,7 +2271,7 @@ git commit -m "feat(flowrail): validate uses parameter types against rule set sc
 `crates/flowrail-core/tests/template_test.rs`:
 
 ```rust
-use flowrail::ruleset::template::{collect_references, extract_templates};
+use flowrail_core::ruleset::template::{collect_references, extract_templates};
 
 #[test]
 fn extract_single_template_reference() {
@@ -2107,7 +2295,7 @@ bar:
   - "{{ c }}"
   - 123
 "#;
-    let value: serde_yml::Value = serde_yml::from_str(yaml).unwrap();
+    let value: yaml::Value = yaml::parse(yaml).unwrap();
     let all = extract_templates(&value);
     assert_eq!(all.len(), 2);
     assert!(all.iter().any(|(_, t)| t == "{{ a.b }}"));
@@ -2191,20 +2379,20 @@ pub fn collect_references(input: &str) -> Result<Vec<String>> {
     Ok(refs)
 }
 
-/// Walk any serde_yml::Value tree and return `(path, template_string)` pairs
+/// Walk any yaml::Value tree and return `(path, template_string)` pairs
 /// for every scalar string containing at least one `{{ ... }}`.
-pub fn extract_templates(value: &serde_yml::Value) -> Vec<(String, String)> {
+pub fn extract_templates(value: &yaml::Value) -> Vec<(String, String)> {
     let mut out = Vec::new();
     walk(value, &mut String::new(), &mut out);
     out
 }
 
-fn walk(value: &serde_yml::Value, path: &mut String, out: &mut Vec<(String, String)>) {
+fn walk(value: &yaml::Value, path: &mut String, out: &mut Vec<(String, String)>) {
     match value {
-        serde_yml::Value::String(s) if s.contains("{{") && s.contains("}}") => {
+        yaml::Value::String(s) if s.contains("{{") && s.contains("}}") => {
             out.push((path.clone(), s.clone()));
         }
-        serde_yml::Value::Sequence(seq) => {
+        yaml::Value::Sequence(seq) => {
             for (i, item) in seq.iter().enumerate() {
                 let saved = path.len();
                 path.push('/');
@@ -2213,7 +2401,7 @@ fn walk(value: &serde_yml::Value, path: &mut String, out: &mut Vec<(String, Stri
                 path.truncate(saved);
             }
         }
-        serde_yml::Value::Mapping(map) => {
+        yaml::Value::Mapping(map) => {
             for (k, v) in map {
                 if let Some(key) = k.as_str() {
                     let saved = path.len();
@@ -2287,9 +2475,9 @@ phases:
 `crates/flowrail-core/tests/lint_unknown_rule_set_test.rs`:
 
 ```rust
-use flowrail::lint::diagnostic::{DiagnosticKind, Severity};
-use flowrail::lint::rules::unknown_rule_set::check_unknown_rule_set;
-use flowrail::pipeline::loader as pipeline_loader;
+use flowrail_core::lint::diagnostic::{DiagnosticKind, Severity};
+use flowrail_core::lint::rules::unknown_rule_set::check_unknown_rule_set;
+use flowrail_core::pipeline::loader as pipeline_loader;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -2339,12 +2527,13 @@ pub enum Severity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticKind {
     UnknownRuleSet,        // E001
-    CircularImport,        // E002
+    // E002 CircularImport: 削除 (layer 撤回 + Non-Goals 遵守、2026-04-05 plan-review)
     ParamTypeMismatch,     // E003
     UnresolvedTemplate,    // E004
     InvalidProducedConsumed, // E005
     InvalidTriggerRewind,  // E006
     InvalidHookEvent,      // E007
+    SchemaError,           // E008: schema validation / IO / YAML parse errors (not E001)
     UnusedParam,           // W001
 }
 
@@ -2352,12 +2541,13 @@ impl DiagnosticKind {
     pub fn code(&self) -> &'static str {
         match self {
             DiagnosticKind::UnknownRuleSet => "E001",
-            DiagnosticKind::CircularImport => "E002",
+            // E002 は欠番 (旧 CircularImport を削除したため)
             DiagnosticKind::ParamTypeMismatch => "E003",
             DiagnosticKind::UnresolvedTemplate => "E004",
             DiagnosticKind::InvalidProducedConsumed => "E005",
             DiagnosticKind::InvalidTriggerRewind => "E006",
             DiagnosticKind::InvalidHookEvent => "E007",
+            DiagnosticKind::SchemaError => "E008",
             DiagnosticKind::UnusedParam => "W001",
         }
     }
@@ -2538,9 +2728,9 @@ phases:
 `crates/flowrail-core/tests/lint_produced_consumed_test.rs`:
 
 ```rust
-use flowrail::lint::diagnostic::{DiagnosticKind, Severity};
-use flowrail::lint::rules::invalid_produced_consumed::check_produced_consumed;
-use flowrail::pipeline::loader;
+use flowrail_core::lint::diagnostic::{DiagnosticKind, Severity};
+use flowrail_core::lint::rules::invalid_produced_consumed::check_produced_consumed;
+use flowrail_core::pipeline::loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
@@ -2658,10 +2848,10 @@ triggers:
 `crates/flowrail-core/tests/lint_trigger_rewind_test.rs`:
 
 ```rust
-use flowrail::lint::diagnostic::DiagnosticKind;
-use flowrail::lint::rules::invalid_trigger_rewind::check_trigger_rewind;
-use flowrail::pipeline::model::Phase;
-use flowrail::ruleset::loader;
+use flowrail_core::lint::diagnostic::DiagnosticKind;
+use flowrail_core::lint::rules::invalid_trigger_rewind::check_trigger_rewind;
+use flowrail_core::pipeline::model::Phase;
+use flowrail_core::ruleset::loader;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -2771,9 +2961,9 @@ integrations:
 `crates/flowrail-core/tests/lint_hook_event_test.rs`:
 
 ```rust
-use flowrail::lint::diagnostic::DiagnosticKind;
-use flowrail::lint::rules::invalid_hook_event::check_hook_events;
-use flowrail::pipeline::loader;
+use flowrail_core::lint::diagnostic::DiagnosticKind;
+use flowrail_core::lint::rules::invalid_hook_event::check_hook_events;
+use flowrail_core::pipeline::loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
@@ -2918,9 +3108,9 @@ checks:
 `crates/flowrail-core/tests/lint_unused_param_test.rs`:
 
 ```rust
-use flowrail::lint::diagnostic::{DiagnosticKind, Severity};
-use flowrail::lint::rules::unused_param::check_unused_params;
-use flowrail::ruleset::loader;
+use flowrail_core::lint::diagnostic::{DiagnosticKind, Severity};
+use flowrail_core::lint::rules::unused_param::check_unused_params;
+use flowrail_core::ruleset::loader;
 use std::path::PathBuf;
 
 fn fixture(rel: &str) -> PathBuf {
@@ -2962,8 +3152,8 @@ pub fn check_unused_params(rule_set: &RuleSet) -> Vec<Diagnostic> {
     let mut referenced: BTreeSet<String> = BTreeSet::new();
 
     // Scan all template strings in checks, uses, on_phase_complete, triggers, etc.
-    let whole_yaml: serde_yml::Value =
-        serde_yml::to_value(rule_set).unwrap_or(serde_yml::Value::Null);
+    let whole_yaml: yaml::Value =
+        yaml::to_value(rule_set).unwrap_or(yaml::Value::Null);
     for (_path, tmpl) in extract_templates(&whole_yaml) {
         if let Ok(refs) = collect_references(&tmpl) {
             for r in refs {
@@ -3015,6 +3205,15 @@ git commit -m "feat(flowrail): add lint rule for unused param warning (W001)"
 
 ## Task 17: Lint driver — 全ルール集約と CLI 統合
 
+> **実装時の分割推奨 (2026-04-05 plan-review 反映)**:
+> 本 Task は他のルール実装 Task (12-16、各 ~80 LOC) と比べて粒度が大きい (~344 LOC) ため、実装時は以下 2 サブタスクに分けて **別々にコミット** することを推奨する:
+>
+> 1. **Task 17a — Lint driver (library)**: `crates/flowrail-core/src/lint/driver.rs` + `crates/flowrail-core/src/lint/rules/param_type_mismatch.rs` (E003) + `crates/flowrail-core/src/lint/rules/unresolved_template.rs` (E004) + driver の unit test。pipeline/rule-set 自動判別 + import 解決 + 全 lint rule の wire + SchemaError 分類。~200 LOC
+> 2. **Task 17b — main.rs CLI 配線**: `crates/flowrail/src/main.rs` を ExitCode ベースに refactor + `crates/flowrail/tests/lint_cli_test.rs` で E2E テスト。~150 LOC
+>
+> 各 subtask 終了時に `cargo fmt --package <pkg>` + `cargo clippy --package <pkg> -- -D warnings` + `cargo test -p <pkg>` を実行する。
+
+
 **Files:**
 - Create: `crates/flowrail-core/src/lint/driver.rs`
 - Modify: `crates/flowrail-core/src/lint/mod.rs`
@@ -3033,9 +3232,17 @@ fn flowrail_bin() -> String {
     env!("CARGO_BIN_EXE_flowrail").to_string()
 }
 
+/// Binary crate tests resolve fixtures via the sibling `flowrail-core` crate
+/// because all lint/fmt test fixtures are centralized there (single source of
+/// truth). `CARGO_MANIFEST_DIR` points to `crates/flowrail/`, so we walk up one
+/// level to `crates/` and into `flowrail-core/tests/fixtures/`.
 fn fixture(rel: &str) -> PathBuf {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    PathBuf::from(manifest).join("tests/fixtures").join(rel)
+    PathBuf::from(manifest)
+        .parent()
+        .expect("crates/flowrail has parent crates/")
+        .join("flowrail-core/tests/fixtures")
+        .join(rel)
 }
 
 #[test]
@@ -3123,8 +3330,8 @@ pub fn lint_path(path: &Path) -> Result<LintReport> {
         path: path.to_path_buf(),
         source,
     })?;
-    let preview: serde_yml::Value =
-        serde_yml::from_str(&text).map_err(|source| FlowrailError::YamlParse {
+    let preview: yaml::Value =
+        yaml::parse(&text).map_err(|source| FlowrailError::YamlParse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -3165,14 +3372,7 @@ fn lint_pipeline_entry(path: &Path, report: &mut LintReport) -> Result<()> {
                 }
             }
             Err(e) => {
-                if let FlowrailError::CircularImport { cycle } = &e {
-                    report.diagnostics.push(Diagnostic::error(
-                        crate::lint::diagnostic::DiagnosticKind::CircularImport,
-                        format!("circular import detected: {}", cycle),
-                    ));
-                } else {
-                    report.diagnostics.push(schema_error_diagnostic(&e, &full));
-                }
+                report.diagnostics.push(schema_error_diagnostic(&e, &full));
             }
         }
     }
@@ -3196,6 +3396,12 @@ fn lint_pipeline_entry(path: &Path, report: &mut LintReport) -> Result<()> {
             .into_iter()
             .map(|d| d.with_file(path.to_path_buf())),
     );
+    // E003: param type mismatch (wraps `ruleset::param_check` into Diagnostic)
+    report.diagnostics.extend(
+        param_type_mismatch::check_param_types(&pipeline, &imported)
+            .into_iter()
+            .map(|d| d.with_file(path.to_path_buf())),
+    );
     for (_, rs) in &imported {
         report.diagnostics.extend(
             invalid_trigger_rewind::check_trigger_rewind(rs, &phase_ids)
@@ -3207,49 +3413,77 @@ fn lint_pipeline_entry(path: &Path, report: &mut LintReport) -> Result<()> {
                 .into_iter()
                 .map(|d| d.with_file(path.to_path_buf())),
         );
+        // E004: unresolved template reference (walks rule set YAML and checks
+        // that every `{{ ... }}` top-level identifier resolves against declared
+        // params / artifacts / phases / built-in context keys).
+        report.diagnostics.extend(
+            unresolved_template::check_unresolved_templates(rs, &pipeline.artifacts, &phase_ids)
+                .into_iter()
+                .map(|d| d.with_file(path.to_path_buf())),
+        );
     }
 
-    let _ = &pipeline; // pipeline used above; kept for future rule expansion
     Ok(())
 }
 
 fn lint_rule_set_entry(path: &Path, report: &mut LintReport) -> Result<()> {
     match resolver::resolve_from_entry(path) {
         Ok(graph) => {
-            let empty_phases: BTreeSet<String> = BTreeSet::new();
             for rs in &graph.rule_sets {
-                report.diagnostics.extend(
-                    invalid_trigger_rewind::check_trigger_rewind(rs, &empty_phases)
-                        .into_iter()
-                        .map(|d| d.with_file(path.to_path_buf())),
-                );
+                // NOTE: `check_trigger_rewind` is intentionally SKIPPED for
+                // standalone rule-set lint targets because there is no pipeline
+                // context to validate `rewind_to` phase IDs against. Running it
+                // with an empty phase set would produce false-positive E006 for
+                // every valid rule set. `rewind_to` is re-verified when the rule
+                // set is imported by a pipeline (see lint_pipeline_entry).
                 report.diagnostics.extend(
                     unused_param::check_unused_params(rs)
                         .into_iter()
                         .map(|d| d.with_file(path.to_path_buf())),
                 );
+                // E004 UnresolvedTemplate: rule set-scoped check (artifacts and
+                // phases contexts are empty; only declared params are known).
+                report.diagnostics.extend(
+                    unresolved_template::check_unresolved_templates(
+                        rs,
+                        &std::collections::BTreeMap::new(),
+                        &std::collections::BTreeSet::new(),
+                    )
+                    .into_iter()
+                    .map(|d| d.with_file(path.to_path_buf())),
+                );
             }
         }
         Err(e) => {
-            if let FlowrailError::CircularImport { cycle } = &e {
-                report.diagnostics.push(Diagnostic::error(
-                    crate::lint::diagnostic::DiagnosticKind::CircularImport,
-                    format!("circular import detected: {}", cycle),
-                ));
-            } else {
-                report.diagnostics.push(schema_error_diagnostic(&e, path));
-            }
+            report.diagnostics.push(schema_error_diagnostic(&e, path));
         }
     }
     Ok(())
 }
 
+/// Map any loader/resolver error to a Diagnostic with the correct category.
+///
+/// - `Io`, `YamlParse`, `SchemaValidation`, `MaxDepthExceeded` → `SchemaError` (E008)
+/// - Anything else we decide to widen later (e.g. explicit E00x codes per variant).
 fn schema_error_diagnostic(err: &FlowrailError, path: &Path) -> Diagnostic {
-    Diagnostic::error(
-        crate::lint::diagnostic::DiagnosticKind::UnknownRuleSet,
-        format!("{}", err),
-    )
-    .with_file(path.to_path_buf())
+    let kind = match err {
+        FlowrailError::Io { .. }
+        | FlowrailError::YamlParse { .. }
+        | FlowrailError::SchemaValidation { .. }
+        | FlowrailError::MaxDepthExceeded { .. } => {
+            crate::lint::diagnostic::DiagnosticKind::SchemaError
+        }
+        FlowrailError::UnknownRuleSet { .. } => {
+            crate::lint::diagnostic::DiagnosticKind::UnknownRuleSet
+        }
+        FlowrailError::ParamTypeMismatch { .. } => {
+            crate::lint::diagnostic::DiagnosticKind::ParamTypeMismatch
+        }
+        FlowrailError::UnresolvedTemplate { .. } => {
+            crate::lint::diagnostic::DiagnosticKind::UnresolvedTemplate
+        }
+    };
+    Diagnostic::error(kind, format!("{}", err)).with_file(path.to_path_buf())
 }
 ```
 
@@ -3269,13 +3503,12 @@ Edit `crates/flowrail/src/main.rs`:
 
 ```rust
 mod cli;
-mod error;
 
 use clap::Parser;
 use cli::{Cli, PipelineVerb, TopLevel};
-use error::Result;
-use flowrail::lint::driver::lint_path;
-use flowrail::lint::diagnostic::Severity;
+use flowrail_core::error::Result;
+use flowrail_core::lint::driver::lint_path;
+use flowrail_core::lint::diagnostic::Severity;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -3371,7 +3604,7 @@ git commit -m "feat(flowrail): wire lint driver with all rules and exit codes"
 `crates/flowrail-core/tests/fmt_test.rs`:
 
 ```rust
-use flowrail::fmt::format_yaml;
+use flowrail_core::fmt::format_yaml;
 
 #[test]
 fn formats_pipeline_reorders_keys() {
@@ -3445,6 +3678,10 @@ Expected: FAIL — fmt モジュール未実装。
 
 ```rust
 /// Canonical key order for top-level fields in a pipeline YAML.
+///
+/// Source of truth: spec §flowrail pipeline fmt L1355.
+/// `tests` and `on_phase_complete` are RULE-SET level, not pipeline level, and
+/// are intentionally excluded here.
 pub const PIPELINE_KEY_ORDER: &[&str] = &[
     "kind",
     "name",
@@ -3458,12 +3695,16 @@ pub const PIPELINE_KEY_ORDER: &[&str] = &[
     "uses",
     "triggers",
     "integrations",
-    "on_phase_complete",
-    "on_pipeline_start",
     "pre_pipeline_start",
-    "tests",
+    "on_pipeline_start",
+    "on_pipeline_complete",
 ];
 
+/// Canonical key order for top-level fields in a rule-set YAML.
+///
+/// Source of truth: spec §flowrail pipeline fmt L1354 (with `layer` removed per
+/// 2026-04-05 layer retraction). `tests` is a Phase 2 field and is currently
+/// excluded from Phase 1 (see Task 5 note).
 pub const RULE_SET_KEY_ORDER: &[&str] = &[
     "kind",
     "name",
@@ -3478,7 +3719,6 @@ pub const RULE_SET_KEY_ORDER: &[&str] = &[
     "on_phase_complete",
     "on_pipeline_start",
     "pre_pipeline_start",
-    "tests",
 ];
 
 pub fn canonical_order_for(kind: Option<&str>) -> &'static [&'static str] {
@@ -3515,11 +3755,11 @@ fn fxhash_u32(s: &str) -> u32 {
 pub mod key_order;
 
 use crate::error::{FlowrailError, Result};
-use serde_yml::Value;
+use yaml::Value;
 use std::path::PathBuf;
 
 pub fn format_yaml(input: &str) -> Result<String> {
-    let value: Value = serde_yml::from_str(input).map_err(|source| FlowrailError::YamlParse {
+    let value: Value = yaml::parse(input).map_err(|source| FlowrailError::YamlParse {
         path: PathBuf::from("<memory>"),
         source,
     })?;
@@ -3532,8 +3772,8 @@ pub fn format_yaml(input: &str) -> Result<String> {
 
     let reordered = reorder(value, order);
 
-    // Serialize with serde_yml (uses 2-space indentation by default)
-    let mut out = serde_yml::to_string(&reordered).map_err(|source| FlowrailError::YamlParse {
+    // Serialize via yaml abstraction layer (uses 2-space indentation by default)
+    let mut out = yaml::serialize(&reordered).map_err(|source| FlowrailError::YamlParse {
         path: PathBuf::from("<memory>"),
         source,
     })?;
@@ -3554,7 +3794,7 @@ fn reorder(value: Value, top_order: &[&str]) -> Value {
                 let bi = key_order::key_index(top_order, bk);
                 ai.cmp(&bi).then_with(|| ak.cmp(bk))
             });
-            let mut new_map = serde_yml::Mapping::new();
+            let mut new_map = yaml::Mapping::new();
             for (k, v) in entries {
                 new_map.insert(k, v);
             }
@@ -3691,12 +3931,12 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
                 let mut any_changed = false;
                 for path in paths {
                     let original = std::fs::read_to_string(&path).map_err(|source| {
-                        flowrail::error::FlowrailError::Io {
+                        flowrail_core::error::FlowrailError::Io {
                             path: path.clone(),
                             source,
                         }
                     })?;
-                    let formatted = flowrail::fmt::format_yaml(&original)?;
+                    let formatted = flowrail_core::fmt::format_yaml(&original)?;
                     if original == formatted {
                         continue;
                     }
@@ -3709,7 +3949,7 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `crates/flowrail/src/main.rs`:
                         print_unified_diff(&original, &formatted, &path);
                     }
                     std::fs::write(&path, &formatted).map_err(|source| {
-                        flowrail::error::FlowrailError::Io {
+                        flowrail_core::error::FlowrailError::Io {
                             path: path.clone(),
                             source,
                         }
@@ -3783,15 +4023,26 @@ fn flowrail_bin() -> String {
 
 #[test]
 fn emits_command_invoked_and_completed_with_run_id() {
+    // NOTE (2026-04-05 plan-review): do NOT use `pipeline lint --help` here.
+    // clap 4.6 calls `std::process::exit(0)` INSIDE `Cli::parse()` when it handles
+    // `--help`, so `command.completed` emit code is never reached and this test
+    // would fail with "expected at least 2 events". Use a fixture-based invocation
+    // that returns through real_main() normally.
     let dir = tempdir().unwrap();
     let events_path = dir.path().join("events.jsonl");
+    let fixture_pipeline = dir.path().join("minimal.yml");
+    std::fs::write(
+        &fixture_pipeline,
+        "kind: pipeline\nname: minimal\nversion: 1\nphases: []\n",
+    )
+    .unwrap();
 
     let out = Command::new(flowrail_bin())
         .env("FLOWRAIL_EVENTS_FILE", events_path.to_str().unwrap())
-        .args(["pipeline", "lint", "--help"])
+        .args(["pipeline", "lint", fixture_pipeline.to_str().unwrap()])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(0));
+    assert!(out.status.code().is_some(), "flowrail should exit normally");
 
     let text = std::fs::read_to_string(&events_path).unwrap();
     let lines: Vec<&str> = text.lines().collect();
@@ -3806,6 +4057,41 @@ fn emits_command_invoked_and_completed_with_run_id() {
     let rid2 = last["run"]["id"].as_str().unwrap();
     assert_eq!(rid1, rid2, "run.id must be stable within a single run");
     assert_eq!(rid1.len(), 36, "run.id should be a UUID string");
+}
+
+#[test]
+fn v14_event_stream_includes_all_phase1_event_types() {
+    // V14 (spec §Impact Analysis L2203): Phase 1 で期待される event types が
+    // 全て列挙される。Phase 1 では少なくとも `command.invoked` / `command.completed` /
+    // `ruleset.resolved` が発火する (Task 17 lint driver の resolver 呼び出し経由)。
+    let dir = tempdir().unwrap();
+    let events_path = dir.path().join("events.jsonl");
+    let fixture = dir.path().join("minimal.yml");
+    std::fs::write(
+        &fixture,
+        "kind: pipeline\nname: minimal\nversion: 1\nphases: []\n",
+    )
+    .unwrap();
+
+    Command::new(flowrail_bin())
+        .env("FLOWRAIL_EVENTS_FILE", events_path.to_str().unwrap())
+        .args(["pipeline", "lint", fixture.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    let text = std::fs::read_to_string(&events_path).unwrap();
+    let events: Vec<serde_json::Value> =
+        text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let event_types: std::collections::BTreeSet<String> = events
+        .iter()
+        .filter_map(|e| e["event"].as_str().map(String::from))
+        .collect();
+
+    // Phase 1 では以下は必ず存在する:
+    assert!(event_types.contains("command.invoked"));
+    assert!(event_types.contains("command.completed"));
+    // Phase 2 で追加される event types (state.loaded, phase.transition, trigger.fired,
+    // classifier.invoked, hook.fired, snapshot.created 等) はここに assert しない。
 }
 ```
 
@@ -3892,21 +4178,37 @@ pub fn emit(event_name: &str, payload: serde_json::Value) {
 
 - [ ] **Step 4: determinism スタブを先出し (now_iso)**
 
+> **実装順序の注意 (2026-04-05 plan-review 反映)**: Step 3 の `event/logger.rs` は `crate::determinism::now_iso()` を参照する。Step 3 を単独でコンパイル可能にするため、本 Step 4 (determinism module 作成) は Step 3 と「同一コミット」内で実施する必要がある。分離すると Step 3 終了時点で unresolved module エラーが発生する。
+
 `crates/flowrail-core/src/determinism/mod.rs`:
 
 ```rust
+/// Return an ISO-8601 timestamp string.
+///
+/// Priority:
+/// 1. `FLOWRAIL_NOW` env var (deterministic mode) → used verbatim (caller responsibility to
+///    supply a valid ISO-8601 string; we do NOT parse or validate it).
+/// 2. Wall clock → formatted as a true ISO-8601 `YYYY-MM-DDTHH:MM:SSZ` string using the
+///    `time` crate (added as a workspace dependency in Task 1).
+///
+/// NOTE (2026-04-05 plan-review): The previous implementation used `format!("{}Z", secs)`
+/// which produced invalid strings like `"1712345678Z"`. That broke V14 event_type
+/// validation and downstream consumers expecting ISO-8601. We now use the `time` crate
+/// for a proper implementation.
 pub fn now_iso() -> String {
     if let Ok(fixed) = std::env::var("FLOWRAIL_NOW") {
         return fixed;
     }
-    // Phase 1 uses a pragmatic fallback; Phase 2 may adopt `time` crate.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("{}Z", secs)
+    // Use the `time` crate (added to workspace.dependencies) to format a valid
+    // ISO-8601 wall-clock timestamp. The crate has zero dependencies on chrono.
+    use time::format_description::well_known::Rfc3339;
+    time::OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 ```
+
+> **Task 1 前提条件追加**: `[workspace.dependencies]` に `time = { version = "0.3", default-features = false, features = ["std", "formatting"] }` を追加する (Phase 1 で determinism::now_iso が使用)。
 
 - [ ] **Step 5: lib.rs に event + determinism を追加**
 
@@ -3927,14 +4229,14 @@ pub mod ruleset;
 Add at the top of `real_main()` in `crates/flowrail/src/main.rs`:
 
 ```rust
-    flowrail::event::logger::emit(
+    flowrail_core::event::logger::emit(
         "command.invoked",
         serde_json::json!({
             "argv": std::env::args().collect::<Vec<_>>(),
         }),
     );
     let result = run_cli();
-    flowrail::event::logger::emit(
+    flowrail_core::event::logger::emit(
         "command.completed",
         serde_json::json!({
             "exit_code": result.as_ref().map(|c| format!("{:?}", c)).unwrap_or_else(|e| format!("err:{}", e)),
@@ -3993,9 +4295,18 @@ fn flowrail_bin() -> String {
 
 #[test]
 fn deterministic_mode_produces_byte_identical_events() {
+    // V13 (spec §Impact Analysis L2199): deterministic mode で 2 回実行 → sha256 一致
+    // NOTE (2026-04-05 plan-review): `--help` は clap が内部で exit するため使わない。
+    // minimal fixture 経由で real_main() を完全に通す。
     let dir = tempdir().unwrap();
     let file_a = dir.path().join("a.jsonl");
     let file_b = dir.path().join("b.jsonl");
+    let fixture = dir.path().join("minimal.yml");
+    std::fs::write(
+        &fixture,
+        "kind: pipeline\nname: minimal\nversion: 1\nphases: []\n",
+    )
+    .unwrap();
 
     let fixed_now = "2026-04-05T10:00:00Z";
     let fixed_seed = "deadbeef-dead-beef-dead-beefdeadbeef";
@@ -4005,7 +4316,7 @@ fn deterministic_mode_produces_byte_identical_events() {
             .env("FLOWRAIL_EVENTS_FILE", target.to_str().unwrap())
             .env("FLOWRAIL_NOW", fixed_now)
             .env("FLOWRAIL_SEED", fixed_seed)
-            .args(["pipeline", "lint", "--help"])
+            .args(["pipeline", "lint", fixture.to_str().unwrap()])
             .output()
             .unwrap();
     }
@@ -4015,6 +4326,12 @@ fn deterministic_mode_produces_byte_identical_events() {
     assert_eq!(a, b, "two runs under deterministic mode should produce identical event streams");
     assert!(a.contains(fixed_now), "events should contain fixed timestamp");
     assert!(a.contains(fixed_seed), "run.id should be derived from FLOWRAIL_SEED when provided");
+
+    // V13 strict: sha256 一致も検証
+    use sha2::{Digest, Sha256};
+    let hash_a = format!("{:x}", Sha256::digest(a.as_bytes()));
+    let hash_b = format!("{:x}", Sha256::digest(b.as_bytes()));
+    assert_eq!(hash_a, hash_b, "sha256 of two deterministic runs must match");
 }
 ```
 
@@ -4025,22 +4342,27 @@ Expected: FAIL — run.id が uuid_v4 ランダムで非決定。
 
 - [ ] **Step 3: determinism/mod.rs を拡張**
 
-Replace `crates/flowrail-core/src/determinism/mod.rs`:
+Replace `crates/flowrail-core/src/determinism/mod.rs` (Task 20 で定義した `now_iso` は保持、`run_id` と `is_deterministic` を追加):
 
 ```rust
+// `now_iso` は Task 20 で実装済み (ISO-8601 with `time` crate)。ここでは
+// `run_id` と `is_deterministic` だけ追加する。
+
 pub fn now_iso() -> String {
     if let Ok(fixed) = std::env::var("FLOWRAIL_NOW") {
         return fixed;
     }
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("{}Z", secs)
+    use time::format_description::well_known::Rfc3339;
+    time::OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
 }
 
 pub fn run_id() -> String {
     if let Ok(seed) = std::env::var("FLOWRAIL_SEED") {
+        // Phase 1 では seed 文字列をそのまま run.id に使用する (spec L2855 の
+        // `seeded v5 UUID` は Phase 2 で再評価)。用途は deterministic test の
+        // byte-identity のみなので文字列そのままで十分。
         return seed;
     }
     uuid::Uuid::new_v4().to_string()
@@ -4284,10 +4606,15 @@ fn flowrail_bin() -> String {
     env!("CARGO_BIN_EXE_flowrail").to_string()
 }
 
+/// Integration fixtures live in `crates/flowrail-core/tests/fixtures/integration/`
+/// (single source of truth). Binary crate tests resolve them by walking up from
+/// `crates/flowrail/` to `crates/`.
 fn fixture(rel: &str) -> PathBuf {
     let manifest = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest)
-        .join("tests/fixtures/integration")
+        .parent()
+        .expect("crates/flowrail has parent crates/")
+        .join("flowrail-core/tests/fixtures/integration")
         .join(rel)
 }
 
@@ -4476,7 +4803,7 @@ flowrail pipeline fmt --diff path/to/feature-dev.yml
 | Code | Meaning |
 |------|---------|
 | E001 | unknown rule set in \`uses\` |
-| E002 | circular imports detected |
+| E008 | schema / IO / YAML parse / max_depth error |
 | E003 | parameter type mismatch |
 | E004 | unresolved template reference |
 | E005 | invalid \`produced_by\` / \`consumed_by\` |
@@ -4524,15 +4851,58 @@ git commit -m "docs(flowrail): add Phase 1 README with usage and diagnostics"
 
 Phase 1 が完了したと見なすための基準:
 
-1. **全テスト PASS**: `cargo test` が 20+ のテストを全て pass する
+### 機能・品質基準
+
+1. **全テスト PASS**: `cargo test --workspace --locked` が全 test を pass する
 2. **`flowrail pipeline lint feature-dev.yml` が clean** (exit 0)
-3. **`flowrail pipeline lint` が 7 種のエラー + 1 種の警告を正しく検出** (E001-E007, W001)
+3. **`flowrail pipeline lint` が 7 種のエラー + 1 種の警告を正しく検出** (E001, E003-E008, W001; E002 は欠番)
 4. **`flowrail pipeline fmt --check` が未整形ファイルで exit 1、整形済みで exit 0**
-5. **FLOWRAIL_EVENTS_FILE 指定時、command.invoked/completed が run.id 付きで出力される**
-6. **FLOWRAIL_NOW + FLOWRAIL_SEED 指定時、2 回の同一実行が byte-identical な JSONL を生成**
-7. **release バイナリが 20MB 以下**
+5. **FLOWRAIL_EVENTS_FILE 指定時、Phase 1 event types (command.invoked, command.completed, ruleset.resolved 等) が run.id 付きで出力される**
+6. **FLOWRAIL_NOW + FLOWRAIL_SEED 指定時、2 回の同一実行が byte-identical な JSONL を生成 + sha256 が一致**
+7. **release バイナリが 20MB 以下** (超過時は `[profile.release]` の `opt-level = "z"` + `strip = true` で調整)
 8. **`bin/flowrail` symlink 経由で PATH から呼び出せる**
-9. **新 spec の Phase 1 項目 10 項 (Rust init, model, schema, imports, circular, template, semantic lint, fmt, event stream, deterministic mode) が全て実装されている**
+9. **`cargo fmt --all` / `cargo clippy --workspace -- -D warnings` が clean**
+10. **`cargo build --locked --workspace` がクリーン clone 直後に成功 (V15)**
+
+### Must-Verify Checklist (spec §Impact Analysis §5 V1-V15 の反映)
+
+| # | 項目 | Phase 1 対象 | 検証方法 | 対応 Task |
+|---|-----|:-:|---------|---------|
+| V1 | continue skill 互換性 (state.json → Pipeline Detection) | — | Phase 2 で state.json 実装後 | Phase 2 Task |
+| V2 | handover skill 互換性 (coexistence) | — | Phase 2 で state.json 実装後 | Phase 2 Task |
+| V3 | linear-sync `resolve_ticket` AskUserQuestion + persist | — | Phase 2 で integration hooks 実装後 | Phase 2 Task |
+| V4 | kanban skill の active_tasks 読み出し | — | Phase 2 で state.json 実装後 | Phase 2 Task |
+| V5 | 複数 worktree の state 分離 | — | Phase 2 で state.json 実装後 | Phase 2 Task |
+| V6 | `flowrail run step` 冪等性 | — | Phase 2 で `flowrail run` 実装後 | Phase 2 Task |
+| V7 | paused + `--classifier-response` | — | Phase 2 で `flowrail run` 実装後 | Phase 2 Task |
+| **V8** | **`pipeline fmt` key order (pipeline vs rule-set 区別)** | **✅** | Task 18 test `formats_pipeline_vs_rule_set_uses_different_key_order` | Task 18 |
+| **V9** | **標準 rule set catalog 15 primitive + 10 recipe が spec と一致** | ⚠ | Phase B (Standard Rule Set Catalog) で catalog 作成後。Phase 1 は lint 側のみ | Phase B Task |
+| V10 | `.flowrail/*.tmp.*` atomic write crash recovery | — | Phase 2 で state.json 書き込み実装後 (spec §4.4 を Phase 2 に移送) | Phase 2 Task |
+| **V11** | **`CLAUDE_SESSION_ID` / `CLAUDE_PROJECT_DIR` hook pass-through** | **✅** | Task 23 Step 4 に env var echo hook + tmp ファイル assert を追加 | Task 23 |
+| V12 | `phase-summaries/*.yml` → `state.json` schema migration | — | Phase 2 で state.json + `flowrail state import` 実装後 | Phase 2 Task |
+| **V13** | **Deterministic Mode (JSONL byte-identity + sha256 一致)** | **✅** | Task 21 Step 3 に `sha256` 比較を追加 | Task 21 |
+| **V14** | **Event Stream 構造 (全 Phase 1 event type が列挙)** | **✅** | Task 20 test に `jq '.event_type'` で expected event types 全列挙を assert | Task 20 |
+| **V15** | **Cargo.lock 固定ビルド (`cargo build --locked --workspace`)** | **✅** | Task 23 Step 1 前に追加 | Task 23 |
+
+**Phase 1 で実装する V 項目**: V8, V11, V13, V14, V15 (5 項目)
+**Phase 2 以降に Deferred**: V1-V7, V10, V12 (9 項目、`flowrail run` / state.json / integration hooks 実装後)
+**Phase B に Deferred**: V9 (Standard Rule Set Catalog 作成後)
+
+> **注 (2026-04-05 plan-review 反映)**: 旧 Self-Review criterion #9 は「新 spec の Phase 1 項目 10 項が全て実装」と記載していたが、Phase 1 (pipeline lint + fmt MVP) のスコープは `flowrail Core 5 概念` のうち Rule Set Resolver の lint 側のみであり、State Machine / Artifact Lifecycle / 4 Primitive Checks / Hook Executor / 8 Built-in Directives runtime は Phase 2 で実装される。この境界を Self-Review で明示的に分離した。
+
+### Phase 1 Scope Clarification
+
+本 plan は **`flowrail pipeline lint` + `flowrail pipeline fmt` MVP** のみを対象とする。spec §flowrail Core 5 概念のうち以下の実装範囲:
+
+| 概念 | Phase 1 (本 plan) | Phase 2 (次 plan) |
+|------|:--:|:--:|
+| Rule Set Resolver | lint/fmt の静的解析部分 ✅ | runtime 評価 + template 実行 |
+| Artifact Lifecycle | model 定義のみ ✅ | runtime verification/validation |
+| State Machine | — | runtime 実装 |
+| 4 Core Primitive Checks | 型定義のみ | runtime 実装 |
+| Hook Executor | model 定義のみ | runtime 実装 (hook_command directive) |
+| 8 Built-in Directives | schema 宣言のみ | runtime dispatch |
+| Testing Primitives | — | Phase 2 (`tests:` section 復活) |
 
 ---
 
@@ -4540,11 +4910,44 @@ Phase 1 が完了したと見なすための基準:
 
 ### minijinja との統合方針 (Task 11)
 
-Phase 1 では pragmatic な regex ベースの template 参照抽出を採用した。これは:
-- 私的 API (`minijinja::machinery`) が patch バージョン間で不安定なため
-- Phase 1 の lint が要求する情報は「識別子の top-level 参照のみ」という限定された情報で足りるため
+**2026-04-05 plan-review 更新**: Codex review の指摘を受けて方針を改訂。
 
-Phase 2 で実 LLM + rule set evaluation を実装する際には、`minijinja::Environment::compile_expression` 経由の公開 API で template 評価を行う。その時点で regex 実装は置き換え対象になる。
+Phase 1 の template 参照抽出は、minijinja の**公式公開 API** `Environment::compile_expression(...)` + `Expression::undeclared_variables()` を使用する。旧方針の「regex 実装 → Phase 2 で minijinja に置換」は以下の問題があった:
+
+- 旧 regex は `{{ a + b }}` のような valid 式を false-positive で reject
+- `{% for item in list %}` などの制御ブロック構文に対応できない
+- Codex 指摘: `undeclared_variables()` は patch バージョン間で stable な API であり、「機械的抽出の不安定さ」は事実誤認
+
+**Phase 1 実装**:
+
+```rust
+use minijinja::{Environment, UndefinedBehavior};
+
+pub fn collect_references(text: &str) -> Result<Vec<String>, TemplateError> {
+    let mut env = Environment::new();
+    env.set_undefined_behavior(UndefinedBehavior::Strict);
+    let expr = env.compile_expression(text)?; // 構文エラー検出
+    let vars: Vec<String> = expr.undeclared_variables(true).into_iter().collect();
+    Ok(vars)
+}
+```
+
+構文エラー検出は `compile_expression` が担うため、独自の「trailing operator heuristic」は不要 (false positive 除去)。
+
+**dependency**: `minijinja = { version = "2.19", default-features = false, features = ["builtins", "macros"] }` を `crates/flowrail-core/Cargo.toml` に追加 (Task 1 の dev-dependencies ではなく本 dependencies)。
+
+### Task 17 exit code 分離 (2026-04-05 plan-review 反映)
+
+Plan の Task 17 main.rs は以下の exit code を返す:
+
+| Code | 意味 | 例 |
+|------|------|---|
+| 0 | lint clean | エラーも warning もなし |
+| 1 | warnings only | W001 のみ検出 |
+| 2 | lint errors | E001-E008 いずれかを検出 |
+| **64** | **command/invocation error** | ファイル not found, schema file 読み込み失敗, clap parse error 等 |
+
+旧 plan では lint errors と command errors の両方を exit 2 に流しており、consumer が区別できなかった。本改訂で exit 64 (POSIX sysexits.h `EX_USAGE` に準拠) を command error 用に予約する。`main()` で `real_main()` の Err 戻りは exit 64 にマップ、Ok(ExitCode) はそのまま返す。
 
 ### Cluster 1 回帰 lint ルールの取り込み
 
@@ -4571,4 +4974,20 @@ Task 1 (init) → Task 2 (error) → Task 3 (cli) →
              └─ Task 22 (integration) → Task 23 (symlink + smoke) → Task 24 (README)
 ```
 
-Task 12 から 16 までは独立した lint ルールなので並列で subagent に dispatch 可能。Task 17 はそれらを集約するため全員の完了を待つ。
+Task 12 から 15 までは独立した lint ルールなので並列で subagent に dispatch 可能。**Task 16 (unused_param W001) は Task 11 (template) の `collect_references` / `extract_templates` を import するため、Task 11 完了を待つ必要がある** (2026-04-05 plan-review 指摘)。Task 17 は全 rule を集約するため全員の完了を待つ。
+
+**依存グラフ (正確版)**:
+
+```
+Task 1 → Task 2.0 (yaml) → Task 2 → Task 3 → Task 4 → Task 5 → Task 6 → Task 7 → Task 8 → Task 9
+                                                                                          ↓
+                          ┌───────────────────┬───────┬───────┬───────┬───────┐
+                          ↓                   ↓       ↓       ↓       ↓       ↓
+                     Task 10               Task 11  Task 12  Task 13 Task 14 Task 15
+                                              ↓
+                                           Task 16 (depends on Task 11)
+                                              ↓
+                                           Task 17 (aggregates 10-16)
+                                              ↓
+                                           Task 18-24
+```
