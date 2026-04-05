@@ -117,6 +117,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "belt"
+version = "0.1.0"
+dependencies = [
+ "belt-core",
+ "clap",
+ "insta",
+ "miette",
+ "pretty_assertions",
+ "tempfile",
+]
+
+[[package]]
+name = "belt-core"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "insta",
+ "jsonschema",
+ "miette",
+ "minijinja",
+ "notify",
+ "pretty_assertions",
+ "regex",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "belt-dev"
+version = "0.1.0"
+dependencies = [
+ "belt-core",
+ "clap",
+ "insta",
+ "miette",
+ "pretty_assertions",
+ "tempfile",
+]
+
+[[package]]
+name = "belt-tui"
+version = "0.1.0"
+dependencies = [
+ "belt-core",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -312,45 +363,6 @@ name = "fastrand"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f"
-
-[[package]]
-name = "flowrail"
-version = "0.1.0"
-dependencies = [
- "clap",
- "flowrail-core",
- "insta",
- "miette",
- "pretty_assertions",
- "tempfile",
-]
-
-[[package]]
-name = "flowrail-core"
-version = "0.1.0"
-dependencies = [
- "glob",
- "insta",
- "jsonschema",
- "miette",
- "minijinja",
- "notify",
- "pretty_assertions",
- "regex",
- "serde",
- "serde-saphyr",
- "serde_json",
- "tempfile",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "flowrail-tui"
-version = "0.1.0"
-dependencies = [
- "flowrail-core",
-]
 
 [[package]]
 name = "fluent-uri"
