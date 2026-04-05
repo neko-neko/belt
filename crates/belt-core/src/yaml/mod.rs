@@ -59,6 +59,12 @@ pub enum YamlError {
 // ---------------------------------------------------------------------------
 
 /// Duplicate-key handling policy.
+///
+/// **Phase 1 stub**: Only [`DuplicateKeyPolicy::Error`] is actually honored
+/// (via the `serde-saphyr` default). [`DuplicateKeyPolicy::FirstWins`] and
+/// [`DuplicateKeyPolicy::LastWins`] are declared for forward compatibility
+/// and have no runtime effect in Phase 1. Full wiring into the YAML backend
+/// is deferred to Phase 2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DuplicateKeyPolicy {
     /// Reject duplicates as an error. This is the default and matches the
@@ -71,8 +77,12 @@ pub enum DuplicateKeyPolicy {
     LastWins,
 }
 
-/// Resource budget for parsing. Phase 1 only exposes these as a stub —
-/// they are wired into the backend in Phase 2 once saphyr's API stabilizes.
+/// Resource budget for parsing.
+///
+/// **Phase 1 stub**: This struct is exposed for forward compatibility but
+/// [`parse_with_options`] currently ignores all fields and always uses an
+/// unlimited budget. The full wiring into the YAML backend is deferred to
+/// Phase 2 once saphyr's API stabilizes.
 #[derive(Debug, Clone, Copy)]
 pub struct Budget {
     /// Maximum number of anchors.
@@ -94,6 +104,12 @@ impl Default for Budget {
 }
 
 /// Options controlling a parse call.
+///
+/// **Phase 1 stub**: This struct is exposed for forward compatibility but
+/// [`parse_with_options`] currently ignores all fields and always uses
+/// [`DuplicateKeyPolicy::Error`] (the `serde-saphyr 0.0.23` default) and an
+/// unlimited budget. The full wiring into the YAML backend is deferred to
+/// Phase 2.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct YamlOptions {
     /// Duplicate-key policy.
@@ -425,13 +441,14 @@ impl<'de> Deserialize<'de> for Value {
 /// [`YamlError::DuplicateKey`] when the default
 /// [`DuplicateKeyPolicy::Error`] rejects a duplicate.
 pub fn parse<T: DeserializeOwned>(text: &str) -> Result<T, YamlError> {
-    parse_with_options(text, &YamlOptions::default())
+    parse_with_options(text, YamlOptions::default())
 }
 
 /// Parses `text` as YAML into a typed value `T` with custom [`YamlOptions`].
 ///
 /// Phase 1 wires only the default saphyr options; the `_options` parameter
-/// is a forward-compatibility stub.
+/// is a forward-compatibility stub. Takes [`YamlOptions`] by value because
+/// the struct is [`Copy`] and small.
 ///
 /// # Errors
 ///
@@ -439,7 +456,7 @@ pub fn parse<T: DeserializeOwned>(text: &str) -> Result<T, YamlError> {
 /// [`YamlError::DuplicateKey`] on duplicate-key rejection.
 pub fn parse_with_options<T: DeserializeOwned>(
     text: &str,
-    _options: &YamlOptions,
+    _options: YamlOptions,
 ) -> Result<T, YamlError> {
     match serde_saphyr::from_str::<T>(text) {
         Ok(v) => Ok(v),
@@ -739,6 +756,14 @@ fn needs_quoting(s: &str) -> bool {
     if s.starts_with(|c: char| c.is_whitespace()) || s.ends_with(|c: char| c.is_whitespace()) {
         return true;
     }
+    // Strings that begin with a YAML block indicator must be quoted even if
+    // none of their characters are YAML-special in isolation. Otherwise the
+    // emitter would write e.g. `- - foo` (a nested sequence) instead of the
+    // scalar `"- foo"`, and shell argv strings like "--help" or regex patterns
+    // starting with "?" would be mis-parsed. See `needs_quoting_*` tests.
+    if starts_with_indicator(s) {
+        return true;
+    }
     for c in s.chars() {
         if is_yaml_special_char(c) {
             return true;
@@ -748,6 +773,34 @@ fn needs_quoting(s: &str) -> bool {
         }
     }
     false
+}
+
+/// Returns `true` if `s` starts with a YAML block indicator that would cause
+/// a plain scalar to be mis-parsed at the start of a line.
+///
+/// Specifically:
+/// - The document markers `---` and `...`.
+/// - `-`, `?`, or `:` when they are the only character or are followed by a
+///   space or tab (these are YAML's block sequence entry, complex mapping key,
+///   and block mapping value indicators).
+fn starts_with_indicator(s: &str) -> bool {
+    if s == "---" || s == "..." {
+        return true;
+    }
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !matches!(first, '-' | '?' | ':') {
+        return false;
+    }
+    match chars.next() {
+        // Lone indicator character at the start of a line is also a YAML
+        // block marker (e.g. `-` on its own line = empty sequence item).
+        None => true,
+        Some(next) if next == ' ' || next == '\t' => true,
+        _ => false,
+    }
 }
 
 fn is_reserved_word(s: &str) -> bool {
@@ -1660,6 +1713,37 @@ mod tests {
         for n in ["0", "1", "-1", "3.14", "1e9", "1.0e-9"] {
             assert!(needs_quoting(n), "{n} should be quoted");
         }
+    }
+
+    #[test]
+    fn needs_quoting_leading_dash_followed_by_space() {
+        assert!(needs_quoting("- leading"));
+        assert!(needs_quoting("- "));
+        assert!(needs_quoting("-\ttab"));
+    }
+
+    #[test]
+    fn needs_quoting_lone_dash() {
+        // "-" alone is also a block indicator at the start of a line.
+        // (YAML treats `-` followed by EOL as an empty sequence item.)
+        // Quoting it is the safest option for round-trip.
+        assert!(needs_quoting("-"));
+    }
+
+    #[test]
+    fn needs_quoting_leading_question_followed_by_space() {
+        assert!(needs_quoting("? key"));
+        assert!(needs_quoting("?"));
+    }
+
+    #[test]
+    fn needs_quoting_document_start_marker() {
+        assert!(needs_quoting("---"));
+    }
+
+    #[test]
+    fn needs_quoting_document_end_marker() {
+        assert!(needs_quoting("..."));
     }
 
     #[test]

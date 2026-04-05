@@ -126,3 +126,33 @@ fn value_get_helpers() {
     assert!(items.is_sequence());
     assert_eq!(items.as_sequence().map(<[_]>::len), Some(2));
 }
+
+#[test]
+fn round_trip_string_with_leading_dash_whitespace() {
+    let original: Vec<String> = vec!["-v".into(), "--help".into(), "- foo".into()];
+    let yaml = yaml::serialize(&original).expect("serialize ok");
+    let back: Vec<String> = yaml::parse(&yaml).expect("parse ok");
+    assert_eq!(back, original);
+}
+
+#[test]
+fn round_trip_string_with_leading_question_mark() {
+    let original: Vec<String> = vec!["? key".into(), "?".into()];
+    let yaml = yaml::serialize(&original).expect("serialize ok");
+    let back: Vec<String> = yaml::parse(&yaml).expect("parse ok");
+    assert_eq!(back, original);
+}
+
+#[test]
+fn round_trip_string_document_markers() {
+    #[derive(Debug, Deserialize, Serialize, PartialEq)]
+    struct Doc {
+        marker: String,
+    }
+    let original = Doc {
+        marker: "---".into(),
+    };
+    let yaml = yaml::serialize(&original).expect("serialize ok");
+    let back: Doc = yaml::parse(&yaml).expect("parse ok");
+    assert_eq!(back, original);
+}
