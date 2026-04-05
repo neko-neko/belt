@@ -452,10 +452,27 @@ belt-core = { path = "../belt-core" }
 //! belt-core は **pure runtime library**。原則 8 (3 audience separation) により、
 //! lint/fmt は本 crate に含めず、belt-dev binary crate の private module として配置する。
 
+// Test/bench code は assertions で `.unwrap()` / `.expect()` / `panic!()` を多用するため、
+// workspace.lints.clippy の unwrap_used / expect_used / panic warn を test context では
+// 許可する (2026-04-05 plan-review Finding 5 反映)。production code では依然として warn。
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 // module 宣言は後続 Task で追加
 ```
 
 注: `#![forbid(unsafe_code)]` は `[workspace.lints.rust]` の `unsafe_code = "forbid"` で宣言済みのため、ファイル冒頭への記述は不要 (workspace lint 継承で等価)。
+
+> **⚠ Integration tests の扱い**: `#![cfg_attr(test, allow(...))]` は **unit tests** (`#[cfg(test)] mod tests { ... }` in `src/`) にのみ適用される。Integration tests (`tests/*.rs`) は各ファイルが独立した crate root として compile されるため、workspace.lints が個別に適用される。以下のいずれかの方針で対処すること:
+>
+> 1. 各 `tests/*.rs` 冒頭に `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` を明示 (**本 plan で採用**)
+> 2. または tests 内で `.unwrap()` / `.expect()` を使わず、`?` operator + `-> Result<(), Box<dyn Error>>` で書く
+>
+> 本 plan では Task 2 以降の全 integration test (tests/yaml_abstraction_test.rs, tests/loader_test.rs, tests/resolver_test.rs, tests/lint_cli_test.rs, tests/fmt_test.rs 等) の先頭に方針 1 の allow 属性を追加する。Task 1 Step 6.5 (新規) で template として以下を明示:
+>
+> ```rust
+> // crates/{belt-core,belt-dev}/tests/*.rs の冒頭に追加:
+> #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+> ```
 
 - [ ] **Step 8: `crates/belt-dev/src/main.rs` 初期化** (Phase 1 MVP entrypoint、後続 Task で clap + lint dispatch を追加)
 
@@ -487,6 +504,11 @@ fn main() {
 //! 後続 Task で以下のモジュールを追加する:
 //!   - Task 12 以降: `pub mod lint;`
 //!   - Task 19 以降: `pub mod fmt;`
+
+// Test/bench code は assertions で `.unwrap()` / `.expect()` / `panic!()` を多用するため、
+// workspace.lints.clippy の unwrap_used / expect_used / panic warn を test context では
+// 許可する (2026-04-05 plan-review Finding 5 反映)。production code では依然として warn。
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 // module 宣言は Task 12 以降で追加
 ```
@@ -564,7 +586,9 @@ git commit -m "feat: initialize Cargo workspace with 4 crates and workspace lint
 
 ## Task 2.0: YAML 抽象層 (`crates/belt-core/src/yaml/`)
 
-**前提**: spec §YAML Abstraction Layer L2563-2587 が Phase 1 必須と規定。serde-saphyr のような YAML backend を wrap し、他 module は `belt_core::yaml::{parse, parse_value, serialize, Value, Mapping, YamlError}` のみを import する。backend 切替時の変更範囲を最小化する。
+**前提**: spec §YAML Abstraction Layer L2563-2587 が Phase 1 必須と規定。serde-saphyr のような YAML backend を wrap し、他 module は `belt_core::yaml::{parse, parse_value, serialize, to_value, from_value, Value, Mapping, YamlError}` のみを import する。backend 切替時の変更範囲を最小化する。
+
+> **⚠ 重要 (2026-04-05 plan-review 反映)**: `serde_yml` は **使用禁止** (spec security 決定: unmaintained, RUSTSEC-2025-0068 unsound)。Phase 1 の `serialize()` は serde-saphyr に emitter が無いため、**独自 minimal emitter を Step 2.5 で実装する**。`serde_json` 経由の round-trip を **public contract から排除** し、`to_value`/`from_value` は `yaml::Value` との相互変換として契約に明記する。
 
 **Files:**
 - Create: `crates/belt-core/src/yaml/mod.rs`
@@ -633,13 +657,131 @@ Expected: FAIL — `belt_core::yaml` module が存在しない。
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
-/// Dynamic YAML value type. Re-exported from the backend.
-/// Phase 1 uses `serde_json::Value` as the neutral intermediate representation
-/// because it has a stable tree API that works for both YAML and JSON.
-pub type Value = serde_json::Value;
+/// Dynamic YAML value type (backend-agnostic).
+///
+/// Phase 1 uses an internal `Value` enum that mirrors the subset of YAML 1.2
+/// needed for Pipeline/RuleSet. This avoids depending on `serde_yml` (banned)
+/// or `serde_json::Value` (which lacks YAML-specific constructs like non-string
+/// mapping keys).
+///
+/// 2026-04-05 plan-review F11 反映: 以前は `pub type Value = serde_json::Value`
+/// としていたが、Task 10/11/12/16/18 が `Value::Mapping`/`is_mapping()`/`as_mapping()`/
+/// `as_sequence()`/`Mapping::new()` 等の serde_yml-style API を使っていたため
+/// compile error を引き起こしていた。独自 enum で統一する。
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Null,
+    Bool(bool),
+    /// Integer value. `i64` is sufficient for Phase 1 (pipeline version, depth, etc.).
+    Int(i64),
+    /// Floating-point value. Rarely used in Pipeline/RuleSet but included for completeness.
+    Float(f64),
+    String(String),
+    Sequence(Vec<Value>),
+    Mapping(Mapping),
+}
 
-/// YAML mapping alias (dynamic).
-pub type Mapping = serde_json::Map<String, serde_json::Value>;
+/// YAML mapping preserving insertion order.
+///
+/// Key は `Value` 型 (YAML 1.2 仕様準拠、非 string key も受け入れる)。
+/// 順序保持のため `Vec<(Value, Value)>` で実装する (BTreeMap だと key order が失われる)。
+/// `fmt` の canonical emitter は挿入順 or spec-specified key order に従って serialize する。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Mapping {
+    entries: Vec<(Value, Value)>,
+}
+
+impl Mapping {
+    /// Create an empty mapping.
+    pub fn new() -> Self {
+        Self { entries: Vec::new() }
+    }
+
+    /// Insert a key-value pair. If the key already exists, the old value is replaced
+    /// but the insertion order is preserved at the original position.
+    pub fn insert(&mut self, key: Value, value: Value) {
+        for entry in &mut self.entries {
+            if entry.0 == key {
+                entry.1 = value;
+                return;
+            }
+        }
+        self.entries.push((key, value));
+    }
+
+    /// Iterate over entries in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = &(Value, Value)> {
+        self.entries.iter()
+    }
+
+    /// Lookup by key (linear scan, Phase 1 ~100 keys max per mapping).
+    pub fn get(&self, key: &Value) -> Option<&Value> {
+        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Number of entries.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// True if empty.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl IntoIterator for Mapping {
+    type Item = (Value, Value);
+    type IntoIter = std::vec::IntoIter<(Value, Value)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.into_iter()
+    }
+}
+
+impl Value {
+    /// True if this value is a mapping.
+    pub fn is_mapping(&self) -> bool {
+        matches!(self, Value::Mapping(_))
+    }
+
+    /// Returns the mapping if this value is one.
+    pub fn as_mapping(&self) -> Option<&Mapping> {
+        if let Value::Mapping(m) = self { Some(m) } else { None }
+    }
+
+    /// True if this value is a sequence.
+    pub fn is_sequence(&self) -> bool {
+        matches!(self, Value::Sequence(_))
+    }
+
+    /// Returns the sequence if this value is one.
+    pub fn as_sequence(&self) -> Option<&Vec<Value>> {
+        if let Value::Sequence(s) = self { Some(s) } else { None }
+    }
+
+    /// Returns the string if this value is one.
+    pub fn as_str(&self) -> Option<&str> {
+        if let Value::String(s) = self { Some(s.as_str()) } else { None }
+    }
+
+    /// Returns the integer if this value is one.
+    pub fn as_i64(&self) -> Option<i64> {
+        if let Value::Int(i) = self { Some(*i) } else { None }
+    }
+
+    /// Returns the bool if this value is one.
+    pub fn as_bool(&self) -> Option<bool> {
+        if let Value::Bool(b) = self { Some(*b) } else { None }
+    }
+
+    /// Convenience: lookup a string key in a mapping.
+    ///
+    /// Returns `None` if this value is not a mapping or if the key is not present.
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.as_mapping()
+            .and_then(|m| m.iter().find(|(k, _)| k.as_str() == Some(key)).map(|(_, v)| v))
+    }
+}
 
 /// YAML parser/serializer errors.
 #[derive(Debug, Error)]
@@ -739,39 +881,116 @@ pub fn parse_value(text: &str) -> Result<Value, YamlError> {
 /// - Quote strings only when required (booleans, null, numeric strings, special chars)
 /// - 2-space indentation
 pub fn serialize<T: Serialize>(value: &T) -> Result<String, YamlError> {
-    // Phase 1: stub via serde_json round-trip + manual YAML printer, or use
-    // saphyr emitter when available. Until then, Phase 1 implementation MAY
-    // use a known-working backend (`serde_yaml_bw` or `serde_yml` as a short-
-    // term shim). Mark this clearly.
-    //
-    // TODO(Phase 2): replace with a canonical YAML emitter that enforces the
-    //                quote rule and preserves comments where feasible.
-    serde_yml::to_string(value).map_err(|e| YamlError::Serialize(e.to_string()))
+    // Phase 1: delegate to the custom minimal emitter (see Step 2.5).
+    // The emitter handles Pipeline/RuleSet types per spec §fmt L1358
+    // (trailing newline, quote-when-required, 2-space indent).
+    let yaml_value = to_value(value)?;
+    emit_yaml(&yaml_value)
 }
 
 /// Convert a typed value into the dynamic `Value` representation.
+///
+/// Backend-agnostic: implemented via a direct `serde::Serializer` into `yaml::Value`
+/// (no JSON round-trip). See Step 2.5 for the serializer implementation.
 pub fn to_value<T: Serialize>(value: &T) -> Result<Value, YamlError> {
-    serde_json::to_value(value).map_err(|e| YamlError::Serialize(e.to_string()))
+    value_serializer::to_yaml_value(value)
 }
 
 /// Convert a dynamic `Value` into a typed value.
+///
+/// Backend-agnostic: implemented via a direct `serde::Deserializer` from `yaml::Value`
+/// (no JSON round-trip). See Step 2.5 for the deserializer implementation.
 pub fn from_value<T: DeserializeOwned>(value: Value) -> Result<T, YamlError> {
-    serde_json::from_value(value).map_err(|e| YamlError::Parse(e.to_string()))
+    value_serializer::from_yaml_value(value)
 }
 ```
 
-> **注**: `serialize()` は Phase 1 の過渡期として `serde_yml::to_string` を内部実装として使用する (spec §fmt quote rule 完全遵守は Phase 2 で canonical emitter を自作して達成する)。この thin wrapper のおかげで、他 module は backend を一切意識せずに `yaml::serialize(...)` を呼べる。
+> **注**: `serialize()` は Phase 1 で独自 minimal emitter を使用する (Step 2.5 で実装)。`serde_yml` は **依存に追加しない** (unmaintained / RUSTSEC-2025-0068 unsound のため禁止)。`to_value`/`from_value` は `yaml::Value` との相互変換として契約に明示的に含める (serde_json round-trip ではなく、`yaml::Value` を直接扱う serializer/deserializer を Step 2.5 で実装)。
+
+- [ ] **Step 2.5: Custom minimal YAML emitter + value serializer を実装**
+
+`crates/belt-core/src/yaml/mod.rs` に private module を追加:
+
+```rust
+mod value_serializer {
+    // yaml::Value を target とする serde::Serializer / Deserializer 実装。
+    // serde_json round-trip を排除し、backend-agnostic な型変換を提供する。
+    //
+    // 実装規模: ~150-200 LOC
+    // 参考: serde_yml の value.rs / serde_yaml の value.rs の内部実装
+    //       (ただし依存しない、ロジックのみ参考)
+    //
+    // 提供 API:
+    //   pub(super) fn to_yaml_value<T: Serialize>(value: &T) -> Result<Value, YamlError>
+    //   pub(super) fn from_yaml_value<T: DeserializeOwned>(value: Value) -> Result<T, YamlError>
+    //
+    // Serializer は map/seq/scalar の 3 系統を handle し、Pipeline/RuleSet の
+    // 全 field 型 (String, bool, i64, f64, Vec<T>, BTreeMap<String, T>, Option<T>,
+    // enum untagged, enum tagged) を網羅する。
+}
+
+fn emit_yaml(value: &Value) -> Result<String, YamlError> {
+    // Phase 1 minimal canonical emitter per spec §fmt L1358.
+    //
+    // 実装規模: ~80-120 LOC
+    //
+    // 規則 (spec §fmt L1358):
+    //   1. 末尾 newline 1 個
+    //   2. 2-space indent
+    //   3. Quote rule: scalar が以下のいずれかに該当する場合のみ double-quote:
+    //      - bool/null の reserved words ("true", "false", "null", "yes", "no", "on", "off")
+    //      - 数値 string (数字のみ、または先頭 "-" + 数字)
+    //      - 特殊文字 (':', '#', '[', ']', '{', '}', ',', '&', '*', '!', '|',
+    //                  '>', '\'', '"', '%', '@', '`') を含む
+    //      - 空文字列
+    //      - 先頭/末尾に whitespace
+    //      - 改行を含む (この場合は block scalar "|" を使う判断もあり)
+    //   4. 空 map は `{}`、空 seq は `[]`
+    //   5. 順序保持: BTreeMap / IndexMap の既存順
+    //   6. Map key は常に unquoted string (spec 範囲の key 名は safe)
+    //
+    // 出力形式: Pipeline.yml と RuleSet.yml の範囲で valid YAML 1.2 を生成する。
+    // Phase 2 で saphyr または独自 canonical emitter に置換予定。
+    //
+    // テストは Step 3 で追加 (test_serialize_round_trip, test_quote_rule, etc.)
+    let mut out = String::new();
+    emit_value(value, 0, &mut out)?;
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn emit_value(value: &Value, indent: usize, out: &mut String) -> Result<(), YamlError> {
+    // 再帰実装のスケルトン:
+    //   Value::Null     → "null\n"
+    //   Value::Bool(b)  → "true\n" / "false\n"
+    //   Value::Int(i)   → i.to_string() + "\n"
+    //   Value::Float(f) → canonical format (NaN/Inf は YamlError::Serialize)
+    //   Value::String(s)→ needs_quote(s) ? "\"{escaped}\"\n" : "{s}\n"
+    //   Value::Seq(v)   → v 空なら "[]\n"、非空なら各要素を "- {...}" で emit
+    //   Value::Map(m)   → m 空なら "{}\n"、非空なら各 entry を "{key}: {value}" で emit
+    //
+    // indent は "  " * indent_level。nested map/seq は indent + 1。
+    todo!("Phase 1 emitter: implement per spec §fmt L1358 quote rule")
+}
+```
+
+> **⚠ 実装者向け注**: Step 2.5 の `emit_yaml` と `value_serializer` は ~230-320 LOC の追加実装。TDD で以下の順序で実装:
+>
+> 1. `value_serializer::to_yaml_value` の scalar/seq/map 3 系統 (test: Pipeline struct round-trip)
+> 2. `emit_yaml` の scalar 出力 + quote rule (test: `"true"` string が `"true"` と quoted、`hello` が `hello` と unquoted)
+> 3. `emit_yaml` の seq/map 出力 + indent (test: nested Pipeline output が spec fixture と byte-identical)
+> 4. `value_serializer::from_yaml_value` の symmetric 実装 (test: serialize → parse → 元の struct に戻る)
 
 - [ ] **Step 3: `Cargo.toml` を更新**
 
 `crates/belt-core/Cargo.toml` の `[dependencies]` に (workspace 継承):
 - `serde-saphyr.workspace = true`
-- `serde_json.workspace = true` (yaml::Value の実装用)
-- `serde_yml = "0.0.12"` (Phase 1 serialize の過渡期 backend、Phase 2 で削除予定を comment で明示)
 - `serde.workspace = true`
 - `thiserror.workspace = true`
 
-`[workspace.dependencies]` 側にも `serde_yml = "0.0.12"` を追加 (Phase 2 で削除する旨を comment で記載)。
+> **注**: `serde_yml` / `serde_yaml_ng` / `serde_json` は `[dependencies]` に **追加しない**。`yaml::Value` は belt-core 内で独自定義し、emitter + value serializer を Step 2.5 で実装する。`serde_json` は event stream / state の JSONL 用に Task 20 以降で別途追加される (yaml layer とは無関係)。
 
 - [ ] **Step 4: test 再実行**
 
@@ -903,13 +1122,16 @@ git commit -m "feat(belt-core): add unified error type with thiserror"
 use std::process::Command;
 
 fn belt_bin() -> String {
-    env!("CARGO_BIN_EXE_belt").to_string()
+    env!("CARGO_BIN_EXE_belt-dev").to_string()
 }
 
 #[test]
-fn cli_without_args_shows_help_with_exit_2() {
-    let output = Command::new(belt_bin()).output().expect("run belt");
-    assert_eq!(output.status.code(), Some(2));
+fn cli_without_args_shows_help_with_exit_64() {
+    // Exit code 64 = POSIX EX_USAGE (command/invocation error).
+    // `belt-dev` without args is a missing required subcommand → clap parse error
+    // → main() maps to ExitCode::from(64) via try_parse (Appendix A、Finding 4 反映)。
+    let output = Command::new(belt_bin()).output().expect("run belt-dev");
+    assert_eq!(output.status.code(), Some(64));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Usage:"));
     assert!(stderr.contains("pipeline"));
@@ -949,9 +1171,9 @@ Expected: FAIL — `Usage:` or `pipeline` が存在しない。
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
-/// belt — Tiny Workflow Engine CLI for LLM (Rule Set Architecture)
+/// belt-dev — Developer CLI for belt rule set authors (pipeline lint + fmt)
 #[derive(Debug, Parser)]
-#[command(name = "belt", version, about, long_about = None)]
+#[command(name = "belt-dev", version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: TopLevel,
@@ -1001,10 +1223,27 @@ mod cli;
 
 use clap::Parser;
 use cli::{Cli, PipelineVerb, TopLevel};
-use belt_core::error::Result;
+use std::process::ExitCode;
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+// Exit codes (POSIX sysexits.h、Appendix A 参照):
+//   0  success
+//   1  warnings only (Task 17 以降で使用)
+//   2  lint errors (Task 17 以降で使用)
+//   64 command/invocation error (EX_USAGE: clap parse error, missing file, schema load fail)
+fn main() -> ExitCode {
+    // try_parse を使うことで、clap parse error を自前の exit code 64 にマップする。
+    // Cli::parse() は内部で std::process::exit(2) を呼ぶため使わない。
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            // clap error には help/version request も含まれる。
+            // - help/version は exit 0 (informational)
+            // - それ以外の parse error は exit 64 (EX_USAGE)
+            let exit_code = if err.use_stderr() { 64 } else { 0 };
+            let _ = err.print();
+            return ExitCode::from(exit_code);
+        }
+    };
     match cli.command {
         TopLevel::Pipeline(args) => match args.command {
             PipelineVerb::Lint { paths } => {
@@ -1015,9 +1254,11 @@ fn main() -> Result<()> {
             }
         },
     }
-    Ok(())
+    ExitCode::from(0)
 }
 ```
+
+> **注 (Finding 4 反映)**: Task 3 時点で `try_parse()` + 手動 exit code マッピングを導入する。これにより Task 17 main.rs refactor 時の破壊的変更を避ける。`err.use_stderr()` は clap error が stderr 出力用 (真の parse error) か stdout 出力用 (help/version request) かを判定する API。
 
 - [ ] **Step 5: テスト再実行 + 手動 smoke**
 
@@ -1555,6 +1796,19 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
       "items": { "$ref": "#/$defs/phase" }
     },
     "uses": { "type": "array" },
+    "triggers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trigger" }
+    },
+    "pre_pipeline_start": {
+      "type": "object",
+      "required": ["skill_file"],
+      "properties": {
+        "skill_file": { "type": "string" }
+      }
+    },
+    "on_pipeline_start": { "type": "array" },
+    "on_pipeline_complete": { "type": "array" },
     "integrations": {
       "type": "array",
       "items": { "$ref": "#/$defs/integration" }
@@ -1564,11 +1818,19 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
     "flag": {
       "type": "object",
       "required": ["type"],
+      "additionalProperties": false,
       "properties": {
         "type": { "enum": ["bool", "integer", "string"] },
         "default": {},
-        "enables_phases": { "type": "array", "items": { "type": "string" } },
-        "enables_integrations": { "type": "array", "items": { "type": "string" } },
+        "enables": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "integrations": { "type": "array", "items": { "type": "string" } },
+            "phases": { "type": "array", "items": { "type": "string" } },
+            "params": { "type": "object" }
+          }
+        },
         "binds_to_param": {
           "type": "object",
           "required": ["rule_set", "param"],
@@ -1600,6 +1862,18 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
         "uses": { "type": "array" }
       }
     },
+    "trigger": {
+      "type": "object",
+      "required": ["name", "condition", "action"],
+      "properties": {
+        "name": { "type": "string" },
+        "condition": { "type": "string" },
+        "action": { "enum": ["regate", "pause", "classify_then_regate"] },
+        "rewind_to": { "type": "string" },
+        "max_retries": { "type": "integer", "minimum": 0 },
+        "classifier": { "type": "array" }
+      }
+    },
     "integration": {
       "type": "object",
       "required": ["name"],
@@ -1608,7 +1882,12 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
         "enabled_by": { "type": "string" },
         "hooks": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          }
         },
         "pre_pipeline_start": {
           "type": "object",
@@ -1622,6 +1901,12 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
   }
 }
 ```
+
+> **⚠ Finding 12/13/14 反映 (2026-04-05 plan-review)**:
+> - `triggers` / `pre_pipeline_start` / `on_pipeline_start` / `on_pipeline_complete` を pipeline トップレベルに追加 (Task 4 Pipeline struct L1178-1186 + spec §pipeline.yml Schema Changes L2434-2436)
+> - `$defs.flag` を flat (`enables_phases`/`enables_integrations`) から nested `enables: { integrations, phases, params }` に変更 (Task 4 FlagDef L1195-1216 + spec §Flag System SSOT L2350-2365)
+> - `$defs.integration.hooks.additionalProperties` を `{ type: string }` から `oneOf: [string, array of string]` に変更 (spec L1099 + Task 4 HookCommand::Single|Multiple L1263-1278)
+> - `$defs.trigger.action.enum` から `complete` を削除 (Phase 1 MVP では 3 action のみ、Task 5 TriggerAction enum と整合)
 
 - [ ] **Step 2: rule-set.schema.json を作成**
 
@@ -1658,10 +1943,6 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
       "type": "object",
       "required": ["skill_file"],
       "properties": { "skill_file": { "type": "string" } }
-    },
-    "tests": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/test_case" }
     }
   },
   "$defs": {
@@ -1682,38 +1963,20 @@ git commit -m "feat(belt): add rule-set.yml model with serde types including tes
       "properties": {
         "name": { "type": "string" },
         "condition": { "type": "string" },
-        "action": { "enum": ["regate", "pause", "classify_then_regate", "complete"] },
+        "action": { "enum": ["regate", "pause", "classify_then_regate"] },
         "rewind_to": { "type": "string" },
         "max_retries": { "type": "integer", "minimum": 0 },
         "classifier": { "type": "array" }
-      }
-    },
-    "test_case": {
-      "type": "object",
-      "required": ["name", "given", "expect"],
-      "properties": {
-        "name": { "type": "string" },
-        "given": {
-          "type": "object",
-          "properties": {
-            "params": { "type": "object" },
-            "replay": {}
-          }
-        },
-        "expect": {
-          "type": "object",
-          "required": ["verdict"],
-          "properties": {
-            "verdict": { "enum": ["PASS", "FAIL"] },
-            "checks_passed": { "type": "array", "items": { "type": "string" } },
-            "failed_checks": { "type": "array", "items": { "type": "string" } }
-          }
-        }
       }
     }
   }
 }
 ```
+
+> **⚠ Finding 15 反映 (2026-04-05 plan-review)**:
+> - `properties.tests` と `$defs.test_case` を削除 (Task 5 で `tests: Vec<TestCase>` field と `TestCase`/`TestGiven`/`TestExpect`/`TestVerdict` types は Phase 2 Testing Framework に移送済み、L1672-1674, L1728-1731 参照)
+> - `$defs.trigger.action.enum` から `"complete"` を削除 (Task 5 `TriggerAction` enum L1713-1721 で `Complete` variant は削除済み、spec §Rule Set Schema L494 も `regate | pause | classify_then_regate` のみ定義)
+> - pipeline.yml schema と symmetric な構造を維持 (trigger def は pipeline.schema.json と同一形式)
 
 - [ ] **Step 3: スキーマファイルを JSON として妥当か確認**
 
@@ -2812,7 +3075,7 @@ pub mod unknown_rule_set;
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::pipeline::model::Pipeline;
+use belt_core::pipeline::model::Pipeline;
 use std::collections::BTreeSet;
 
 pub fn check_unknown_rule_set(pipeline: &Pipeline, known: &BTreeSet<String>) -> Vec<Diagnostic> {
@@ -2972,7 +3235,7 @@ Expected: FAIL.
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::pipeline::model::Pipeline;
+use belt_core::pipeline::model::Pipeline;
 use std::collections::BTreeSet;
 
 pub fn check_produced_consumed(pipeline: &Pipeline) -> Vec<Diagnostic> {
@@ -3103,7 +3366,7 @@ Expected: FAIL.
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::ruleset::model::RuleSet;
+use belt_core::ruleset::model::RuleSet;
 use std::collections::BTreeSet;
 
 pub fn check_trigger_rewind(
@@ -3224,7 +3487,7 @@ Expected: FAIL.
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::pipeline::model::Pipeline;
+use belt_core::pipeline::model::Pipeline;
 
 const VALID_EVENTS: &[&str] = &[
     "on_pipeline_start",
@@ -3376,8 +3639,9 @@ Expected: FAIL.
 
 ```rust
 use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::ruleset::model::RuleSet;
-use crate::ruleset::template::{collect_references, extract_templates};
+use belt_core::ruleset::model::RuleSet;
+use belt_core::ruleset::template::{collect_references, extract_templates};
+use belt_core::yaml;
 use std::collections::BTreeSet;
 
 pub fn check_unused_params(rule_set: &RuleSet) -> Vec<Diagnostic> {
@@ -3388,8 +3652,16 @@ pub fn check_unused_params(rule_set: &RuleSet) -> Vec<Diagnostic> {
     let mut referenced: BTreeSet<String> = BTreeSet::new();
 
     // Scan all template strings in checks, uses, on_phase_complete, triggers, etc.
-    let whole_yaml: yaml::Value =
-        yaml::to_value(rule_set).unwrap_or(yaml::Value::Null);
+    // to_value 失敗時はテンプレート検出が動かないため error diagnostic を emit:
+    let whole_yaml: yaml::Value = match yaml::to_value(rule_set) {
+        Ok(v) => v,
+        Err(e) => {
+            return vec![Diagnostic::error(
+                DiagnosticKind::SchemaError,
+                format!("internal: failed to introspect rule_set for template scan: {e}"),
+            )];
+        }
+    };
     for (_path, tmpl) in extract_templates(&whole_yaml) {
         if let Ok(refs) = collect_references(&tmpl) {
             for r in refs {
@@ -3452,9 +3724,97 @@ git commit -m "feat(belt): add lint rule for unused param warning (W001)"
 
 **Files:**
 - Create: `crates/belt-dev/src/lint/driver.rs`
+- Create: `crates/belt-dev/src/lint/rules/param_type_mismatch.rs` (E003、**2026-04-05 Finding 16 で明示追加**)
+- Create: `crates/belt-dev/src/lint/rules/unresolved_template.rs` (E004、**2026-04-05 Finding 16 で明示追加**)
+- Create: `crates/belt-dev/src/lint/rules/schema_error.rs` (E008、**2026-04-05 Finding 16 で明示追加**)
+- Modify: `crates/belt-dev/src/lint/rules/mod.rs` (新規 3 rule を `pub mod` 宣言)
 - Modify: `crates/belt-dev/src/lint/mod.rs`
 - Modify: `crates/belt-dev/src/main.rs`
 - Test: `crates/belt-dev/tests/lint_cli_test.rs`
+
+> **⚠ Finding 16 反映 (2026-04-05 plan-review)**: plan File Structure L121-132 は belt-dev/src/lint/rules/ に 8 rule file を列挙するが、Task 12-16 では 5 ファイル (E001/E005/E006/E007/W001) しか作成されない。残る 3 ファイル (E003 param_type_mismatch, E004 unresolved_template, E008 schema_error) は本 Task 17 で作成する。以前の plan では driver 内部に inline 実装される予定だったが、File Structure 宣言と乖離するため独立 file 化。
+>
+> 各 rule file の雛形 (実装は Step 3.1/3.2/3.3 で):
+>
+> ```rust
+> // crates/belt-dev/src/lint/rules/param_type_mismatch.rs (E003)
+> use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
+> use belt_core::pipeline::model::Pipeline;
+> use belt_core::ruleset::model::RuleSet;
+> use std::collections::BTreeMap;
+>
+> pub fn check_param_types(
+>     pipeline: &Pipeline,
+>     imported: &BTreeMap<String, RuleSet>,
+> ) -> Vec<Diagnostic> {
+>     // Task 10 の param_check::check_pipeline_uses_against_rule_sets を呼び出し、
+>     // BeltError::ParamTypeMismatch → Diagnostic::error(ParamTypeMismatch) にマップする。
+>     // 詳細は Step 3.1 で TDD 実装。
+>     Vec::new() // placeholder
+> }
+> ```
+>
+> ```rust
+> // crates/belt-dev/src/lint/rules/unresolved_template.rs (E004)
+> use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
+> use belt_core::pipeline::model::Artifact;
+> use belt_core::ruleset::model::RuleSet;
+> use belt_core::ruleset::template::{collect_references, extract_templates};
+> use belt_core::yaml;
+> use std::collections::{BTreeMap, BTreeSet};
+>
+> pub fn check_unresolved_templates(
+>     rule_set: &RuleSet,
+>     artifacts: &BTreeMap<String, Artifact>,
+>     phase_ids: &BTreeSet<String>,
+> ) -> Vec<Diagnostic> {
+>     // rule_set の YAML を introspect し、{{ ... }} 式が declared params /
+>     // artifacts / phases / built-in context keys のいずれかに解決されるかを
+>     // チェックする。未解決は Diagnostic::error(UnresolvedTemplate) を emit。
+>     // 詳細は Step 3.2 で TDD 実装。
+>     Vec::new() // placeholder
+> }
+> ```
+>
+> ```rust
+> // crates/belt-dev/src/lint/rules/schema_error.rs (E008)
+> use crate::lint::diagnostic::{Diagnostic, DiagnosticKind};
+> use belt_core::error::BeltError;
+> use std::path::Path;
+>
+> /// Map loader/resolver errors (Io / YamlParse / SchemaValidation / MaxDepthExceeded) to
+> /// Diagnostic E008 (SchemaError). UnknownRuleSet / ParamTypeMismatch / UnresolvedTemplate
+> /// are handled by their respective rule modules.
+> pub fn schema_error_diagnostic(err: &BeltError, path: &Path) -> Diagnostic {
+>     let kind = match err {
+>         BeltError::Io { .. }
+>         | BeltError::YamlParse { .. }
+>         | BeltError::SchemaValidation { .. }
+>         | BeltError::MaxDepthExceeded { .. } => DiagnosticKind::SchemaError,
+>         BeltError::UnknownRuleSet { .. } => DiagnosticKind::UnknownRuleSet,
+>         BeltError::ParamTypeMismatch { .. } => DiagnosticKind::ParamTypeMismatch,
+>         BeltError::UnresolvedTemplate { .. } => DiagnosticKind::UnresolvedTemplate,
+>     };
+>     Diagnostic::error(kind, format!("{}", err)).with_file(path.to_path_buf())
+> }
+> ```
+>
+> Step 3 (driver.rs) は `use crate::lint::rules::{param_type_mismatch, unresolved_template, schema_error};` で import し、`schema_error::schema_error_diagnostic(...)` を呼ぶ。driver 内部に `fn schema_error_diagnostic` を inline 定義するのは廃止。
+
+- [ ] **Step 0: `lint/rules/mod.rs` に新規 3 rule を宣言**
+
+Edit `crates/belt-dev/src/lint/rules/mod.rs` (Task 16 完了時点の版に追記):
+
+```rust
+pub mod invalid_hook_event;
+pub mod invalid_produced_consumed;
+pub mod invalid_trigger_rewind;
+pub mod param_type_mismatch;    // ← Task 17 (E003) で新規
+pub mod schema_error;            // ← Task 17 (E008) で新規
+pub mod unknown_rule_set;
+pub mod unresolved_template;     // ← Task 17 (E004) で新規
+pub mod unused_param;
+```
 
 - [ ] **Step 1: 失敗テストを書く**
 
@@ -3465,7 +3825,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn belt_bin() -> String {
-    env!("CARGO_BIN_EXE_belt").to_string()
+    env!("CARGO_BIN_EXE_belt-dev").to_string()
 }
 
 /// Binary crate tests resolve fixtures via the sibling `belt-core` crate
@@ -3515,6 +3875,61 @@ fn lint_exits_1_on_warnings_only() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("W001"));
 }
+
+// Exit code 64 (POSIX EX_USAGE) tests — Appendix A, 2026-04-05 plan-review 反映
+// main() は real_main() の Err 戻りを ExitCode::from(64) にマップする。
+// これにより lint errors (exit 2) と command/invocation errors (exit 64) が consumer 側で区別可能。
+
+#[test]
+fn lint_exits_64_on_missing_file() {
+    // 存在しないファイルを指定 → BeltError::Io → exit 64
+    let out = Command::new(belt_bin())
+        .args(["pipeline", "lint", "/nonexistent/path/to/file.yml"])
+        .output()
+        .expect("run lint");
+    assert_eq!(
+        out.status.code(),
+        Some(64),
+        "missing file should exit 64 (EX_USAGE), stderr = {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn lint_exits_64_on_malformed_yaml() {
+    // syntactically invalid YAML → BeltError::YamlParse → exit 64
+    let dir = tempfile::tempdir().expect("tempdir");
+    let malformed = dir.path().join("malformed.yml");
+    std::fs::write(&malformed, "kind: pipeline\n  : invalid\n  bad indent\n").expect("write");
+    let out = Command::new(belt_bin())
+        .args(["pipeline", "lint", malformed.to_str().unwrap()])
+        .output()
+        .expect("run lint");
+    assert_eq!(
+        out.status.code(),
+        Some(64),
+        "malformed YAML should exit 64, stderr = {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn lint_exits_64_on_clap_parse_error() {
+    // 不正な subcommand → clap parse error → main() の try_parse が err を受け取り、
+    // `err.use_stderr()` が true のときは exit 64 (EX_USAGE) にマップする。
+    // Task 3 Step 4 で main.rs が try_parse ベースに実装されているため、本 test は
+    // Task 17 時点でそのまま pass する。
+    let out = Command::new(belt_bin())
+        .args(["pipeline", "nosuch-verb"])
+        .output()
+        .expect("run lint");
+    assert_eq!(
+        out.status.code(),
+        Some(64),
+        "clap parse error should exit 64 (try_parse + use_stderr branch), stderr = {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
 ```
 
 - [ ] **Step 2: テスト失敗を確認**
@@ -3527,14 +3942,15 @@ Expected: FAIL — lint サブコマンドが stub 出力のみ。
 `crates/belt-dev/src/lint/driver.rs`:
 
 ```rust
-use crate::error::{BeltError, Result};
 use crate::lint::diagnostic::{Diagnostic, Severity};
 use crate::lint::rules::{
     invalid_hook_event, invalid_produced_consumed, invalid_trigger_rewind,
-    unknown_rule_set, unused_param,
+    param_type_mismatch, schema_error, unknown_rule_set, unresolved_template, unused_param,
 };
-use crate::pipeline::loader as pipeline_loader;
-use crate::ruleset::{model::RuleSet, resolver};
+use belt_core::error::{BeltError, Result};
+use belt_core::pipeline::loader as pipeline_loader;
+use belt_core::ruleset::{model::RuleSet, resolver};
+use belt_core::yaml;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -3591,7 +4007,7 @@ fn lint_pipeline_entry(path: &Path, report: &mut LintReport) -> Result<()> {
     let pipeline = match pipeline_loader::load(path) {
         Ok(p) => p,
         Err(e) => {
-            report.diagnostics.push(schema_error_diagnostic(&e, path));
+            report.diagnostics.push(schema_error::schema_error_diagnostic(&e, path));
             return Ok(());
         }
     };
@@ -3608,7 +4024,7 @@ fn lint_pipeline_entry(path: &Path, report: &mut LintReport) -> Result<()> {
                 }
             }
             Err(e) => {
-                report.diagnostics.push(schema_error_diagnostic(&e, &full));
+                report.diagnostics.push(schema_error::schema_error_diagnostic(&e, &full));
             }
         }
     }
@@ -3691,36 +4107,15 @@ fn lint_rule_set_entry(path: &Path, report: &mut LintReport) -> Result<()> {
             }
         }
         Err(e) => {
-            report.diagnostics.push(schema_error_diagnostic(&e, path));
+            report.diagnostics.push(schema_error::schema_error_diagnostic(&e, path));
         }
     }
     Ok(())
 }
 
-/// Map any loader/resolver error to a Diagnostic with the correct category.
-///
-/// - `Io`, `YamlParse`, `SchemaValidation`, `MaxDepthExceeded` → `SchemaError` (E008)
-/// - Anything else we decide to widen later (e.g. explicit E00x codes per variant).
-fn schema_error_diagnostic(err: &BeltError, path: &Path) -> Diagnostic {
-    let kind = match err {
-        BeltError::Io { .. }
-        | BeltError::YamlParse { .. }
-        | BeltError::SchemaValidation { .. }
-        | BeltError::MaxDepthExceeded { .. } => {
-            crate::lint::diagnostic::DiagnosticKind::SchemaError
-        }
-        BeltError::UnknownRuleSet { .. } => {
-            crate::lint::diagnostic::DiagnosticKind::UnknownRuleSet
-        }
-        BeltError::ParamTypeMismatch { .. } => {
-            crate::lint::diagnostic::DiagnosticKind::ParamTypeMismatch
-        }
-        BeltError::UnresolvedTemplate { .. } => {
-            crate::lint::diagnostic::DiagnosticKind::UnresolvedTemplate
-        }
-    };
-    Diagnostic::error(kind, format!("{}", err)).with_file(path.to_path_buf())
-}
+// NOTE: `schema_error_diagnostic` is now defined in
+// `crates/belt-dev/src/lint/rules/schema_error.rs` (Finding 16 反映、2026-04-05 plan-review).
+// Callers in this driver use `schema_error::schema_error_diagnostic(&err, path)`.
 ```
 
 - [ ] **Step 4: lint/mod.rs に driver を公開**
@@ -3742,28 +4137,47 @@ mod cli;
 
 use clap::Parser;
 use cli::{Cli, PipelineVerb, TopLevel};
-use belt_core::error::Result;
+use belt_core::error::{BeltError, Result};
 use belt_dev::lint::driver::lint_path;
 use belt_dev::lint::diagnostic::Severity;
 use std::process::ExitCode;
 
+// Exit codes (POSIX sysexits.h 準拠、Appendix A 参照):
+//   0  clean (no errors, no warnings)
+//   1  warnings only (lint --level warn 等)
+//   2  lint errors (E001, E003-E008)
+//   64 command/invocation error (EX_USAGE: parse error, missing file, schema load fail)
 fn main() -> ExitCode {
     match real_main() {
         Ok(code) => code,
         Err(e) => {
             eprintln!("error: {}", e);
-            ExitCode::from(2)
+            ExitCode::from(64)
         }
     }
 }
 
 fn real_main() -> Result<ExitCode> {
-    let cli = Cli::parse();
+    // try_parse を使うことで、clap parse error を exit 64 にマップする。
+    // Cli::parse() は内部で std::process::exit(2) を呼ぶため使わない (Finding 4 反映)。
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            // help/version request は exit 0、それ以外 (parse error) は exit 64
+            let exit_code = if err.use_stderr() { 64 } else { 0 };
+            let _ = err.print();
+            return Ok(ExitCode::from(exit_code));
+        }
+    };
     match cli.command {
         TopLevel::Pipeline(args) => match args.command {
             PipelineVerb::Lint { paths } => {
                 let targets = if paths.is_empty() {
-                    vec![std::env::current_dir().expect("cwd")]
+                    let cwd = std::env::current_dir().map_err(|e| BeltError::Io {
+                        path: std::path::PathBuf::from("."),
+                        source: e,
+                    })?;
+                    vec![cwd]
                 } else {
                     paths
                 };
@@ -4082,7 +4496,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn belt_bin() -> String {
-    env!("CARGO_BIN_EXE_belt").to_string()
+    env!("CARGO_BIN_EXE_belt-dev").to_string()
 }
 
 #[test]
@@ -4160,8 +4574,11 @@ Replace the `PipelineVerb::Fmt { .. }` branch in `crates/belt-dev/src/main.rs`:
 ```rust
             PipelineVerb::Fmt { paths, check, diff } => {
                 if paths.is_empty() {
+                    // Command/invocation error (no input): exit 64 EX_USAGE
+                    // (lint's exit 2 is reserved for lint-found errors; missing input
+                    // is an invocation mistake, not a detected issue.)
                     eprintln!("error: no paths provided to fmt");
-                    return Ok(ExitCode::from(2));
+                    return Ok(ExitCode::from(64));
                 }
                 let mut any_changed = false;
                 for path in paths {
@@ -4253,7 +4670,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn belt_bin() -> String {
-    env!("CARGO_BIN_EXE_belt").to_string()
+    env!("CARGO_BIN_EXE_belt-dev").to_string()
 }
 
 #[test]
@@ -4295,10 +4712,14 @@ fn emits_command_invoked_and_completed_with_run_id() {
 }
 
 #[test]
-fn v14_event_stream_includes_all_phase1_event_types() {
-    // V14 (spec §Impact Analysis L2203): Phase 1 で期待される event types が
-    // 全て列挙される。Phase 1 では少なくとも `command.invoked` / `command.completed` /
-    // `ruleset.resolved` が発火する (Task 17 lint driver の resolver 呼び出し経由)。
+fn v14_event_stream_phase1_event_types_exact() {
+    // V14 (spec §Impact Analysis L2203): Phase 1 で期待される event types を厳密に列挙。
+    //
+    // Phase 1 scope (2026-04-05 plan-review 反映): `command.invoked` と `command.completed`
+    // の 2 event のみ。`ruleset.resolved` / `state.loaded` / `phase.transition` /
+    // `trigger.fired` / `classifier.invoked` / `hook.fired` / `snapshot.created` 等は
+    // Phase 2 runtime 実装時に追加される (Task 17 lint driver は resolver を呼ぶが
+    // Phase 1 では `ruleset.resolved` event は emit しない)。
     let dir = tempdir().unwrap();
     let events_path = dir.path().join("events.jsonl");
     let fixture = dir.path().join("minimal.yml");
@@ -4322,11 +4743,16 @@ fn v14_event_stream_includes_all_phase1_event_types() {
         .filter_map(|e| e["event"].as_str().map(String::from))
         .collect();
 
-    // Phase 1 では以下は必ず存在する:
-    assert!(event_types.contains("command.invoked"));
-    assert!(event_types.contains("command.completed"));
-    // Phase 2 で追加される event types (state.loaded, phase.transition, trigger.fired,
-    // classifier.invoked, hook.fired, snapshot.created 等) はここに assert しない。
+    // Phase 1 で emit される event types を完全一致で assert (regression guard):
+    let expected: std::collections::BTreeSet<String> =
+        ["command.invoked".to_string(), "command.completed".to_string()]
+            .into_iter()
+            .collect();
+    assert_eq!(
+        event_types, expected,
+        "Phase 1 event types must be exactly {{command.invoked, command.completed}}. \
+         Adding new event types requires updating V14 contract in spec + plan."
+    );
 }
 ```
 
@@ -4453,11 +4879,14 @@ Edit `crates/belt-core/src/lib.rs`:
 pub mod determinism;
 pub mod error;
 pub mod event;
-pub mod fmt;
-pub mod lint;
 pub mod pipeline;
 pub mod ruleset;
+pub mod yaml;
+// ⚠ `pub mod lint;` / `pub mod fmt;` は追加しない (原則 8 — belt-dev にのみ配置)
+// lint / fmt は crates/belt-dev/src/lib.rs 側で公開されている (Task 12 Step 6 / Task 18 Step 5 参照)
 ```
+
+> **⚠ Finding 10 反映 (2026-04-05 plan-review)**: 旧 plan は本 Step で `pub mod fmt;` / `pub mod lint;` を belt-core/src/lib.rs に追加する指示があったが、CLAUDE.md §Non-Goals L184 『lint / fmt ロジックの belt-core / belt への組み込み禁止 (原則 8 — belt-dev のみ)』、spec L1187『belt-core: lint / fmt ロジックは含まない』、plan 自身 L112-113『belt-core には lint/ と fmt/ を置かない (原則 8 — 3 audience 分離)』と直接矛盾していた。本 Task 20 で belt-core に追加するのは `event` と `determinism` の 2 module のみ (+ Task 2.0 で既に追加済みの `yaml`)。
 
 - [ ] **Step 6: main.rs で emit を呼ぶ**
 
@@ -4484,7 +4913,16 @@ And extract the current body into:
 
 ```rust
 fn run_cli() -> Result<ExitCode> {
-    let cli = Cli::parse();
+    // Finding 4 反映: Cli::try_parse で clap error を exit 64 にマップ。
+    // Cli::parse() は内部で std::process::exit(2) を呼ぶため使わない。
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            let exit_code = if err.use_stderr() { 64 } else { 0 };
+            let _ = err.print();
+            return Ok(ExitCode::from(exit_code));
+        }
+    };
     match cli.command {
         TopLevel::Pipeline(args) => match args.command {
             // ... existing body ...
@@ -4525,7 +4963,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn belt_bin() -> String {
-    env!("CARGO_BIN_EXE_belt").to_string()
+    env!("CARGO_BIN_EXE_belt-dev").to_string()
 }
 
 #[test]
@@ -4665,12 +5103,14 @@ Edit `crates/belt-core/src/lib.rs`:
 pub mod determinism;
 pub mod error;
 pub mod event;
-pub mod fmt;
-pub mod lint;
 pub mod output;
 pub mod pipeline;
 pub mod ruleset;
+pub mod yaml;
+// ⚠ `pub mod lint;` / `pub mod fmt;` は追加しない (原則 8 — belt-dev にのみ配置、Task 20 Step 5 の note 参照)
 ```
+
+> **⚠ Finding 10 反映**: Task 20 Step 5 と同様、本 Step でも `pub mod fmt;` / `pub mod lint;` は belt-core に追加しない。追加するのは `output` の 1 module のみ。
 
 - [ ] **Step 7: event/logger.rs の emit を canonical JSON に切り替え**
 
@@ -4838,7 +5278,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn belt_bin() -> String {
-    env!("CARGO_BIN_EXE_belt").to_string()
+    env!("CARGO_BIN_EXE_belt-dev").to_string()
 }
 
 /// Integration fixtures live in `crates/belt-core/tests/fixtures/integration/`
@@ -4917,23 +5357,27 @@ git commit -m "test(belt): add integration fixtures for feature-dev and debug-fl
 ## Task 23: workspace root bin/ symlink 設置 + 全体 smoke
 
 **Files:**
-- Create: `bin/belt` (symlink, workspace root 基準)
+- Create: `bin/belt-dev` (symlink, workspace root 基準)
 - Modify: `Cargo.toml` (workspace root、必要なら `[profile.release]` 調整)
 
-> **注**: 独立レポジトリ化後 (2026-04-05) は dotfiles 側への symlink ではなく、belt workspace root 内に `bin/belt → ../target/release/belt` を設置する。ユーザーは `export PATH="<workspace-root>/bin:$PATH"` または `cargo install --path crates/belt-dev` で `$HOME/.cargo/bin/belt` にインストールする運用。
+> **注 (2026-04-05 plan-review 反映)**: Phase 1 MVP は `belt-dev` binary (developer CLI)。`belt` binary は Phase 2 の agent runtime CLI で Phase 1 では placeholder (eprintln + exit 0)。Task 23 では `bin/belt-dev → ../target/release/belt-dev` のみを設置し、`belt` symlink は Phase 2 で追加する。`cargo install --path crates/belt-dev` は `$HOME/.cargo/bin/belt-dev` を生成する (binary name 規則による)。
 
-- [ ] **Step 1: release ビルド**
+> **⚠ 前提条件 (2026-04-05 plan-review V15 反映)**: 初回 `cargo build --workspace --release --locked` は **5-10 分 + network 依存** (依存 crate の download + compile、spec §Impact Analysis §4.1)。オフライン環境では事前に `cargo vendor` で crate cache を準備し、`.cargo/config.toml` に vendored source を設定する。V15 はサポート環境 (network 接続 or vendored cache 存在) を前提とする。
+
+- [ ] **Step 1: release ビルド (network or vendored cache 前提)**
 
 Run:
 ```bash
-cargo build --workspace --release 2>&1 | tail -10
-ls -lh target/release/belt
+# 初回: 5-10 分 (network 依存、~50 crates download + compile)
+# 再ビルド: incremental で 1-2 分
+cargo build --workspace --release --locked 2>&1 | tail -10
+ls -lh target/release/belt-dev
 ```
-Expected: ビルド成功、`target/release/belt` バイナリが生成される。
+Expected: ビルド成功、`target/release/belt-dev` バイナリが生成される。`target/release/belt` も placeholder として生成されるが Phase 1 verification では対象外。
 
-- [ ] **Step 2: バイナリサイズ確認 (20MB 以下)**
+- [ ] **Step 2: バイナリサイズ確認 (20MB 以下、belt-dev 対象)**
 
-Run: `stat -f %z target/release/belt 2>/dev/null || stat -c %s target/release/belt`
+Run: `stat -f %z target/release/belt-dev 2>/dev/null || stat -c %s target/release/belt-dev`
 Expected: 20 * 1024 * 1024 = 20971520 以下。
 
 > **NOTE:** もし 20MB を超えた場合、workspace root の `Cargo.toml` に以下を追加して再ビルドを検討:
@@ -4945,41 +5389,41 @@ Expected: 20 * 1024 * 1024 = 20971520 以下。
 > strip = true
 > ```
 
-- [ ] **Step 3: bin/belt symlink を作成**
+- [ ] **Step 3: `bin/belt-dev` symlink を作成**
 
 Run:
 ```bash
 mkdir -p bin
-ln -sfn ../target/release/belt bin/belt
-ls -l bin/belt
+ln -sfn ../target/release/belt-dev bin/belt-dev
+ls -l bin/belt-dev
 ```
-Expected: symlink が作成される。
+Expected: symlink `bin/belt-dev → ../target/release/belt-dev` が作成される。
 
 - [ ] **Step 4: End-to-end smoke test (PATH 経由で呼び出し)**
 
 Run:
 ```bash
 export PATH="$(pwd)/bin:$PATH"
-which belt
-belt --version
+which belt-dev
+belt-dev --version
 belt-dev pipeline lint --help
 belt-dev pipeline lint crates/belt-core/tests/fixtures/integration/pipelines/feature-dev.yml
 ```
-Expected: コマンドが解決し、lint が clean で exit 0。
+Expected: `which belt-dev` が `<workspace-root>/bin/belt-dev` を返し、`belt-dev --version` が `belt-dev 0.1.0` を表示し、lint が clean で exit 0。
 
 - [ ] **Step 5: 全テスト再実行 (regression guard)**
 
-Run: `cargo test --workspace 2>&1 | tail -20`
+Run: `cargo test --workspace --locked 2>&1 | tail -20`
 Expected: 全テスト PASS。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add bin/belt Cargo.toml .gitignore
-git commit -m "feat(belt): add bin/belt symlink to release binary"
+git add bin/belt-dev Cargo.toml .gitignore
+git commit -m "feat(belt-dev): add bin/belt-dev symlink to release binary"
 ```
 
-> **注**: `target/` は `.gitignore` で除外されているため、`bin/belt → ../target/release/belt` の symlink リンク先はユーザー毎にローカルビルドで生成される。clone 直後は `cargo build --workspace --release` が必要。
+> **注**: `target/` は `.gitignore` で除外されているため、`bin/belt-dev → ../target/release/belt-dev` の symlink リンク先はユーザー毎にローカルビルドで生成される。clone 直後は初回ビルド必要: `cargo build --workspace --release --locked` (5-10 分 + network 依存)。
 
 ---
 
@@ -4997,14 +5441,24 @@ git commit -m "feat(belt): add bin/belt symlink to release binary"
 ```markdown
 # belt — Tiny Workflow Engine CLI for LLM
 
-Phase 1 MVP — `belt-dev pipeline lint` + `belt-dev pipeline fmt`.
+Phase 1 MVP — `belt-dev pipeline lint` + `belt-dev pipeline fmt` (developer CLI).
+
+> **3 audience separation (原則 8)**: `belt-dev` = developer (lint/fmt, **Phase 1 MVP**)、
+> `belt` = agent runtime (run/state/snapshot, Phase 2)、`belt-tui` = human TUI (Phase 3)。
 
 ## Build
 
+**初回ビルドの前提**:
+- **Network 接続必須** (初回は ~50 crates を crates.io から download + compile、**5-10 分**)
+- **オフライン環境**: 事前に `cargo vendor` で crate cache を生成し、`.cargo/config.toml` に vendored source を設定
+- Rust toolchain は `rust-toolchain.toml` で `1.94.1+` に固定 (CVE-2026-33055/33056 対策)
+
 \`\`\`bash
-# workspace root で実行
-cargo build --workspace --release
-# バイナリは target/release/belt に生成される
+# workspace root で実行 (初回 5-10 分)
+cargo build --workspace --release --locked
+# Phase 1 バイナリは target/release/belt-dev に生成される
+# (belt は Phase 2 placeholder として同時に生成されるが空機能)
+ls -lh target/release/belt-dev
 \`\`\`
 
 ## Usage
@@ -5029,9 +5483,11 @@ belt-dev pipeline fmt --diff path/to/feature-dev.yml
 |---------|------|---------|
 | \`belt-dev pipeline lint\` | 0 | clean |
 | \`belt-dev pipeline lint\` | 1 | warnings only |
-| \`belt-dev pipeline lint\` | 2 | errors present |
+| \`belt-dev pipeline lint\` | 2 | lint errors present (E001, E003-E008) |
+| \`belt-dev pipeline lint\` | 64 | command/invocation error (EX_USAGE: parse error, missing file, schema load failure) |
 | \`belt-dev pipeline fmt\` | 0 | up-to-date or reformatted |
 | \`belt-dev pipeline fmt --check\` | 1 | formatting changes required |
+| \`belt-dev pipeline fmt\` | 64 | command/invocation error |
 
 ## Diagnostics
 
@@ -5092,12 +5548,13 @@ Phase 1 が完了したと見なすための基準:
 2. **`belt-dev pipeline lint feature-dev.yml` が clean** (exit 0)
 3. **`belt-dev pipeline lint` が 7 種のエラー + 1 種の警告を正しく検出** (E001, E003-E008, W001; E002 は欠番)
 4. **`belt-dev pipeline fmt --check` が未整形ファイルで exit 1、整形済みで exit 0**
-5. **BELT_EVENTS_FILE 指定時、Phase 1 event types (command.invoked, command.completed, ruleset.resolved 等) が run.id 付きで出力される**
+5. **BELT_EVENTS_FILE 指定時、Phase 1 event types (`command.invoked`, `command.completed` の 2 種) が run.id 付きで出力される** (`ruleset.resolved` 等は Phase 2 で追加)
 6. **BELT_NOW + BELT_SEED 指定時、2 回の同一実行が byte-identical な JSONL を生成 + sha256 が一致**
-7. **release バイナリが 20MB 以下** (超過時は `[profile.release]` の `opt-level = "z"` + `strip = true` で調整)
-8. **`bin/belt` symlink 経由で PATH から呼び出せる**
-9. **`cargo fmt --all` / `cargo clippy --workspace -- -D warnings` が clean**
-10. **`cargo build --locked --workspace` がクリーン clone 直後に成功 (V15)**
+7. **release バイナリが 20MB 以下** (超過時は `[profile.release]` の `opt-level = "z"` + `strip = true` で調整、対象は `target/release/belt-dev`)
+8. **`bin/belt-dev` symlink 経由で PATH から呼び出せる**
+9. **`cargo fmt --all` / `cargo clippy --workspace -- -D warnings` が clean** (workspace.lints.clippy の pedantic + unwrap_used/expect_used/panic warn を含む)
+10. **`cargo build --locked --workspace --release` がサポート環境 (network 接続 or vendored cache 存在) でクリーン clone 後に成功** (V15、初回 5-10 分、オフラインは事前 `cargo vendor` 必要)
+11. **Exit code contract**: `0` clean / `1` warnings only / `2` lint errors / `64` command invocation error (POSIX EX_USAGE、parse error / missing file / schema load failure)。Task 17 test に全 4 exit code の verification がある
 
 ### Must-Verify Checklist (spec §Impact Analysis §5 V1-V15 の反映)
 
