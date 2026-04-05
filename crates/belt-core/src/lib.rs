@@ -27,4 +27,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 // Module declarations to be added during Phase 1 implementation (Task 2+)
+pub mod error;
 pub mod yaml;

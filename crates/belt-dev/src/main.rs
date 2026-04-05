@@ -15,6 +15,14 @@
 //!   - `belt-dev pipeline fmt  [path...] [--check|--diff]`
 //!   - `belt-dev help`
 
-fn main() {
-    println!("belt-dev 0.1.0 — Phase 1 implementation pending (see docs/plans/)");
+use belt_core::error::Result;
+
+// Task 2 時点では `?` 演算子を使う fallible 呼び出しがないため、clippy::unnecessary_wraps が
+// 発火する。`Result<()>` を返す signature は Task 3 以降で ruleset loader / jsonschema validator
+// 等の Result を `?` で伝播させるための forward-compatible な placeholder なので、ここでは
+// function-level の allow で抑制する。Task 3 以降で `?` 使用箇所が増えた時点で外せる。
+#[allow(clippy::unnecessary_wraps)]
+fn main() -> Result<()> {
+    println!("belt-dev 0.1.0");
+    Ok(())
 }
