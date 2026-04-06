@@ -1,5 +1,5 @@
 ---
-name: linear-refresh
+name: linear-refresh-v2
 description: Orchestrates linear-cleanup and linear-add in a single workflow. Collects tickets and external sources, analyzes for cleanup and add candidates, audits plan quality, then executes.
 argument-hint: "[--force]"
 ---
@@ -10,7 +10,7 @@ Orchestrates linear-cleanup and linear-add in a single workflow. Collects ticket
 and external sources once, analyzes for cleanup and add candidates, audits plan
 quality, then executes approved changes.
 
-This skill is used with the `pipelines/linear-refresh.yml` belt pipeline.
+This skill is used with the `linear-refresh.yml` belt pipeline.
 Invoke /belt-agent for protocol details.
 
 ## HARD-GATE

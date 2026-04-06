@@ -1188,9 +1188,13 @@ fn after_escalation_verify_works_but_step_rejected() {
     // build phase: max_retries: 3
     // 3 FAIL + 1 PASS = 4 attempts -> escalation
     for _ in 0..3 {
-        engine.verify_verdict(&mut state, false).expect("verify FAIL");
+        engine
+            .verify_verdict(&mut state, false)
+            .expect("verify FAIL");
     }
-    engine.verify_verdict(&mut state, true).expect("verify PASS");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
 
     // step -> MaxRetriesExceeded
     assert!(matches!(

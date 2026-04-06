@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(
     name = "belt-agent",
-    about = "belt-agent — workflow runtime for LLM/CI"
+    about = "belt-agent — workflow runtime for LLM"
 )]
 struct Cli {
     /// Path to belt.toml config file

@@ -5,6 +5,6 @@ phases:
   - id: analyze
     description: "Identify create/link/skip candidates from external sources."
     config:
-      skill: "/linear-refresh"
+      skill: "/linear-add"
     gate:
       - file_exists: ".belt/plan-b.json"

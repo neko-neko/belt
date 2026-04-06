@@ -5,6 +5,6 @@ phases:
   - id: analyze
     description: "Detect parent-child, blocking, duplicate, and status issues."
     config:
-      skill: "/linear-refresh"
+      skill: "/linear-cleanup"
     gate:
       - file_exists: ".belt/plan-a.json"
