@@ -508,3 +508,165 @@ phases:
         "gate-less next phase should auto-set verify true"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test: step without verify returns VerifyRequired
+// ---------------------------------------------------------------------------
+#[test]
+fn step_without_verify_returns_verify_required() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "build"),
+        "expected VerifyRequired, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step after verify PASS succeeds
+// ---------------------------------------------------------------------------
+#[test]
+fn step_after_verify_pass_succeeds() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    engine.verify_verdict(&mut state, true).expect("verify");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed after PASS");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: step after verify FAIL returns VerifyRequired
+// ---------------------------------------------------------------------------
+#[test]
+fn step_after_verify_fail_returns_verify_required() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    engine
+        .verify_verdict(&mut state, false)
+        .expect("verify FAIL");
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "build"),
+        "expected VerifyRequired after FAIL, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step on gate-less phase succeeds without verify
+// ---------------------------------------------------------------------------
+#[test]
+fn step_on_gateless_phase_succeeds_without_verify() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("gate-less step should succeed without verify");
+    assert_eq!(next.as_deref(), Some("test"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: verify PASS does not carry to next gate phase
+// ---------------------------------------------------------------------------
+#[test]
+fn verify_pass_does_not_carry_to_next_gate_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: test
+    description: "Test"
+    gate:
+      - file_exists: "test.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // verify PASS build, step to test
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to test");
+    assert_eq!(next.as_deref(), Some("test"));
+
+    // step without verifying test phase
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "test"),
+        "expected VerifyRequired for unverified next phase, got: {result:?}"
+    );
+}

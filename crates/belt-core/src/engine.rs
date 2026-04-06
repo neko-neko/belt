@@ -139,6 +139,13 @@ impl Engine {
                 message: format!("current phase '{}' not found", state.current_phase),
             })?;
 
+        // Guard: verify-before-step
+        if state.phase_verify_passed.get(&state.current_phase) != Some(&true) {
+            return Err(BeltError::VerifyRequired {
+                phase_id: state.current_phase.clone(),
+            });
+        }
+
         // Mark current as completed
         state.completed_phases.push(state.current_phase.clone());
 
