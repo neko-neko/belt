@@ -49,7 +49,7 @@ impl Engine {
         let state = RunState {
             run_id,
             pipeline: pipeline.name,
-            pipeline_file: pipeline_path.display().to_string(),
+            pipeline_file: std::fs::canonicalize(pipeline_path)?.display().to_string(),
             version: pipeline.version,
             args: args.clone(),
             current_phase: active.id.clone(),

@@ -1214,3 +1214,62 @@ fn after_escalation_verify_works_but_step_rejected() {
         Err(BeltError::MaxRetriesExceeded { .. })
     ));
 }
+
+// ===========================================================================
+// BELT-23: pipeline_file path canonicalization
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Test: init stores absolute path in state.pipeline_file
+// ---------------------------------------------------------------------------
+#[test]
+fn init_stores_absolute_path() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    let stored = std::path::Path::new(&state.pipeline_file);
+    assert!(
+        stored.is_absolute(),
+        "pipeline_file should be absolute, got: {}",
+        state.pipeline_file
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: init canonicalizes dot segments (../ and ./)
+// ---------------------------------------------------------------------------
+#[test]
+fn init_canonicalizes_dot_segments() {
+    let dir = TempDir::new().expect("tempdir");
+    let _pipeline_path = two_phase_pipeline(&dir);
+
+    // Construct a path with redundant dot segments:
+    // /tmp/xxx/pipeline.yml -> /tmp/xxx/./subdir/../pipeline.yml
+    let subdir = dir.path().join("subdir");
+    std::fs::create_dir(&subdir).expect("create subdir");
+    let dotty_path = subdir.join("..").join("pipeline.yml");
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&dotty_path, &HashMap::new()).expect("init");
+
+    assert!(
+        !state.pipeline_file.contains(".."),
+        "pipeline_file should not contain '..', got: {}",
+        state.pipeline_file
+    );
+    assert!(
+        !state.pipeline_file.contains("/./"),
+        "pipeline_file should not contain '/./', got: {}",
+        state.pipeline_file
+    );
+    assert!(
+        std::path::Path::new(&state.pipeline_file).is_absolute(),
+        "pipeline_file should be absolute, got: {}",
+        state.pipeline_file
+    );
+}
