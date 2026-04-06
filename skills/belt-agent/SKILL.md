@@ -6,157 +6,57 @@ user-invocable: false
 
 # Belt Protocol
 
-Generic protocol for driving the belt-agent CLI. Defines how LLM agents interact
-with belt's deterministic state machine — the command loop, response interpretation,
-and safety constraints.
+Protocol for LLM agents driving belt-agent CLI — a deterministic state machine for pipeline execution.
 
-## Protocol Loop
+## Commands
 
-```
-belt-agent init <pipeline.yml> [--arg key=value ...]
-  |
-loop {
-  phase = belt-agent next [--run <id>]
+```bash
+# Start a new run
+belt-agent init <pipeline.yml>
+belt-agent init <pipeline.yml> --arg smoke=true --arg team=BELT
 
-  if phase.completed:
-    break                        # pipeline complete
+# Get current phase info (or completion signal)
+belt-agent next
+belt-agent next --run <run_id>
 
-  execute(phase)                 # LLM executes the phase (see config)
+# Run gate checks for current phase
+belt-agent verify
+belt-agent verify --run <run_id>
 
-  if phase.gate is not empty:
-    result = belt-agent verify [--run <id>]
+# Advance to next phase
+belt-agent step
+belt-agent step --confirm          # required when phase has validate criteria
+belt-agent step --run <run_id>
 
-    while result.verdict == "FAIL":
-      fix(result)                # LLM fixes failing gates
-      result = belt-agent verify
-
-  if phase.confirm or phase.validate is not empty:
-    belt-agent step --confirm [--run <id>]
-  else:
-    belt-agent step [--run <id>]
-}
+# Inspect full run state
+belt-agent status
+belt-agent status --run <run_id>
 ```
 
-### Rules
+`--run <id>` is optional on all commands; omit to use the latest run.
 
-- `next` returns all phase information: description, config, artifacts, gate, validate,
-  confirm, regate, max_retries, attempt, and args.
-- Phases with gates require a `verify` PASS before `step`.
-- Phases without gates (confirm-only, etc.) skip `verify` and go directly to `step`.
-- `step` success is determined by the `advanced` field in the JSON response.
-- `status` can be called at any time to inspect the full run state.
-- `--run <id>` is optional on all commands; omit it to use the latest run.
+## Workflow
 
-## Command Response Handling
-
-### init
-
-Starts a new run. Returns the first active phase (after `when:` evaluation).
-
-```json
-{
-  "run_id": "019d6195-...",
-  "pipeline": "feature-dev",
-  "phase": {
-    "id": "design/explore",
-    "description": "...",
-    "config": {},
-    "artifacts": [".belt/exploration/*.json"],
-    "output_dir": ".belt/runs/<run_id>/design_explore"
-  },
-  "gate": [{ "file_exists": ".belt/exploration/*.json" }],
-  "validate": [],
-  "confirm": false,
-  "max_retries": 0,
-  "attempt": 0,
-  "args": {}
-}
+```
+init → next → execute phase → verify (if gates) → step → next → ... → completed
 ```
 
-### next
+1. `init` starts a run and returns the first active phase.
+2. `next` returns the current phase info. If `completed: true`, the pipeline is done.
+3. Execute the phase work (see `config.skill`).
+4. If the phase has `gate`, run `verify`. On FAIL, fix and re-verify.
+5. `step` to advance. If `advanced: false`, check the `reason` field.
+6. Repeat from `next`.
 
-Returns current phase information, or signals pipeline completion.
+## Decision Rules
 
-| Response | Action |
-|----------|--------|
-| `completed: true` | Exit loop. Pipeline complete. |
-| `phase` present | Read phase info, begin execution. |
-
-### verify
-
-Runs gate checks and returns a verdict.
-
-```json
-{
-  "run_id": "...",
-  "phase": "design/explore",
-  "verdict": "PASS",
-  "checks": [
-    {
-      "check_type": "file_exists",
-      "passed": true,
-      "detail": "matched 3 files",
-      "duration_ms": null
-    }
-  ],
-  "attempt": 1,
-  "max_retries": 0
-}
-```
-
-| Response | Action |
-|----------|--------|
-| `verdict: "PASS"` | Gate passed. Proceed to `step`. |
-| `verdict: "FAIL"` | Read `checks`, fix failing gates, re-run `verify`. |
-
-### step
-
-Advances to the next phase.
-
-| Response | Action |
-|----------|--------|
-| `advanced: true`, `to` present | Transition succeeded. Call `next`. |
-| `advanced: true`, `completed: true` | Pipeline complete. |
-| `advanced: false`, `reason: "confirmation_required"` | `--confirm` needed. Verify validate criteria first, then retry with `--confirm`. |
-
-### status
-
-Returns the full run state. Can be called at any time.
-
-```json
-{
-  "run_id": "...",
-  "pipeline": "feature-dev",
-  "pipeline_file": "examples/feature-dev/pipeline.yml",
-  "current_phase": "design/synthesize",
-  "completed_phases": ["design/explore"],
-  "skipped_phases": [],
-  "phase_attempts": { "design/explore": 1 },
-  "args": {},
-  "created_at": "...",
-  "updated_at": "..."
-}
-```
-
-### Regate
-
-When `next` returns a `regate` field containing phase IDs, `verify` re-checks gates
-for those phases in addition to the current phase.
-
-- If a regate target's gate fails, fix **that phase's work** (not the current phase).
-- Repeat verify -> fix until all regate targets and the current phase pass.
-
-## HARD-GATE
-
-<HARD-GATE>
-When validate criteria exist for a phase, you MUST NOT run
-`belt-agent step --confirm` without verifying each criterion.
-
-validate is a list of criteria that belt returns for LLM judgment.
-belt cannot know whether these criteria were actually evaluated.
-The --confirm flag is the LLM's declaration that criteria have been verified.
-Passing it without verification is a protocol violation.
-</HARD-GATE>
+| Situation | Action |
+|-----------|--------|
+| Phase has no `gate` | Skip `verify`. Go directly to `step`. |
+| `verify` returns FAIL | Read `checks` array. Fix failing items. Re-run `verify`. |
+| `verify` FAIL with `regate` phases | Fix **those regate phases' work** (not the current phase). Re-run `verify`. |
+| Phase has `validate` criteria | Verify each criterion yourself, then `step --confirm`. |
+| `step` returns `advanced: false` | Read `reason`. Typically `confirmation_required` — verify criteria and retry with `--confirm`. |
 
 ## Well-known Config Keys
 
@@ -173,3 +73,15 @@ Only the following key has a defined meaning in this protocol:
 - Pipeline-specific skills MAY add custom keys freely (belt does not interpret them).
 - Dispatch implementation (which agents to launch, how to execute) is the
   pipeline-specific skill's responsibility.
+
+## HARD-GATE
+
+<HARD-GATE>
+When validate criteria exist for a phase, you MUST NOT run
+`belt-agent step --confirm` without verifying each criterion.
+
+validate is a list of criteria that belt returns for LLM judgment.
+belt cannot know whether these criteria were actually evaluated.
+The --confirm flag is the LLM's declaration that criteria have been verified.
+Passing it without verification is a protocol violation.
+</HARD-GATE>
