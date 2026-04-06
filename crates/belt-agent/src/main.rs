@@ -230,7 +230,10 @@ fn cmd_step(engine: &Engine, run: Option<&String>, confirm: bool) -> miette::Res
     let pipeline_path_str = state.pipeline_file.clone();
     let pipeline_path = Path::new(&pipeline_path_str);
 
-    // Check confirm requirement
+    // Check confirm requirement before engine.step() to avoid the
+    // (marginally wasteful) expand_pipeline() call when confirm would
+    // reject anyway. Engine-level guards (verify, max_retries) are
+    // enforced inside step() regardless of this check's outcome.
     let phase = engine
         .next_phase_info(&state, pipeline_path)
         .map_err(|e| miette::miette!("{e}"))?;

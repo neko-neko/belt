@@ -305,27 +305,6 @@ fn engine_next_phase_info_sets_output_dir() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: init sets phase_verify_passed for gate-less first phase
-// ---------------------------------------------------------------------------
-#[test]
-fn engine_init_sets_phase_verify_passed_empty() {
-    let dir = TempDir::new().expect("tempdir");
-    let pipeline_path = two_phase_pipeline(&dir);
-
-    let belt_dir = dir.path().join(".belt");
-    let engine = Engine::new(&belt_dir);
-    let args = HashMap::new();
-
-    let state = engine.init(&pipeline_path, &args).expect("init");
-    // two_phase_pipeline has gate-less phases, so first phase gets auto-true
-    assert_eq!(
-        state.phase_verify_passed.get("build"),
-        Some(&true),
-        "gate-less first phase should auto-set verify true"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Test: init auto-sets verify for gate-less first phase
 // ---------------------------------------------------------------------------
 #[test]
