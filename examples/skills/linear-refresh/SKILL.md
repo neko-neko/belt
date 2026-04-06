@@ -6,12 +6,12 @@ argument-hint: "[--force]"
 
 # Linear Refresh
 
+This skill is used with the `linear-refresh.yml` belt pipeline.
+Invoke `/belt-agent` for protocol details.
+
 Orchestrates linear-cleanup and linear-add in a single workflow. Collects tickets
 and external sources once, analyzes for cleanup and add candidates, audits plan
 quality, then executes approved changes.
-
-This skill is used with the `linear-refresh.yml` belt pipeline.
-Invoke /belt-agent for protocol details.
 
 ## HARD-GATE
 
