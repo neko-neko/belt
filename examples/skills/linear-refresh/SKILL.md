@@ -27,10 +27,7 @@ Sub-agents handle all data processing. They read reference files for instruction
 
 | Phase | Dispatch | Reference |
 |-------|----------|-----------|
-| collect/tickets | Agent: fetch ticket list and details | [collect-tickets-agent.md](references/collect-tickets-agent.md) |
-| collect/explore-1hop | Agent: 1-hop external source exploration | [collect-explore-agent.md](references/collect-explore-agent.md) (hop=1) |
-| collect/explore-2hop | Agent: 2-hop recursive expansion | [collect-explore-agent.md](references/collect-explore-agent.md) (hop=2) |
-| collect/merge | Agent: merge partial files | [collect-merge-agent.md](references/collect-merge-agent.md) |
+| collect | Agent: fetch tickets + explore external sources | [collect-agent.md](references/collect-agent.md) |
 | cleanup-analysis/analyze | Agent: detect structural issues | [cleanup-agent.md](references/cleanup-agent.md) |
 | add-analysis/analyze | Agent: detect new ticket candidates | [add-agent.md](references/add-agent.md) |
 | audit | Agent: ground truth audit + unified plan | [audit-agent.md](references/audit-agent.md) |
@@ -67,10 +64,7 @@ The only phase where the orchestrator reads data:
 
 | File | Produced by |
 |------|------------|
-| `.belt/partial/tickets.json` | collect-tickets-agent |
-| `.belt/partial/sources-1hop.json` | collect-explore-agent (hop=1) |
-| `.belt/partial/sources-2hop.json` | collect-explore-agent (hop=2) |
-| `.belt/collected-context.json` | collect-merge-agent |
+| `.belt/collected-context.json` | collect-agent |
 | `.belt/plan-a.json` | cleanup-agent |
 | `.belt/plan-b.json` | add-agent |
 | `.belt/refresh-plan.json` | audit-agent |
