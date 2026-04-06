@@ -6,108 +6,86 @@ argument-hint: "[--force]"
 
 # Linear Refresh
 
-This skill is used with the `linear-refresh.yml` belt pipeline.
 Invoke `/belt-agent` for protocol details.
 
-Orchestrates linear-cleanup and linear-add in a single workflow. Collects tickets
-and external sources once, analyzes for cleanup and add candidates, audits plan
-quality, then executes approved changes.
+## Role
 
-## HARD-GATE
+You are the **orchestrator**. Your responsibilities:
 
-<HARD-GATE>
-Before starting the collect phase, invoke /linear-cli and /slackcli skills
-to load their context. These skills provide the CLI usage patterns required
-for ticket retrieval and external source exploration.
-</HARD-GATE>
+1. Advance belt-agent phases (init → next → verify → step)
+2. Dispatch sub-agents per phase with a reference file path
+3. Present the unified plan at the approve phase
 
-## Output
+You do NOT:
+- Hold ticket data or external source content
+- Read `.belt/collected-context.json`, `.belt/plan-a.json`, or `.belt/plan-b.json`
+- Load domain skills (`/linear-cli`, `/slackcli`, `/linear-cleanup`, `/linear-add`)
 
-- `.belt/collected-context.json` — all tickets + external sources
-- `.belt/plan-a.json` — cleanup change candidates
-- `.belt/plan-b.json` — add detection candidates
-- `.belt/refresh-plan.json` — unified plan (cleanup + add)
-- `.belt/refresh-result.json` — execution results
+Sub-agents handle all data processing. They read reference files for instructions, load required skills, and write output to `.belt/` files. You receive only a summary string.
 
 ## Phase Map
 
-| Phase | What to do | Reference |
-|-------|-----------|-----------|
-| collect | Fetch tickets, explore external sources | [collected-context-schema.md](references/collected-context-schema.md), [external-source-exploration.md](references/external-source-exploration.md) |
-| cleanup-analysis/analyze | Analyze for structural issues | Read /linear-cleanup skill guidelines |
-| add-analysis/analyze | Detect new ticket candidates | Read /linear-add skill guidelines |
-| audit | Ground Truth audit, generate unified plan | [ground-truth-audit.md](references/ground-truth-audit.md) |
-| approve | Present plan, wait for user approval | — |
-| execute | Run cleanup then add changes | [execution-report.md](references/execution-report.md) |
+| Phase | Dispatch | Reference |
+|-------|----------|-----------|
+| collect/tickets | Agent: fetch ticket list and details | [collect-tickets-agent.md](references/collect-tickets-agent.md) |
+| collect/explore-1hop | Agent: 1-hop external source exploration | [collect-explore-agent.md](references/collect-explore-agent.md) (hop=1) |
+| collect/explore-2hop | Agent: 2-hop recursive expansion | [collect-explore-agent.md](references/collect-explore-agent.md) (hop=2) |
+| collect/merge | Agent: merge partial files | [collect-merge-agent.md](references/collect-merge-agent.md) |
+| cleanup-analysis/analyze | Agent: detect structural issues | [cleanup-agent.md](references/cleanup-agent.md) |
+| add-analysis/analyze | Agent: detect new ticket candidates | [add-agent.md](references/add-agent.md) |
+| audit | Agent: ground truth audit + unified plan | [audit-agent.md](references/audit-agent.md) |
+| approve | **Orchestrator**: read refresh-plan.json, present | [approve-format.md](references/approve-format.md) |
+| execute | Agent: run cleanup then add changes | [execute-agent.md](references/execute-agent.md) |
 
-## Phase: collect
+## Dispatch Pattern
 
-1. Invoke /linear-cli and /slackcli (HARD-GATE).
-2. Team selection: 1 team → auto-select, multiple → ask user, 0 → error.
-3. Step 0-1: Fetch all tickets via `linear issue list`.
-4. Step 0-2: Fetch details for active tickets (Agent parallel, 10-ticket batches).
-5. Step 0-3: 1-hop external source exploration (Agent parallel).
-   - See [external-source-exploration.md](references/external-source-exploration.md) for filtering, budgets.
-6. Step 0-3b: 2-hop recursive expansion for high-priority tickets (Agent parallel).
-   - Condition: In Progress + High/Urgent + activity within 72h.
-7. Step 0-4: Generate `.belt/collected-context.json`.
-   - See [collected-context-schema.md](references/collected-context-schema.md) for schema.
+For each phase (except approve):
 
-## Phase: cleanup-analysis/analyze
+1. `belt-agent next` — get current phase info
+2. Read the phase's reference file path from the table above
+3. Dispatch Agent with prompt:
 
-1. Read /linear-cleanup SKILL.md analysis guidelines.
-2. Analyze CollectedContext for: parent-child, blocking, related, status, duplicates, context gaps.
-3. Output `.belt/plan-a.json`.
+   > Read `{reference_path}` and execute.
+   > Team: {team_id}. [Phase-specific parameters if any.]
+   > Return only a count summary.
 
-## Phase: add-analysis/analyze
+4. Agent completes → receive summary string
+5. `belt-agent verify` → `belt-agent step` → next phase
 
-1. Read /linear-add SKILL.md detection criteria.
-2. Exclude items already in Plan A (deduplication).
-3. Analyze CollectedContext for new ticket candidates.
-4. Output `.belt/plan-b.json`.
+## approve Phase (Orchestrator Direct)
 
-## Phase: audit
+The only phase where the orchestrator reads data:
 
-1. Read [ground-truth-audit.md](references/ground-truth-audit.md).
-2. Run 3 audit questions (Q1-Q3) for each In Progress ticket.
-3. If issues found and additional exploration needed:
-   - Run single-shot exploration for specific URLs.
-   - Update `.belt/collected-context.json`.
-   - Regenerate Plan A/B.
-4. Generate unified plan `.belt/refresh-plan.json`.
+1. `belt-agent next` — get approve phase info
+2. Read `.belt/refresh-plan.json` (~30 lines)
+3. Read [approve-format.md](references/approve-format.md) for display layout
+4. Present formatted plan to user
+5. Handle approval / modification / cancellation
+6. `belt-agent step --confirm`
 
-## Phase: approve
+## Output Files
 
-1. Present unified plan with Cleanup and Add sections.
-2. Wait for user approval.
-   - Approve → proceed to execute.
-   - Modify → update plan, re-present.
-   - Cancel → exit.
-3. Skipped when `--force` is set.
-
-## Phase: execute
-
-1. **Cleanup** (in order):
-   - Parent-child relationships.
-   - Parallel: blocking, related, status, context additions.
-   - Duplicate merges (close + duplicateOf).
-2. **Add** (in order):
-   - Create new tickets.
-   - Link to existing tickets.
-3. Error handling: skip individual failures, continue execution.
-4. Generate `.belt/refresh-result.json`.
-   - See [execution-report.md](references/execution-report.md) for format.
+| File | Produced by |
+|------|------------|
+| `.belt/partial/tickets.json` | collect-tickets-agent |
+| `.belt/partial/sources-1hop.json` | collect-explore-agent (hop=1) |
+| `.belt/partial/sources-2hop.json` | collect-explore-agent (hop=2) |
+| `.belt/collected-context.json` | collect-merge-agent |
+| `.belt/plan-a.json` | cleanup-agent |
+| `.belt/plan-b.json` | add-agent |
+| `.belt/refresh-plan.json` | audit-agent |
+| `.belt/refresh-result.json` | execute-agent |
 
 ## Red Flags
 
 **Never:**
-- Execute changes without an approved plan (unless --force)
-- Delete or archive tickets (cleanup closes duplicates only)
-- Rewrite ticket descriptions (context additions use comments/attachments)
-- Explore beyond 2 hops (infinite expansion prevention)
+- Return ticket data from sub-agents to the orchestrator
+- Load `/linear-cli`, `/slackcli`, `/linear-cleanup`, `/linear-add` in the orchestrator
+- Read `.belt/collected-context.json` in the orchestrator
+- Execute Linear API calls from the orchestrator
+- Explore beyond 2 hops
 
 **Always:**
-- Invoke /linear-cli and /slackcli before collect
-- Respect summary budgets (200/400/800 chars by priority)
-- Record deferred signals from external sources
-- Report all execution failures in result JSON
+- Dispatch one agent per phase
+- Pass reference file path in the agent prompt
+- Verify sub-agent wrote the expected gate file before running `belt-agent verify`
