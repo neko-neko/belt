@@ -6,10 +6,7 @@ args:
 phases:
   - id: collect
     description: "Fetch all tickets and explore external sources (1-hop + 2-hop)."
-    config:
-      skill: "/linear-refresh"
-    gate:
-      - file_exists: ".belt/collected-context.json"
+    uses: ./collect.yml
 
   - id: cleanup-analysis
     description: "Analyze tickets for structural issues."

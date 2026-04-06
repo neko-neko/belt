@@ -1,0 +1,32 @@
+name: collect
+version: 1
+description: "Fetch all tickets and explore external sources in 4 stages."
+phases:
+  - id: tickets
+    description: "Fetch ticket list and details from Linear."
+    config:
+      skill: "/linear-refresh"
+    gate:
+      - file_exists: ".belt/partial/tickets.json"
+
+  - id: explore-1hop
+    description: "1-hop external source exploration."
+    config:
+      skill: "/linear-refresh"
+    gate:
+      - file_exists: ".belt/partial/sources-1hop.json"
+
+  - id: explore-2hop
+    description: "2-hop recursive expansion for high-priority tickets."
+    config:
+      skill: "/linear-refresh"
+    gate:
+      - file_exists: ".belt/partial/sources-2hop.json"
+
+  - id: merge
+    description: "Merge partial files into collected-context.json."
+    config:
+      skill: "/linear-refresh"
+    gate:
+      - file_exists: ".belt/collected-context.json"
+    regate: [tickets]
