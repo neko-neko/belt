@@ -1,0 +1,10 @@
+name: branch-divergence
+description: "Branch has not diverged too far from base"
+
+inputs:
+  base: { type: string, default: "main" }
+  max_commits: { type: number, default: 50 }
+
+checks:
+  - cmd: "test $(git log --oneline ${base}..HEAD | wc -l | tr -d ' ') -le ${max_commits}"
+  - git_clean: true

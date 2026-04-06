@@ -1,0 +1,190 @@
+name: feature-dev
+description: "Quality-gated development workflow: design -> review -> plan -> review -> execute -> audit -> review -> integrate"
+version: 1
+
+args:
+  codex:      { type: bool, default: false }
+  doc:        { type: bool, default: false }
+  smoke:      { type: bool, default: false }
+  e2e:        { type: bool, default: false }
+  ui:         { type: bool, default: false }
+  iterations: { type: number, default: 3 }
+  swarm:      { type: bool, default: false }
+  linear:     { type: bool, default: false }
+
+phases:
+  # ──────────────────────────────────────────────
+  # Phase 1: Design
+  # ──────────────────────────────────────────────
+  # Sub-pipeline: explore -> synthesize -> write-design
+  - id: design
+    uses: ../pipelines/design-exploration.yml
+    config:
+      worktree: true
+    gate:
+      - cmd: "cargo test"
+
+  # ──────────────────────────────────────────────
+  # Phase 2: Spec Review
+  # ──────────────────────────────────────────────
+  # Sub-pipeline: review -> triage -> fix
+  - id: spec-review
+    uses: ../pipelines/review-cycle.yml
+    with:
+      skill: "/spec-review"
+      perspectives:
+        - requirements
+        - design-judgment
+        - feasibility
+        - consistency
+    validate:
+      - "Design document maintains internal consistency after fixes"
+      - "Requirements are specific enough for implementation planning"
+
+  # ──────────────────────────────────────────────
+  # Phase 3: Plan
+  # ──────────────────────────────────────────────
+  - id: plan
+    description: |
+      Create implementation plan with task breakdown and test cases.
+      Tasks must be sub-agent executable (<=10 steps, <=3 modules each).
+      Test cases in Given/When/Then format.
+    config:
+      skill: "superpowers:writing-plans"
+    artifacts:
+      - "docs/plans/*-plan.md"
+      - "docs/plans/*-test-cases.md"
+    gate:
+      - file_exists: "docs/plans/*-plan.md"
+      - file_exists: "docs/plans/*-test-cases.md"
+      - git_clean: true
+    validate:
+      - "Every design requirement maps to at least one task"
+      - "Task granularity: <=10 steps, <=3 modules per task"
+      - "No circular dependencies in task graph"
+      - "Test cases use Given/When/Then with concrete values"
+
+  # ──────────────────────────────────────────────
+  # Phase 4: Plan Review
+  # ──────────────────────────────────────────────
+  # Sub-pipeline: review -> triage -> fix
+  - id: plan-review
+    uses: ../pipelines/review-cycle.yml
+    with:
+      skill: "/implementation-review"
+      perspectives:
+        - clarity
+        - feasibility
+        - consistency
+    validate:
+      - "Plan and design document are consistent (component names, data types, paths)"
+      - "Completion criteria use objective terms (no subjective words like 'appropriate')"
+
+  # ──────────────────────────────────────────────
+  # Phase 5: Execute
+  # ──────────────────────────────────────────────
+  - id: execute
+    description: |
+      Implement the plan using TDD.
+      Dispatch feature-implementer sub-agents per task.
+      Each task: write failing test -> implement -> pass test.
+    config:
+      skill: "superpowers:subagent-driven-development"
+      executor: "feature-implementer"
+      tdd: true
+    gate:
+      - uses: ../gates/rust-build.yml
+        with:
+          scope: "--workspace"
+    validate:
+      - "Every plan task has corresponding code changes"
+      - "Tests are not tautologies (assertions exercise actual implementation)"
+      - "Implementation respects component boundaries (no unauthorized cross-module imports)"
+      - "Design -> plan -> implementation -> test traceability is maintained"
+    max_retries: 3
+
+  # ──────────────────────────────────────────────
+  # Phase 6: Doc Audit (optional)
+  # ──────────────────────────────────────────────
+  - id: doc-audit
+    when: args.doc
+    description: |
+      Audit documentation for staleness caused by code changes.
+      Check depends-on declarations, verify accuracy, update outdated docs.
+    confirm: true
+    config:
+      skill: "/doc-audit"
+    gate:
+      - git_clean: true
+
+  # ──────────────────────────────────────────────
+  # Phase 7: Smoke Test (optional)
+  # ──────────────────────────────────────────────
+  - id: smoke-test
+    when: args.smoke
+    description: |
+      Run smoke tests against dev server.
+      Ad-hoc test generation, VRT diff check, E2E with flaky detection.
+    config:
+      skill: "/smoke-test"
+    gate:
+      - cmd: "smoke-test --check"
+    validate:
+      - "Test scenarios reflect project characteristics (not generic)"
+
+  # ──────────────────────────────────────────────
+  # Phase 8: Code Review
+  # ──────────────────────────────────────────────
+  # Sub-pipeline: review -> triage -> fix
+  # After fixes, re-verify execute and smoke-test gates.
+  - id: code-review
+    uses: ../pipelines/review-cycle.yml
+    with:
+      skill: "/code-review"
+      perspectives:
+        - simplify
+        - quality
+        - security
+        - performance
+        - test
+        - ai-antipattern
+        - impact
+    config:
+      impact_rule: "severity high+ requires explicit user decision (no auto-defer)"
+    regate: [execute, smoke-test]
+
+  # ──────────────────────────────────────────────
+  # Phase 9: Test Review (optional)
+  # ──────────────────────────────────────────────
+  # Sub-pipeline: review -> triage -> fix
+  - id: test-review
+    when: args.e2e
+    uses: ../pipelines/review-cycle.yml
+    with:
+      skill: "/test-review"
+      perspectives:
+        - coverage
+        - quality
+        - design-alignment
+    validate:
+      - "All test perspectives from design document are covered by test code"
+    regate: [execute, smoke-test]
+
+  # ──────────────────────────────────────────────
+  # Phase 10: Integrate
+  # ──────────────────────────────────────────────
+  - id: integrate
+    description: |
+      Choose integration method:
+      1. merge — squash -> rebase -> FF merge -> delete worktree
+      2. pr — push + gh pr create -> delete worktree
+      3. keep — keep branch, no action
+      4. discard — delete worktree and branch
+    confirm: true
+    config:
+      skill: "worktrunk:worktrunk"
+      options: [merge, pr, keep, discard]
+    gate:
+      - uses: ../gates/branch-divergence.yml
+        with:
+          max_commits: 50

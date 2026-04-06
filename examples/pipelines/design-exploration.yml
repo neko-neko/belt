@@ -1,0 +1,49 @@
+name: design-exploration
+description: "Parallel codebase exploration, implicit rule extraction, and design document creation"
+version: 1
+
+phases:
+  - id: explore
+    description: |
+      Dispatch parallel exploration agents to understand the codebase:
+      - code-explorer: trace code flow from entry point to data layer
+      - impact-analyzer: trace reverse dependencies, shared state, implicit constraints
+      - code-architect: extract patterns, conventions, reuse candidates
+      Collect and synthesize all results.
+    config:
+      agents:
+        - code-explorer
+        - impact-analyzer
+        - code-architect
+    artifacts: [".belt/exploration/*.json"]
+    gate:
+      - file_exists: ".belt/exploration/*.json"
+
+  - id: synthesize
+    description: |
+      From exploration results, extract:
+      - Implicit contracts and business rules
+      - Undocumented architecture decisions
+      - Validation thresholds and boundary conditions
+      - Side-effect risks and symmetry checks
+    artifacts: [".belt/investigation-record.json"]
+    gate:
+      - file_exists: ".belt/investigation-record.json"
+
+  - id: write-design
+    description: |
+      Create design document with:
+      - Investigation record (all exploration findings)
+      - Impact scope (files, modules, dependencies affected)
+      - Alternatives with trade-offs (minimum 2 approaches)
+      - Test perspectives (normal, edge, error, integration — each 2+ items)
+    confirm: true
+    artifacts: ["docs/specs/*.md"]
+    gate:
+      - file_exists: "docs/specs/*.md"
+      - git_clean: true
+    validate:
+      - "Investigation record has substantive content in all sections"
+      - "Impact scope lists all affected files and they exist in codebase"
+      - "At least 2 alternatives with explicit trade-offs documented"
+      - "Test perspectives: 4 categories x 2+ items each"

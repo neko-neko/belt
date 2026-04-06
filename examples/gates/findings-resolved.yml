@@ -1,0 +1,5 @@
+name: findings-resolved
+description: "No unresolved review findings remain"
+
+checks:
+  - cmd: "test ! -s .belt/findings-unresolved.json"
