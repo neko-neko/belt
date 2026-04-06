@@ -1273,3 +1273,103 @@ fn init_canonicalizes_dot_segments() {
         state.pipeline_file
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test: init with absolute path stores same canonical path
+// ---------------------------------------------------------------------------
+#[test]
+fn init_with_absolute_path_preserved() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+
+    // pipeline_path from TempDir is already absolute
+    assert!(pipeline_path.is_absolute());
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Canonicalize the input for comparison (resolves macOS /private/var symlinks)
+    let expected = std::fs::canonicalize(&pipeline_path)
+        .expect("canonicalize")
+        .display()
+        .to_string();
+    assert_eq!(state.pipeline_file, expected);
+}
+
+// ---------------------------------------------------------------------------
+// Test: init resolves symlink to real path
+// ---------------------------------------------------------------------------
+#[cfg(unix)]
+#[test]
+fn init_resolves_symlink() {
+    let dir = TempDir::new().expect("tempdir");
+    let real_path = two_phase_pipeline(&dir);
+
+    // Create symlink: linked.yml -> pipeline.yml
+    let link_path = dir.path().join("linked.yml");
+    std::os::unix::fs::symlink(&real_path, &link_path).expect("create symlink");
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&link_path, &HashMap::new()).expect("init");
+
+    // Should resolve to the real file, not the symlink
+    let canonical_real = std::fs::canonicalize(&real_path)
+        .expect("canonicalize")
+        .display()
+        .to_string();
+    assert_eq!(
+        state.pipeline_file, canonical_real,
+        "symlink should resolve to real path"
+    );
+    assert!(
+        !state.pipeline_file.contains("linked.yml"),
+        "should not contain symlink name"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: state.pipeline_file is usable after save/load round-trip
+// ---------------------------------------------------------------------------
+#[test]
+fn state_pipeline_file_usable_after_reload() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Reload state from disk
+    let loaded = engine.load_state(&state.run_id).expect("load");
+
+    // Use the stored pipeline_file to call next_phase_info (proves path resolves)
+    let restored_path = std::path::Path::new(&loaded.pipeline_file);
+    let phase = engine
+        .next_phase_info(&loaded, restored_path)
+        .expect("next_phase_info should work with stored absolute path");
+    assert_eq!(phase.id, "build");
+}
+
+// ---------------------------------------------------------------------------
+// Test: nonexistent path returns parse_pipeline error, not canonicalize error
+// ---------------------------------------------------------------------------
+#[test]
+fn init_nonexistent_path_returns_parse_error() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+
+    let bogus_path = dir.path().join("does_not_exist.yml");
+    let result = engine.init(&bogus_path, &HashMap::new());
+
+    assert!(result.is_err());
+    // Should be a FileNotFound or YamlParse from parse_pipeline,
+    // NOT an Io error from canonicalize
+    let err = result.unwrap_err();
+    assert!(
+        !matches!(err, BeltError::Io(_)),
+        "error should come from parse_pipeline, not canonicalize: {err}"
+    );
+}
