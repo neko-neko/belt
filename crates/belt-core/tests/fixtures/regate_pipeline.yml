@@ -1,0 +1,16 @@
+name: regate-test
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: test
+    description: "Test"
+    gate:
+      - file_exists: "test.ok"

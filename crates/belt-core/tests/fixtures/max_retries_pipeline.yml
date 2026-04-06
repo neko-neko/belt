@@ -1,0 +1,13 @@
+name: max-retries-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 3
+  - id: test
+    description: "Test"
+    gate:
+      - file_exists: "test.ok"
+    max_retries: 1

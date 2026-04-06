@@ -1,0 +1,20 @@
+name: when-gate-test
+version: 1
+args:
+  smoke:
+    type: bool
+    default: false
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: optional
+    description: "Optional"
+    gate:
+      - file_exists: "optional.ok"
+    when: "args.smoke"
+  - id: final
+    description: "Final"
+    gate:
+      - file_exists: "final.ok"

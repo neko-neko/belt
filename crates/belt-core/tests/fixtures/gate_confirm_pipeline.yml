@@ -1,0 +1,14 @@
+name: gate-confirm-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: review
+    description: "Review"
+    confirm: true
+  - id: deploy
+    description: "Deploy"
+    gate:
+      - file_exists: "deploy.ok"
