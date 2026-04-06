@@ -1,1 +1,163 @@
-// Will be populated in Task 2
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Top-level pipeline definition loaded from a pipeline YAML file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pipeline {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub version: u32,
+    #[serde(default)]
+    pub args: HashMap<String, ArgDef>,
+    pub phases: Vec<Phase>,
+}
+
+/// Argument definition for pipeline-level `args`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArgDef {
+    #[serde(rename = "type")]
+    pub arg_type: ArgType,
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+}
+
+/// Supported argument / input types for pipeline args and sub-pipeline inputs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArgType {
+    Bool,
+    String,
+    Number,
+    List,
+}
+
+/// A single phase within a pipeline or sub-pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Phase {
+    pub id: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub uses: Option<String>,
+    #[serde(default)]
+    pub with: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub when: Option<String>,
+    #[serde(default)]
+    pub config: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub artifacts: Vec<String>,
+    #[serde(default)]
+    pub gate: Vec<GateCheck>,
+    #[serde(default)]
+    pub validate: Vec<String>,
+    #[serde(default)]
+    pub regate: Vec<String>,
+    #[serde(default)]
+    pub confirm: bool,
+    #[serde(default)]
+    pub max_retries: u32,
+}
+
+/// A single gate check. Deserialized as untagged enum so the YAML shape
+/// determines the variant (e.g. `cmd: "..."` vs `file_exists: "..."`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GateCheck {
+    Cmd {
+        cmd: String,
+    },
+    FileExists {
+        file_exists: String,
+    },
+    GitClean {
+        git_clean: bool,
+    },
+    HasOutput {
+        has_output: bool,
+    },
+    Uses {
+        uses: String,
+        #[serde(default)]
+        with: HashMap<String, serde_json::Value>,
+    },
+}
+
+/// Reusable gate definition (standalone YAML file).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GateDefinition {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub inputs: HashMap<String, InputDef>,
+    pub checks: Vec<GateCheck>,
+}
+
+/// Input definition for gate definitions and sub-pipelines.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputDef {
+    #[serde(rename = "type")]
+    pub input_type: ArgType,
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+/// A sub-pipeline that can be referenced via `uses:` from a phase.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubPipeline {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub version: u32,
+    #[serde(default)]
+    pub inputs: HashMap<String, InputDef>,
+    pub phases: Vec<Phase>,
+}
+
+/// Persisted run state for a pipeline execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunState {
+    pub run_id: String,
+    pub pipeline: String,
+    pub pipeline_file: String,
+    pub version: u32,
+    pub args: HashMap<String, serde_json::Value>,
+    pub current_phase: String,
+    pub completed_phases: Vec<String>,
+    pub skipped_phases: Vec<String>,
+    #[serde(default)]
+    pub phase_attempts: HashMap<String, u32>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A phase after `uses:` resolution and template expansion.
+/// All fields from the referenced sub-pipeline / gate are merged in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpandedPhase {
+    pub id: String,
+    pub description: String,
+    #[serde(default)]
+    pub config: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub artifacts: Vec<String>,
+    #[serde(default)]
+    pub gate: Vec<GateCheck>,
+    #[serde(default)]
+    pub validate: Vec<String>,
+    #[serde(default)]
+    pub regate: Vec<String>,
+    #[serde(default)]
+    pub confirm: bool,
+    #[serde(default)]
+    pub max_retries: u32,
+    #[serde(default)]
+    pub when: Option<String>,
+    /// `output_dir` is computed at runtime, not from YAML.
+    #[serde(skip)]
+    pub output_dir: Option<String>,
+}
