@@ -1,11 +1,17 @@
+---
+name: smoke-test
+description: Browser-based UI verification for code changes. Generates test scenarios from diffs and design docs, executes them via browser, and produces an evidence-backed report.
+argument-hint: "[--diff-base <branch>] [--skip-vrt] [--skip-e2e]"
+---
+
 # Smoke Test
 
 Browser-based UI verification for code changes. Generates test scenarios from diffs
 and design docs, executes them via browser interaction, and produces an evidence-backed
 report.
 
-This skill is used with the `pipelines/smoke-test.yml` belt pipeline. It follows the
-[Belt Protocol](../belt-agent/SKILL.md) for pipeline driving.
+This skill is used with the `pipelines/smoke-test.yml` belt pipeline.
+Invoke /belt-agent for protocol details.
 
 ## Output
 
