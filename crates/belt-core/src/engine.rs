@@ -56,6 +56,7 @@ impl Engine {
             completed_phases: Vec::new(),
             skipped_phases: Vec::new(),
             phase_attempts: HashMap::new(),
+            phase_verify_passed: HashMap::new(),
             created_at: now.clone(),
             updated_at: now,
         };

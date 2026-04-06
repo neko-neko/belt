@@ -297,6 +297,87 @@ fn engine_next_phase_info_sets_output_dir() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: init sets phase_verify_passed to empty
+// ---------------------------------------------------------------------------
+#[test]
+fn engine_init_sets_phase_verify_passed_empty() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let args = HashMap::new();
+
+    let state = engine.init(&pipeline_path, &args).expect("init");
+    assert!(
+        state.phase_verify_passed.is_empty(),
+        "phase_verify_passed should be empty on init"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: phase_verify_passed round-trips through save/load
+// ---------------------------------------------------------------------------
+#[test]
+fn engine_phase_verify_passed_round_trip() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let args = HashMap::new();
+
+    let mut state = engine.init(&pipeline_path, &args).expect("init");
+
+    // Manually set a verify flag and persist
+    state.phase_verify_passed.insert("build".to_string(), true);
+    engine.save_state(&state).expect("save");
+
+    let loaded = engine.load_state(&state.run_id).expect("load");
+    assert_eq!(
+        loaded.phase_verify_passed.get("build").copied(),
+        Some(true),
+        "phase_verify_passed should survive round-trip"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: VerifyRequired error variant
+// ---------------------------------------------------------------------------
+#[test]
+fn error_verify_required_message() {
+    let err = BeltError::VerifyRequired {
+        phase_id: "build".to_string(),
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("verify required for phase 'build'"),
+        "error message should mention phase_id: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: MaxRetriesExceeded error variant
+// ---------------------------------------------------------------------------
+#[test]
+fn error_max_retries_exceeded_message() {
+    let err = BeltError::MaxRetriesExceeded {
+        phase_id: "deploy".to_string(),
+        attempts: 3,
+        max_retries: 3,
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("max retries exceeded for phase 'deploy'"),
+        "error message should mention phase_id: {msg}"
+    );
+    assert!(
+        msg.contains("3/3"),
+        "error message should show attempts/max_retries: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // latest_run_id returns the most recent run
 // ---------------------------------------------------------------------------
 #[test]

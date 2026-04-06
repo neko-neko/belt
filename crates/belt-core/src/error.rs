@@ -23,6 +23,18 @@ pub enum BeltError {
     #[diagnostic(code(belt::gate_failed))]
     GateFailed { message: String },
 
+    #[error("verify required for phase '{phase_id}': run verify before step")]
+    #[diagnostic(code(belt::verify_required))]
+    VerifyRequired { phase_id: String },
+
+    #[error("max retries exceeded for phase '{phase_id}': {attempts}/{max_retries}")]
+    #[diagnostic(code(belt::max_retries_exceeded))]
+    MaxRetriesExceeded {
+        phase_id: String,
+        attempts: u32,
+        max_retries: u32,
+    },
+
     #[error("state error: {message}")]
     #[diagnostic(code(belt::state))]
     State { message: String },
