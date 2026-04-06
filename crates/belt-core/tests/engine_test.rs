@@ -670,3 +670,171 @@ phases:
         "expected VerifyRequired for unverified next phase, got: {result:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test: step exceeding max_retries returns error
+// ---------------------------------------------------------------------------
+#[test]
+fn step_exceeding_max_retries_returns_error() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 3
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 3 FAIL + 1 PASS = 4 attempts; 4 > 3 triggers MaxRetriesExceeded
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(
+            &result,
+            Err(BeltError::MaxRetriesExceeded { phase_id, attempts, max_retries })
+            if phase_id == "build" && *attempts == 4 && *max_retries == 3
+        ),
+        "expected MaxRetriesExceeded, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step within max_retries succeeds
+// ---------------------------------------------------------------------------
+#[test]
+fn step_within_max_retries_succeeds() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 3
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 2 FAIL + 1 PASS = 3 attempts; 3 > 3 is false -> OK
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: step with zero max_retries is unlimited
+// ---------------------------------------------------------------------------
+#[test]
+fn step_with_zero_max_retries_is_unlimited() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 10 FAILs + 1 PASS, max_retries: 0 (default) = unlimited
+    for _ in 0..10 {
+        engine.verify_verdict(&mut state, false).expect("verify");
+    }
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: verify still works after max_retries exceeded
+// ---------------------------------------------------------------------------
+#[test]
+fn verify_still_works_after_max_retries_exceeded() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 2
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 3 attempts on max_retries: 2 -> exceeded
+    engine.verify_verdict(&mut state, false).expect("verify 1");
+    engine.verify_verdict(&mut state, false).expect("verify 2");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify 3 PASS");
+
+    // step blocked
+    assert!(matches!(
+        engine.step(&mut state, &pipeline_path),
+        Err(BeltError::MaxRetriesExceeded { .. })
+    ));
+
+    // verify still works (attempt 4)
+    let result = engine.verify_verdict(&mut state, true);
+    assert!(result.is_ok());
+    assert_eq!(state.phase_attempts.get("build").copied(), Some(4));
+}

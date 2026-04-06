@@ -146,6 +146,23 @@ impl Engine {
             });
         }
 
+        // Guard: max_retries
+        let current_phase_def = &phases[current_idx];
+        if current_phase_def.max_retries > 0 {
+            let attempts = state
+                .phase_attempts
+                .get(&state.current_phase)
+                .copied()
+                .unwrap_or(0);
+            if attempts > current_phase_def.max_retries {
+                return Err(BeltError::MaxRetriesExceeded {
+                    phase_id: state.current_phase.clone(),
+                    attempts,
+                    max_retries: current_phase_def.max_retries,
+                });
+            }
+        }
+
         // Mark current as completed
         state.completed_phases.push(state.current_phase.clone());
 
