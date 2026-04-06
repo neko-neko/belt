@@ -1,4 +1,7 @@
+use belt_core::lint::{Severity, lint_pipeline};
 use clap::{Parser, Subcommand};
+use std::path::Path;
+use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(name = "belt", about = "belt — pipeline authoring tool")]
@@ -16,12 +19,39 @@ enum Command {
     },
 }
 
-fn main() -> miette::Result<()> {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Lint { file: _ } => {
-            eprintln!("belt lint: not yet implemented");
-            std::process::exit(64);
+        Command::Lint { file } => {
+            let path = Path::new(&file);
+            match lint_pipeline(path) {
+                Ok(diagnostics) => {
+                    let mut has_errors = false;
+                    for diag in &diagnostics {
+                        let prefix = match diag.severity {
+                            Severity::Error => {
+                                has_errors = true;
+                                "error"
+                            }
+                            Severity::Warning => "warning",
+                        };
+                        eprintln!("{prefix}: {}", diag.message);
+                    }
+                    if has_errors {
+                        ExitCode::from(1)
+                    } else if diagnostics.is_empty() {
+                        eprintln!("ok: {file}");
+                        ExitCode::SUCCESS
+                    } else {
+                        eprintln!("ok (with warnings): {file}");
+                        ExitCode::SUCCESS
+                    }
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::from(1)
+                }
+            }
         }
     }
 }
