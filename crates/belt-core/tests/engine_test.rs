@@ -297,7 +297,7 @@ fn engine_next_phase_info_sets_output_dir() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: init sets phase_verify_passed to empty
+// Test: init sets phase_verify_passed for gate-less first phase
 // ---------------------------------------------------------------------------
 #[test]
 fn engine_init_sets_phase_verify_passed_empty() {
@@ -309,9 +309,60 @@ fn engine_init_sets_phase_verify_passed_empty() {
     let args = HashMap::new();
 
     let state = engine.init(&pipeline_path, &args).expect("init");
+    // two_phase_pipeline has gate-less phases, so first phase gets auto-true
+    assert_eq!(
+        state.phase_verify_passed.get("build"),
+        Some(&true),
+        "gate-less first phase should auto-set verify true"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: init auto-sets verify for gate-less first phase
+// ---------------------------------------------------------------------------
+#[test]
+fn init_auto_sets_verify_for_gateless_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    assert_eq!(
+        state.phase_verify_passed.get("build"),
+        Some(&true),
+        "gate-less first phase should auto-set verify true"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: init does NOT auto-set verify for gate phase
+// ---------------------------------------------------------------------------
+#[test]
+fn init_does_not_auto_set_verify_for_gate_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
     assert!(
-        state.phase_verify_passed.is_empty(),
-        "phase_verify_passed should be empty on init"
+        state.phase_verify_passed.get("build").is_none(),
+        "gate phase should NOT auto-set verify"
     );
 }
 
@@ -418,4 +469,42 @@ fn verify_verdict_sets_phase_verify_passed() {
     // verify PASS -> sets true
     engine.verify_verdict(&mut state, true).expect("verify");
     assert_eq!(state.phase_verify_passed.get("build"), Some(&true));
+}
+
+// ---------------------------------------------------------------------------
+// Test: step auto-sets verify for gate-less next phase
+// ---------------------------------------------------------------------------
+#[test]
+fn step_auto_sets_verify_for_gateless_next_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Manually set verify for current phase (guard not yet added)
+    state.phase_verify_passed.insert("build".to_string(), true);
+    engine.save_state(&state).expect("save");
+
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("done"));
+    assert_eq!(
+        state.phase_verify_passed.get("done"),
+        Some(&true),
+        "gate-less next phase should auto-set verify true"
+    );
 }

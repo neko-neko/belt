@@ -56,7 +56,11 @@ impl Engine {
             completed_phases: Vec::new(),
             skipped_phases: Vec::new(),
             phase_attempts: HashMap::new(),
-            phase_verify_passed: HashMap::new(),
+            phase_verify_passed: if active.gate.is_empty() {
+                HashMap::from([(active.id.clone(), true)])
+            } else {
+                HashMap::new()
+            },
             created_at: now.clone(),
             updated_at: now,
         };
@@ -140,9 +144,11 @@ impl Engine {
 
         // Find next active phase, skipping those whose `when:` is false
         let mut next_phase = None;
+        let mut next_gate_empty = false;
         for phase in &phases[current_idx + 1..] {
             if eval_when(phase.when.as_ref(), &state.args) {
                 next_phase = Some(phase.id.clone());
+                next_gate_empty = phase.gate.is_empty();
                 break;
             }
             state.skipped_phases.push(phase.id.clone());
@@ -155,6 +161,10 @@ impl Engine {
                 let run_dir = self.belt_dir.join("runs").join(&state.run_id);
                 let output_dir = run_dir.join(next_id.replace('/', "_"));
                 std::fs::create_dir_all(&output_dir)?;
+                // Auto-set verify for gate-less next phase
+                if next_gate_empty {
+                    state.phase_verify_passed.insert(next_id.clone(), true);
+                }
             }
             None => {
                 // Pipeline complete
