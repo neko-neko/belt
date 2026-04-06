@@ -211,3 +211,130 @@ phases:
     assert_eq!(step_json["from"], "review");
     assert_eq!(step_json["to"], "done");
 }
+
+#[test]
+fn step_without_verify_returns_verify_required_json() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: guard-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    // init
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["init", "pipeline.yml"])
+        .current_dir(dir.path())
+        .output()
+        .expect("init failed");
+    assert!(output.status.success());
+    let init_json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let run_id = init_json["run_id"].as_str().unwrap();
+
+    // step WITHOUT verify -> verify_required
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["step", "--run", run_id])
+        .current_dir(dir.path())
+        .output()
+        .expect("step failed");
+    assert!(
+        output.status.success(),
+        "step should succeed (exit 0) even for guard errors: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["advanced"], false);
+    assert_eq!(json["reason"], "verify_required");
+    assert_eq!(json["phase"], "build");
+}
+
+#[test]
+fn step_after_max_retries_returns_escalation_json() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: escalation-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 2
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    // init
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["init", "pipeline.yml"])
+        .current_dir(dir.path())
+        .output()
+        .expect("init failed");
+    assert!(output.status.success());
+    let init_json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let run_id = init_json["run_id"].as_str().unwrap();
+
+    // verify twice (file doesn't exist -> FAIL)
+    for _ in 0..2 {
+        let output = Command::cargo_bin("belt-agent")
+            .unwrap()
+            .args(["verify", "--run", run_id])
+            .current_dir(dir.path())
+            .output()
+            .expect("verify failed");
+        assert!(output.status.success());
+        let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(json["verdict"], "FAIL");
+    }
+
+    // Create the file so 3rd verify passes
+    std::fs::write(dir.path().join("build.ok"), "").unwrap();
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["verify", "--run", run_id])
+        .current_dir(dir.path())
+        .output()
+        .expect("verify failed");
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["verdict"], "PASS");
+
+    // step -> 3 attempts > max_retries 2 -> escalation
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["step", "--run", run_id])
+        .current_dir(dir.path())
+        .output()
+        .expect("step failed");
+    assert!(
+        output.status.success(),
+        "step should succeed (exit 0): {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["advanced"], false);
+    assert_eq!(json["reason"], "max_retries_exceeded");
+    assert_eq!(json["phase"], "build");
+    assert_eq!(json["attempts"], 3);
+    assert_eq!(json["max_retries"], 2);
+    assert_eq!(json["escalation"], true);
+}

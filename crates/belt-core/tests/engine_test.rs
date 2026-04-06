@@ -4,6 +4,14 @@ use std::collections::HashMap;
 use std::io::Write;
 use tempfile::TempDir;
 
+/// Helper: resolve a fixture file path relative to CARGO_MANIFEST_DIR.
+fn fixture_path(name: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(name)
+}
+
 /// Helper: write a file inside the given directory and return its path.
 fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
     let path = dir.path().join(name);
@@ -297,6 +305,117 @@ fn engine_next_phase_info_sets_output_dir() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: init auto-sets verify for gate-less first phase
+// ---------------------------------------------------------------------------
+#[test]
+fn init_auto_sets_verify_for_gateless_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    assert_eq!(
+        state.phase_verify_passed.get("build"),
+        Some(&true),
+        "gate-less first phase should auto-set verify true"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: init does NOT auto-set verify for gate phase
+// ---------------------------------------------------------------------------
+#[test]
+fn init_does_not_auto_set_verify_for_gate_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    assert!(
+        state.phase_verify_passed.get("build").is_none(),
+        "gate phase should NOT auto-set verify"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: phase_verify_passed round-trips through save/load
+// ---------------------------------------------------------------------------
+#[test]
+fn engine_phase_verify_passed_round_trip() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let args = HashMap::new();
+
+    let mut state = engine.init(&pipeline_path, &args).expect("init");
+
+    // Manually set a verify flag and persist
+    state.phase_verify_passed.insert("build".to_string(), true);
+    engine.save_state(&state).expect("save");
+
+    let loaded = engine.load_state(&state.run_id).expect("load");
+    assert_eq!(
+        loaded.phase_verify_passed.get("build").copied(),
+        Some(true),
+        "phase_verify_passed should survive round-trip"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: VerifyRequired error variant
+// ---------------------------------------------------------------------------
+#[test]
+fn error_verify_required_message() {
+    let err = BeltError::VerifyRequired {
+        phase_id: "build".to_string(),
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("verify required for phase 'build'"),
+        "error message should mention phase_id: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: MaxRetriesExceeded error variant
+// ---------------------------------------------------------------------------
+#[test]
+fn error_max_retries_exceeded_message() {
+    let err = BeltError::MaxRetriesExceeded {
+        phase_id: "deploy".to_string(),
+        attempts: 3,
+        max_retries: 3,
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("max retries exceeded for phase 'deploy'"),
+        "error message should mention phase_id: {msg}"
+    );
+    assert!(
+        msg.contains("3/3"),
+        "error message should show attempts/max_retries: {msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // latest_run_id returns the most recent run
 // ---------------------------------------------------------------------------
 #[test]
@@ -317,4 +436,777 @@ fn engine_latest_run_id_returns_most_recent() {
     // UUIDv7 is time-ordered; the second run should be latest
     assert_eq!(latest, state2.run_id);
     assert_ne!(latest, state1.run_id);
+}
+
+// ---------------------------------------------------------------------------
+// Test: verify_verdict sets phase_verify_passed
+// ---------------------------------------------------------------------------
+#[test]
+fn verify_verdict_sets_phase_verify_passed() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // verify FAIL -> sets false
+    engine.verify_verdict(&mut state, false).expect("verify");
+    assert_eq!(state.phase_verify_passed.get("build"), Some(&false));
+
+    // verify PASS -> sets true
+    engine.verify_verdict(&mut state, true).expect("verify");
+    assert_eq!(state.phase_verify_passed.get("build"), Some(&true));
+}
+
+// ---------------------------------------------------------------------------
+// Test: step auto-sets verify for gate-less next phase
+// ---------------------------------------------------------------------------
+#[test]
+fn step_auto_sets_verify_for_gateless_next_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Manually set verify for current phase (guard not yet added)
+    state.phase_verify_passed.insert("build".to_string(), true);
+    engine.save_state(&state).expect("save");
+
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("done"));
+    assert_eq!(
+        state.phase_verify_passed.get("done"),
+        Some(&true),
+        "gate-less next phase should auto-set verify true"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step without verify returns VerifyRequired
+// ---------------------------------------------------------------------------
+#[test]
+fn step_without_verify_returns_verify_required() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "build"),
+        "expected VerifyRequired, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step after verify PASS succeeds
+// ---------------------------------------------------------------------------
+#[test]
+fn step_after_verify_pass_succeeds() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    engine.verify_verdict(&mut state, true).expect("verify");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed after PASS");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: step after verify FAIL returns VerifyRequired
+// ---------------------------------------------------------------------------
+#[test]
+fn step_after_verify_fail_returns_verify_required() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    engine
+        .verify_verdict(&mut state, false)
+        .expect("verify FAIL");
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "build"),
+        "expected VerifyRequired after FAIL, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step on gate-less phase succeeds without verify
+// ---------------------------------------------------------------------------
+#[test]
+fn step_on_gateless_phase_succeeds_without_verify() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("gate-less step should succeed without verify");
+    assert_eq!(next.as_deref(), Some("test"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: verify PASS does not carry to next gate phase
+// ---------------------------------------------------------------------------
+#[test]
+fn verify_pass_does_not_carry_to_next_gate_phase() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: test
+    description: "Test"
+    gate:
+      - file_exists: "test.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // verify PASS build, step to test
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to test");
+    assert_eq!(next.as_deref(), Some("test"));
+
+    // step without verifying test phase
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "test"),
+        "expected VerifyRequired for unverified next phase, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step exceeding max_retries returns error
+// ---------------------------------------------------------------------------
+#[test]
+fn step_exceeding_max_retries_returns_error() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 3
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 3 FAIL + 1 PASS = 4 attempts; 4 > 3 triggers MaxRetriesExceeded
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(
+            &result,
+            Err(BeltError::MaxRetriesExceeded { phase_id, attempts, max_retries })
+            if phase_id == "build" && *attempts == 4 && *max_retries == 3
+        ),
+        "expected MaxRetriesExceeded, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: step within max_retries succeeds
+// ---------------------------------------------------------------------------
+#[test]
+fn step_within_max_retries_succeeds() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 3
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 2 FAIL + 1 PASS = 3 attempts; 3 > 3 is false -> OK
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine.verify_verdict(&mut state, false).expect("verify");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: step with zero max_retries is unlimited
+// ---------------------------------------------------------------------------
+#[test]
+fn step_with_zero_max_retries_is_unlimited() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 10 FAILs + 1 PASS, max_retries: 0 (default) = unlimited
+    for _ in 0..10 {
+        engine.verify_verdict(&mut state, false).expect("verify");
+    }
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test: verify still works after max_retries exceeded
+// ---------------------------------------------------------------------------
+#[test]
+fn verify_still_works_after_max_retries_exceeded() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 2
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 3 attempts on max_retries: 2 -> exceeded
+    engine.verify_verdict(&mut state, false).expect("verify 1");
+    engine.verify_verdict(&mut state, false).expect("verify 2");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify 3 PASS");
+
+    // step blocked
+    assert!(matches!(
+        engine.step(&mut state, &pipeline_path),
+        Err(BeltError::MaxRetriesExceeded { .. })
+    ));
+
+    // verify still works (attempt 4)
+    let result = engine.verify_verdict(&mut state, true);
+    assert!(result.is_ok());
+    assert_eq!(state.phase_attempts.get("build").copied(), Some(4));
+}
+
+// ===========================================================================
+// Task 7: Guard evaluation order and RunState persistence
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Test: VerifyRequired fires before MaxRetriesExceeded when both apply
+// ---------------------------------------------------------------------------
+#[test]
+fn guard_order_verify_required_before_max_retries() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    max_retries: 3
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // 4 FAIL attempts: verify_passed = false, attempts = 4 > max_retries = 3
+    // Both guards would trigger, but VerifyRequired must fire first
+    for _ in 0..4 {
+        engine.verify_verdict(&mut state, false).expect("verify");
+    }
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { .. })),
+        "VerifyRequired should fire before MaxRetriesExceeded, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: phase_verify_passed persists across load (via verify_verdict)
+// ---------------------------------------------------------------------------
+#[test]
+fn phase_verify_passed_persists_across_load() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    engine.verify_verdict(&mut state, true).expect("verify");
+
+    // Reload state from disk
+    let loaded = engine.load_state(&state.run_id).expect("load");
+    assert_eq!(
+        loaded.phase_verify_passed.get("build"),
+        Some(&true),
+        "phase_verify_passed should survive save/load round-trip"
+    );
+}
+
+// ===========================================================================
+// Task 8: Fixture-based full lifecycle tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Test: Full lifecycle through gate_pipeline (3 gate phases)
+// ---------------------------------------------------------------------------
+#[test]
+fn lifecycle_gate_pipeline_init_verify_step_to_completion() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("gate_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    assert_eq!(state.current_phase, "build");
+    assert!(state.phase_verify_passed.get("build").is_none());
+
+    // Phase 1: build
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step build->test");
+    assert_eq!(next.as_deref(), Some("test"));
+
+    // Phase 2: test
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify test");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step test->deploy");
+    assert_eq!(next.as_deref(), Some("deploy"));
+
+    // Phase 3: deploy
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify deploy");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step deploy->COMPLETED");
+    assert!(next.is_none());
+    assert_eq!(state.current_phase, "COMPLETED");
+    assert_eq!(state.completed_phases, vec!["build", "test", "deploy"]);
+}
+
+// ---------------------------------------------------------------------------
+// Test: Lifecycle through gate + confirm mixed pipeline
+// ---------------------------------------------------------------------------
+#[test]
+fn lifecycle_gate_confirm_mixed_pipeline() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("gate_confirm_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Phase 1: build (has gate)
+    assert_eq!(state.current_phase, "build");
+    assert!(state.phase_verify_passed.get("build").is_none());
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step build->review");
+    assert_eq!(next.as_deref(), Some("review"));
+
+    // Phase 2: review (confirm only, no gate -> auto-true)
+    assert_eq!(
+        state.phase_verify_passed.get("review"),
+        Some(&true),
+        "confirm-only phase should auto-set verify"
+    );
+    // step works without explicit verify
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step review->deploy");
+    assert_eq!(next.as_deref(), Some("deploy"));
+
+    // Phase 3: deploy (has gate)
+    assert!(
+        state.phase_verify_passed.get("deploy").is_none(),
+        "gate phase should not auto-set"
+    );
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify deploy");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step deploy->COMPLETED");
+    assert!(next.is_none());
+    assert_eq!(state.current_phase, "COMPLETED");
+}
+
+// ---------------------------------------------------------------------------
+// Test: Lifecycle with max_retries recovery (fail then pass within limit)
+// ---------------------------------------------------------------------------
+#[test]
+fn lifecycle_max_retries_recovery() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("max_retries_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Phase 1: build (max_retries: 3)
+    // FAIL twice, then PASS on attempt 3 (within limit)
+    engine
+        .verify_verdict(&mut state, false)
+        .expect("verify FAIL 1");
+    engine
+        .verify_verdict(&mut state, false)
+        .expect("verify FAIL 2");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS 3");
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step build->test");
+    assert_eq!(next.as_deref(), Some("test"));
+    assert_eq!(state.phase_attempts.get("build").copied(), Some(3));
+
+    // Phase 2: test (max_retries: 1)
+    // PASS on first attempt
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS 1");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step test->COMPLETED");
+    assert!(next.is_none());
+    assert_eq!(state.current_phase, "COMPLETED");
+}
+
+// ===========================================================================
+// Task 9: Fixture-based compound condition and edge case tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Test: Skipped phase does not pollute verify state
+// ---------------------------------------------------------------------------
+#[test]
+fn when_skipped_phase_does_not_pollute_verify_state() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("when_gate_pipeline.yml");
+
+    let mut args = HashMap::new();
+    args.insert("smoke".to_string(), serde_json::Value::Bool(false));
+    let mut state = engine.init(&pipeline_path, &args).expect("init");
+
+    // build phase (has gate)
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    // "optional" is skipped (when: args.smoke = false), goes to "final"
+    assert_eq!(next.as_deref(), Some("final"));
+    assert_eq!(state.skipped_phases, vec!["optional"]);
+
+    // "optional" should NOT be in phase_verify_passed
+    assert!(
+        state.phase_verify_passed.get("optional").is_none(),
+        "skipped phase should not have verify state"
+    );
+
+    // "final" has gate, requires verify
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(matches!(result, Err(BeltError::VerifyRequired { .. })));
+}
+
+// ---------------------------------------------------------------------------
+// Test: Regate pipeline verify-step works through all phases
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_pipeline_verify_step_works() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("regate_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Phase 1: design
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify design");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step design->build");
+    assert_eq!(next.as_deref(), Some("build"));
+
+    // Phase 2: build (has regate: [design])
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step build->test");
+    assert_eq!(next.as_deref(), Some("test"));
+
+    // Phase 3: test
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify test");
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step test->COMPLETED");
+    assert!(next.is_none());
+
+    // Verify state is intact
+    assert_eq!(state.completed_phases, vec!["design", "build", "test"]);
+    assert!(state.skipped_phases.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Test: max_retries: 1 triggers immediate escalation after 2 attempts
+// ---------------------------------------------------------------------------
+#[test]
+fn max_retries_one_immediate_escalation() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("max_retries_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Advance to "test" phase (max_retries: 1)
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to test");
+    assert_eq!(state.current_phase, "test");
+
+    // 1 FAIL + 1 PASS = 2 attempts; 2 > 1 -> MaxRetriesExceeded
+    engine
+        .verify_verdict(&mut state, false)
+        .expect("verify FAIL");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify PASS");
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(
+            &result,
+            Err(BeltError::MaxRetriesExceeded { phase_id, attempts, max_retries })
+            if phase_id == "test" && *attempts == 2 && *max_retries == 1
+        ),
+        "expected immediate escalation with max_retries: 1, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: Consecutive step without verify always rejected
+// ---------------------------------------------------------------------------
+#[test]
+fn consecutive_step_without_verify_always_rejected() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("gate_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Try step 3 times without verify
+    for _ in 0..3 {
+        let result = engine.step(&mut state, &pipeline_path);
+        assert!(
+            matches!(&result, Err(BeltError::VerifyRequired { phase_id }) if phase_id == "build"),
+            "each step without verify should return VerifyRequired"
+        );
+    }
+
+    // State should not have changed
+    assert_eq!(state.current_phase, "build");
+    assert!(state.completed_phases.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Test: After max_retries escalation, verify works but step remains rejected
+// ---------------------------------------------------------------------------
+#[test]
+fn after_escalation_verify_works_but_step_rejected() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline_path = fixture_path("max_retries_pipeline.yml");
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // build phase: max_retries: 3
+    // 3 FAIL + 1 PASS = 4 attempts -> escalation
+    for _ in 0..3 {
+        engine.verify_verdict(&mut state, false).expect("verify FAIL");
+    }
+    engine.verify_verdict(&mut state, true).expect("verify PASS");
+
+    // step -> MaxRetriesExceeded
+    assert!(matches!(
+        engine.step(&mut state, &pipeline_path),
+        Err(BeltError::MaxRetriesExceeded { .. })
+    ));
+
+    // verify still works (attempt 5)
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify should still work");
+    assert_eq!(state.phase_attempts.get("build").copied(), Some(5));
+
+    // step still rejected (5 > 3)
+    assert!(matches!(
+        engine.step(&mut state, &pipeline_path),
+        Err(BeltError::MaxRetriesExceeded { .. })
+    ));
 }

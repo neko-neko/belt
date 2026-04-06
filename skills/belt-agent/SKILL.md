@@ -1,11 +1,14 @@
+---
+name: belt-agent
+description: Belt Protocol for driving belt-agent CLI. Defines command loop, response interpretation, and safety constraints for LLM agents driving belt pipelines.
+user-invocable: false
+---
+
 # Belt Protocol
 
-Generic protocol for driving the belt-agent CLI. This skill defines how LLM agents
-interact with belt's deterministic state machine — the command loop, response
-interpretation, and safety constraints.
-
-Pipeline-specific skills reference this protocol for consistent belt-agent usage.
-This skill is not invoked directly by users.
+Generic protocol for driving the belt-agent CLI. Defines how LLM agents interact
+with belt's deterministic state machine — the command loop, response interpretation,
+and safety constraints.
 
 ## Protocol Loop
 

@@ -1,4 +1,5 @@
 use belt_core::engine::Engine;
+use belt_core::error::BeltError;
 use belt_core::gate::{all_passed, execute_gates};
 use clap::{Parser, Subcommand};
 use serde_json::json;
@@ -229,7 +230,10 @@ fn cmd_step(engine: &Engine, run: Option<&String>, confirm: bool) -> miette::Res
     let pipeline_path_str = state.pipeline_file.clone();
     let pipeline_path = Path::new(&pipeline_path_str);
 
-    // Check confirm requirement
+    // Check confirm requirement before engine.step() to avoid the
+    // (marginally wasteful) expand_pipeline() call when confirm would
+    // reject anyway. Engine-level guards (verify, max_retries) are
+    // enforced inside step() regardless of this check's outcome.
     let phase = engine
         .next_phase_info(&state, pipeline_path)
         .map_err(|e| miette::miette!("{e}"))?;
@@ -247,27 +251,57 @@ fn cmd_step(engine: &Engine, run: Option<&String>, confirm: bool) -> miette::Res
     }
 
     let from = state.current_phase.clone();
-    let next = engine
-        .step(&mut state, pipeline_path)
-        .map_err(|e| miette::miette!("{e}"))?;
-
-    let out = match next {
-        Some(to) => json!({
-            "advanced": true,
-            "from": from,
-            "to": to,
-        }),
-        None => json!({
-            "advanced": true,
-            "from": from,
-            "to": null,
-            "completed": true,
-        }),
-    };
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
-    );
+    match engine.step(&mut state, pipeline_path) {
+        Ok(next) => {
+            let out = match next {
+                Some(to) => json!({
+                    "advanced": true,
+                    "from": from,
+                    "to": to,
+                }),
+                None => json!({
+                    "advanced": true,
+                    "from": from,
+                    "to": null,
+                    "completed": true,
+                }),
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+            );
+        }
+        Err(BeltError::VerifyRequired { phase_id }) => {
+            let out = json!({
+                "advanced": false,
+                "reason": "verify_required",
+                "phase": phase_id,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+            );
+        }
+        Err(BeltError::MaxRetriesExceeded {
+            phase_id,
+            attempts,
+            max_retries,
+        }) => {
+            let out = json!({
+                "advanced": false,
+                "reason": "max_retries_exceeded",
+                "phase": phase_id,
+                "attempts": attempts,
+                "max_retries": max_retries,
+                "escalation": true,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+            );
+        }
+        Err(e) => return Err(miette::miette!("{e}")),
+    }
     Ok(())
 }
 

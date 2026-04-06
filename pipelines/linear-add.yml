@@ -1,0 +1,10 @@
+name: linear-add
+version: 1
+description: "Detect new ticket candidates from CollectedContext, excluding Plan A items."
+phases:
+  - id: analyze
+    description: "Identify create/link/skip candidates from external sources."
+    config:
+      skill: "/linear-refresh"
+    gate:
+      - file_exists: ".belt/plan-b.json"

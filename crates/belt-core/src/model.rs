@@ -131,6 +131,8 @@ pub struct RunState {
     pub skipped_phases: Vec<String>,
     #[serde(default)]
     pub phase_attempts: HashMap<String, u32>,
+    #[serde(default)]
+    pub phase_verify_passed: HashMap<String, bool>,
     pub created_at: String,
     pub updated_at: String,
 }
