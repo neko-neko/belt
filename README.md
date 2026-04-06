@@ -1,71 +1,102 @@
 # belt
 
-> Agent workflow engine. YAML で宣言された決定論的 state machine を、冪等かつ拡張可能に駆動する CLI ツール。
+A lightweight workflow engine for AI agents. Define deterministic state machines
+in YAML, drive them idempotently from any LLM.
 
-**Status**: Phase 1 in progress (`belt-dev` Pipeline Lint/Fmt MVP)
+## Why belt?
 
-## 概要
+When LLM agents control entire workflows — phase transitions, gate checks,
+retry loops — they burn context on bookkeeping instead of reasoning. A 10-phase
+pipeline can cost ~900 lines of prompt just to maintain structure. belt moves
+the deterministic control plane into YAML: the agent calls `belt-agent next`
+to receive one phase at a time, executes it, and calls `belt-agent verify`
+to check gates. The pipeline definition never enters the context window.
 
-`belt` は LLM エージェント向けの軽量ワークフローエンジン。
+## Example
 
-- **Tiny by Constraint**: belt-core が知る概念は 5 つのみ (State Machine / Artifact Lifecycle / Rule Set Resolver / 4 Core Primitive Checks / Hook Executor)
-- **Linux 哲学**: "Do One Thing and Do It Well"
-- **Rule Set Architecture**: ワークフロー知識は全て YAML 側の rule set に外出し
-- **Separation by Audience (3 audience)**: developer CLI (`belt-dev`), agent runtime CLI (`belt`), human TUI (`belt-tui`) を Cargo workspace の別 crate / 別 binary に分離。それぞれ依存関係レベルで独立し、supply chain / binary size / security を独立に最適化する
+```yaml
+name: review-and-ship
+version: 1
 
-## Binary Separation
+args:
+  skip_e2e: { type: bool, default: false }
 
-| Binary | Audience | 役割 | Phase |
-|--------|---------|------|-------|
-| `belt-dev` | **Developer** (rule set 作者) | `pipeline lint` / `pipeline fmt` など authoring-time ツール | **Phase 1 (MVP)** |
-| `belt` | **Agent** (LLM, CI/CD, script) | `run` / `state` / `snapshot` 等 workflow 実行 runtime | Phase 2 |
-| `belt-tui` | **Human** (operator) | ratatui-based real-time state 可視化 | Phase 3 |
+phases:
+  - id: build
+    description: "Build the project and run unit tests."
+    gate:
+      - cmd: "cargo build --workspace"
+      - cmd: "cargo test --workspace"
 
-lint/fmt は authoring-time のツールであり agent runtime には含まれない (原則 8)。
+  - id: review
+    description: "Multi-perspective code review."
+    config:
+      skill: "/code-review"
+    validate:
+      - "No high-severity findings remain unresolved"
+    confirm: true
 
-## Crate 構成 (Cargo Workspace)
+  - id: e2e
+    description: "Run E2E tests with flaky detection."
+    when: "!args.skip_e2e"
+    gate:
+      - cmd: "npx playwright test"
+
+  - id: ship
+    description: "Push to main."
+    confirm: true
+```
+
+## CLI
+
+belt ships two binaries, separated by audience:
+
+| Binary | Audience | Purpose |
+|--------|----------|---------|
+| `belt` | Pipeline authors | `belt lint <pipeline.yml>` — static validation |
+| `belt-agent` | LLM / CI / scripts | `init`, `next`, `verify`, `step`, `status` — runtime |
+
+### Agent loop
 
 ```
-belt/
-├── crates/
-│   ├── belt-core/    # 📦 library: state machine, resolver, primitives, hooks
-│   ├── belt-dev/     # 🛠  developer CLI binary: pipeline lint/fmt (Phase 1)
-│   ├── belt/         # 🤖 agent runtime CLI binary (Phase 2)
-│   └── belt-tui/     # 👤 human TUI binary (Phase 3)
-├── docs/
-│   ├── specs/        # 設計書
-│   └── plans/        # 実装計画
-├── catalog/          # Standard Rule Sets
-├── examples/         # サンプル pipeline
-└── schema/           # JSON Schemas
+belt-agent init pipeline.yml --arg skip_e2e=true
+loop {
+  phase  = belt-agent next
+  execute(phase)                    # LLM does the work
+  result = belt-agent verify        # belt checks the gates
+  belt-agent step [--confirm]       # advance
+}
 ```
 
-## ビルド
+All `belt-agent` output is JSON. The agent never needs the full pipeline —
+just the current phase.
+
+## Key Concepts
+
+- **gate** (verification) — Deterministic checks belt runs automatically:
+  `cmd`, `file_exists`, `git_clean`, `has_output`. All must pass to advance.
+- **validate** (validation) — Criteria belt *returns* for the LLM to judge.
+  belt cannot verify these; `--confirm` is the agent's declaration that it did.
+- **uses:** — Compose pipelines from reusable sub-pipelines and gate
+  definitions. `uses: ./pipelines/review-cycle.yml` expands inline, namespaced
+  as `review/phase-id`.
+- **regate** — After a later phase passes its own gates, re-run earlier gates
+  to catch regressions.
+- **config** — Opaque metadata passed through to the LLM. belt doesn't
+  interpret it; your skills do.
+
+## Build
 
 ```bash
 cargo build --workspace
 ```
 
-developer CLI のみビルド (Phase 1 MVP):
+Build only what you need:
+
 ```bash
-cargo build -p belt-dev
+cargo build -p belt          # lint tool
+cargo build -p belt-agent    # agent runtime
 ```
-
-agent runtime CLI のみビルド (Phase 2 以降、Phase 1 では placeholder):
-```bash
-cargo build -p belt
-```
-
-## ドキュメント
-
-- [Design Spec](docs/specs/2026-04-05-belt-cli-rule-set-architecture-design.md) — 設計書
-- [Phase 1 Implementation Plan](docs/plans/2026-04-05-belt-phase1-pipeline-lint-fmt.md) — 実装計画
-- [CLAUDE.md](CLAUDE.md) — プロジェクト規約 (Claude Code セッション向け)
-
-## Related
-
-- **Upstream inspiration**: [dotfiles](https://github.com/neko-neko/dotfiles) の `claude/skills/workflow-engine/`
-- **Linear tracking**: [CLA-5](https://linear.app/neko-neko/issue/CLA-5)
 
 ## License
 

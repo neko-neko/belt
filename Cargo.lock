@@ -133,6 +133,7 @@ dependencies = [
  "clap",
  "miette",
  "predicates",
+ "tempfile",
 ]
 
 [[package]]
