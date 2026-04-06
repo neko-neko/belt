@@ -399,3 +399,23 @@ fn engine_latest_run_id_returns_most_recent() {
     assert_eq!(latest, state2.run_id);
     assert_ne!(latest, state1.run_id);
 }
+
+// ---------------------------------------------------------------------------
+// Test: verify_verdict sets phase_verify_passed
+// ---------------------------------------------------------------------------
+#[test]
+fn verify_verdict_sets_phase_verify_passed() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = two_phase_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // verify FAIL -> sets false
+    engine.verify_verdict(&mut state, false).expect("verify");
+    assert_eq!(state.phase_verify_passed.get("build"), Some(&false));
+
+    // verify PASS -> sets true
+    engine.verify_verdict(&mut state, true).expect("verify");
+    assert_eq!(state.phase_verify_passed.get("build"), Some(&true));
+}

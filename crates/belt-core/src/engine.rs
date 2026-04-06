@@ -178,6 +178,9 @@ impl Engine {
             .entry(state.current_phase.clone())
             .or_insert(0);
         *count += 1;
+        state
+            .phase_verify_passed
+            .insert(state.current_phase.clone(), passed);
         state.updated_at = now_iso8601();
         self.save_state(state)?;
         Ok(passed)
