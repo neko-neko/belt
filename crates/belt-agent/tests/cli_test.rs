@@ -338,3 +338,104 @@ phases:
     assert_eq!(json["max_retries"], 2);
     assert_eq!(json["escalation"], true);
 }
+
+#[test]
+fn init_with_config_resolves_pipeline() {
+    let dir = TempDir::new().unwrap();
+
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: config-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    std::fs::write(dir.path().join("belt.toml"), r#"pipeline = "pipeline.yml""#).unwrap();
+
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .arg("--config")
+        .arg(dir.path().join("belt.toml").to_str().unwrap())
+        .arg("init")
+        .current_dir(dir.path())
+        .output()
+        .expect("failed to run belt-agent init with --config");
+
+    assert!(
+        output.status.success(),
+        "init with --config failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).expect("invalid JSON output");
+    assert_eq!(v["pipeline"], "config-test");
+    assert_eq!(v["phase"]["id"], "build");
+}
+
+#[test]
+fn init_config_and_positional_file_errors() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("belt.toml"), r#"pipeline = "pipeline.yml""#).unwrap();
+
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .arg("--config")
+        .arg(dir.path().join("belt.toml").to_str().unwrap())
+        .arg("init")
+        .arg("pipeline.yml")
+        .current_dir(dir.path())
+        .output()
+        .expect("failed to run");
+
+    assert!(
+        !output.status.success(),
+        "should fail when both --config and positional are provided"
+    );
+}
+
+#[test]
+fn init_config_nonexistent_file_errors() {
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .arg("--config")
+        .arg("/nonexistent/belt.toml")
+        .arg("init")
+        .output()
+        .expect("failed to run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not found") || stderr.contains("file not found"),
+        "stderr should mention file not found: {stderr}"
+    );
+}
+
+#[test]
+fn init_config_invalid_toml_errors() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("belt.toml"), "not valid [[[").unwrap();
+
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .arg("--config")
+        .arg(dir.path().join("belt.toml").to_str().unwrap())
+        .arg("init")
+        .current_dir(dir.path())
+        .output()
+        .expect("failed to run");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("config parse error") || stderr.contains("parse"),
+        "stderr should mention config parse: {stderr}"
+    );
+}

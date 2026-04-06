@@ -1,3 +1,4 @@
+use belt_core::config::{parse_config, resolve_pipeline_path};
 use belt_core::engine::Engine;
 use belt_core::error::BeltError;
 use belt_core::gate::{all_passed, execute_gates};
@@ -12,6 +13,10 @@ use std::path::{Path, PathBuf};
     about = "belt-agent — workflow runtime for LLM/CI"
 )]
 struct Cli {
+    /// Path to belt.toml config file
+    #[arg(long, global = true)]
+    config: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -20,8 +25,8 @@ struct Cli {
 enum Command {
     /// Initialize a new run from a pipeline YAML
     Init {
-        /// Path to pipeline YAML file
-        file: String,
+        /// Path to pipeline YAML file (mutually exclusive with --config)
+        file: Option<String>,
         /// Pipeline arguments (KEY=VALUE)
         #[arg(long = "arg", value_parser = parse_arg)]
         args: Vec<(String, serde_json::Value)>,
@@ -84,12 +89,32 @@ fn resolve_run(engine: &Engine, run: Option<&String>) -> miette::Result<String> 
     }
 }
 
+fn resolve_pipeline(config: Option<&String>, file: Option<&String>) -> miette::Result<PathBuf> {
+    match (config, file) {
+        (Some(_), Some(_)) => Err(miette::miette!(
+            "conflicting arguments: --config and positional <file> are mutually exclusive"
+        )),
+        (Some(config_path), None) => {
+            let config_path = Path::new(config_path);
+            let cfg = parse_config(config_path).map_err(|e| miette::miette!("{e}"))?;
+            Ok(resolve_pipeline_path(config_path, &cfg))
+        }
+        (None, Some(f)) => Ok(PathBuf::from(f)),
+        (None, None) => Err(miette::miette!(
+            "missing argument: provide either --config <path> or a pipeline file"
+        )),
+    }
+}
+
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
     let engine = Engine::new(&belt_dir());
 
     match cli.command {
-        Command::Init { file, args } => cmd_init(&engine, &file, args)?,
+        Command::Init { file, args } => {
+            let pipeline_path = resolve_pipeline(cli.config.as_ref(), file.as_ref())?;
+            cmd_init(&engine, &pipeline_path, args)?;
+        }
         Command::Next { run } => cmd_next(&engine, run.as_ref())?,
         Command::Verify { run } => cmd_verify(&engine, run.as_ref())?,
         Command::Step { run, confirm } => cmd_step(&engine, run.as_ref(), confirm)?,
@@ -100,17 +125,16 @@ fn main() -> miette::Result<()> {
 
 fn cmd_init(
     engine: &Engine,
-    file: &str,
+    pipeline_path: &Path,
     args: Vec<(String, serde_json::Value)>,
 ) -> miette::Result<()> {
     let args_map: HashMap<String, serde_json::Value> = args.into_iter().collect();
-    let path = Path::new(file);
     let state = engine
-        .init(path, &args_map)
+        .init(pipeline_path, &args_map)
         .map_err(|e| miette::miette!("{e}"))?;
-    let pipeline_path = Path::new(&state.pipeline_file);
+    let pipeline_file = Path::new(&state.pipeline_file);
     let phase = engine
-        .next_phase_info(&state, pipeline_path)
+        .next_phase_info(&state, pipeline_file)
         .map_err(|e| miette::miette!("{e}"))?;
 
     let out = json!({
