@@ -15,6 +15,10 @@ pub enum BeltError {
     #[diagnostic(code(belt::file_not_found))]
     FileNotFound { path: String },
 
+    #[error("config parse error in {path}: {detail}")]
+    #[diagnostic(code(belt::config_parse))]
+    ConfigParse { path: String, detail: String },
+
     #[error("invalid pipeline: {message}")]
     #[diagnostic(code(belt::invalid_pipeline))]
     InvalidPipeline { message: String },
