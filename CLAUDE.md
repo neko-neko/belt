@@ -215,4 +215,3 @@ CI + pre-commit で `cargo clippy --workspace -- -D warnings` を実行すれば
 - **`miette`**: 7.6.0 以降 1 年更新停滞 (2025-04-27 → 現在)。代替候補は `annotate-snippets`。maintainer 活動を定期確認
 - **`serde-saphyr 0.0.x`**: SemVer 前。patch でも breaking 可能性、`cargo update` 前に changelog 確認必須。GateCheck の untagged enum デシリアライズ順序に依存するため特に注意
 - **Rust 1.94.0 CVE (CVE-2026-33055/33056)**: Cargo 同梱 `tar` crate の脆弱性、1.94.1 で修正済み。toolchain は 1.94.1+ を使用 (`rust-toolchain.toml` で固定済み)
-- **`belt-agent` の pipeline_file 相対パス**: init 時の相対パスが state.json に保存される。step/verify 時の cwd が異なると壊れる可能性がある。将来 canonicalize で解決予定
