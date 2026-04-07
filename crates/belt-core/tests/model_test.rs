@@ -1,4 +1,4 @@
-use belt_core::model::{ArgType, GateCheck, GateDefinition, Pipeline, SubPipeline};
+use belt_core::model::{ArgType, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline};
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
 #[test]
@@ -254,4 +254,62 @@ phases:
         par.default.as_ref().and_then(serde_json::Value::as_u64),
         Some(4)
     );
+}
+
+/// RunState deserialisation without `regate_passed` defaults to empty HashMap
+/// (backward compatibility with existing state.json files).
+#[test]
+fn run_state_regate_passed_defaults_to_empty() {
+    let json = r#"{
+        "run_id": "01961234-0000-7000-8000-000000000000",
+        "pipeline": "test",
+        "pipeline_file": "pipeline.yml",
+        "version": 1,
+        "args": {},
+        "current_phase": "build",
+        "completed_phases": [],
+        "skipped_phases": [],
+        "phase_attempts": {},
+        "phase_verify_passed": {},
+        "created_at": "2026-01-01T00:00:00Z",
+        "updated_at": "2026-01-01T00:00:00Z"
+    }"#;
+
+    let state: RunState = serde_json::from_str(json).expect("should deserialize");
+    assert!(
+        state.regate_passed.is_empty(),
+        "regate_passed should default to empty HashMap when absent"
+    );
+}
+
+/// RunState round-trips `regate_passed` through serialization.
+#[test]
+fn run_state_regate_passed_round_trip() {
+    use std::collections::HashMap;
+
+    let mut regate_passed = HashMap::new();
+    regate_passed.insert("design".to_string(), true);
+    regate_passed.insert("review".to_string(), false);
+
+    let state = RunState {
+        run_id: "01961234-0000-7000-8000-000000000000".to_string(),
+        pipeline: "test".to_string(),
+        pipeline_file: "pipeline.yml".to_string(),
+        version: 1,
+        args: HashMap::new(),
+        current_phase: "build".to_string(),
+        completed_phases: vec![],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed,
+        created_at: "2026-01-01T00:00:00Z".to_string(),
+        updated_at: "2026-01-01T00:00:00Z".to_string(),
+    };
+
+    let json = serde_json::to_string(&state).expect("should serialize");
+    let deserialized: RunState = serde_json::from_str(&json).expect("should deserialize");
+    assert_eq!(deserialized.regate_passed.len(), 2);
+    assert_eq!(deserialized.regate_passed.get("design"), Some(&true));
+    assert_eq!(deserialized.regate_passed.get("review"), Some(&false));
 }

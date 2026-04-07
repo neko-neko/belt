@@ -133,6 +133,8 @@ pub struct RunState {
     pub phase_attempts: HashMap<String, u32>,
     #[serde(default)]
     pub phase_verify_passed: HashMap<String, bool>,
+    #[serde(default)]
+    pub regate_passed: HashMap<String, bool>,
     pub created_at: String,
     pub updated_at: String,
 }

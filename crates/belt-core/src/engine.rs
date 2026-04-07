@@ -61,6 +61,7 @@ impl Engine {
             } else {
                 HashMap::new()
             },
+            regate_passed: HashMap::new(),
             created_at: now.clone(),
             updated_at: now,
         };

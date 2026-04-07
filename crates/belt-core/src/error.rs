@@ -39,6 +39,20 @@ pub enum BeltError {
         max_retries: u32,
     },
 
+    #[error("regate required for phase '{phase_id}': run regate before step")]
+    #[diagnostic(code(belt::regate_required))]
+    RegateRequired {
+        phase_id: String,
+        targets: Vec<String>,
+    },
+
+    #[error("regate failed for phase '{phase_id}': targets {targets:?} did not pass")]
+    #[diagnostic(code(belt::regate_failed))]
+    RegateFailed {
+        phase_id: String,
+        targets: Vec<String>,
+    },
+
     #[error("state error: {message}")]
     #[diagnostic(code(belt::state))]
     State { message: String },
