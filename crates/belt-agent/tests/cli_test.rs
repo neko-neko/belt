@@ -1338,3 +1338,144 @@ phases:
         serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
     assert_eq!(content["checks"][0]["timed_out"], true);
 }
+
+/// regate writes result file with targets.
+#[test]
+fn regate_writes_result_file() {
+    let dir = TempDir::new().unwrap();
+    let design_marker = dir.path().join("design.ok");
+    std::fs::write(&design_marker, "ok").unwrap();
+
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-persist
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+    regate: [design]
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // Advance past design
+    run_belt_agent(&dir, &["verify"]);
+    run_belt_agent(&dir, &["step"]);
+
+    // Now at build: verify then regate
+    run_belt_agent(&dir, &["verify"]);
+    run_belt_agent(&dir, &["regate"]);
+
+    let regate_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("regate/build.json");
+    assert!(regate_file.exists(), "regate file should exist");
+
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&regate_file).unwrap()).unwrap();
+    assert_eq!(content["phase"], "build");
+    assert!(content["targets"].is_object());
+    assert!(content["timestamp"].is_string());
+}
+
+/// regate with no targets writes result file.
+#[test]
+fn regate_no_targets_writes_file() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: no-regate
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+    run_belt_agent(&dir, &["regate"]);
+
+    let regate_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("regate/build.json");
+    assert!(
+        regate_file.exists(),
+        "regate file should exist even with no targets"
+    );
+
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&regate_file).unwrap()).unwrap();
+    assert_eq!(content["all_passed"], true);
+}
+
+/// regate failure writes result file.
+#[test]
+fn regate_fail_writes_result_file() {
+    let dir = TempDir::new().unwrap();
+
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-fail
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+    regate: [design]
+"#,
+    );
+
+    // Create marker for init, then remove before regate
+    let design_marker = dir.path().join("design.ok");
+    std::fs::write(&design_marker, "ok").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+    run_belt_agent(&dir, &["step"]);
+
+    // At build: verify passes
+    run_belt_agent(&dir, &["verify"]);
+
+    // Remove design marker so regate fails
+    std::fs::remove_file(&design_marker).unwrap();
+    run_belt_agent(&dir, &["regate"]);
+
+    let regate_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("regate/build.json");
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&regate_file).unwrap()).unwrap();
+    assert_eq!(content["all_passed"], false);
+}

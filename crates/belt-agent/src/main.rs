@@ -397,6 +397,50 @@ fn cmd_step(engine: &Engine, run: Option<&String>, confirm: bool) -> miette::Res
     Ok(())
 }
 
+/// Execute regate gate checks for each target, returning (`targets_map`, `all_passed`).
+fn execute_regate_targets(
+    phase: &belt_core::model::ExpandedPhase,
+    state: &belt_core::model::RunState,
+    all_phases: &[belt_core::model::ExpandedPhase],
+    belt: &Path,
+) -> miette::Result<(serde_json::Map<String, serde_json::Value>, bool)> {
+    let work_dir = std::env::current_dir().map_err(|e| miette::miette!("{e}"))?;
+    let mut targets = serde_json::Map::new();
+    let mut all_passed_flag = true;
+
+    for target_id in &phase.regate {
+        // Skip regate for skipped phases (auto-passed per spec)
+        if state.skipped_phases.contains(target_id) {
+            targets.insert(
+                target_id.clone(),
+                json!({ "passed": true, "skipped": true, "checks": [] }),
+            );
+            continue;
+        }
+
+        let target_phase = all_phases
+            .iter()
+            .find(|p| &p.id == target_id)
+            .ok_or_else(|| {
+                miette::miette!("regate target '{}' not found in pipeline", target_id)
+            })?;
+
+        let run_dir = belt.join("runs").join(&state.run_id);
+        let output_dir = run_dir.join(target_id.replace('/', "_"));
+        let results = execute_gates(&target_phase.gate, &work_dir, &output_dir);
+        let passed = all_passed(&results);
+        if !passed {
+            all_passed_flag = false;
+        }
+        targets.insert(
+            target_id.clone(),
+            json!({ "passed": passed, "checks": results }),
+        );
+    }
+
+    Ok((targets, all_passed_flag))
+}
+
 fn cmd_regate(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
     let run_id = resolve_run(engine, run)?;
     let mut state = engine
@@ -437,6 +481,20 @@ fn cmd_regate(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
 
     // No regate targets
     if phase.regate.is_empty() {
+        let regate_result = json!({
+            "phase": phase.id,
+            "targets": {},
+            "all_passed": true,
+            "timestamp": belt_core::engine::now_iso8601(),
+        });
+        write_result_file(
+            &belt_dir(),
+            &state.run_id,
+            "regate",
+            &phase.id,
+            &regate_result,
+        );
+
         let out = json!({
             "run_id": state.run_id,
             "phase": phase.id,
@@ -452,45 +510,21 @@ fn cmd_regate(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
 
     // Get all expanded phases for target lookup
     let all_phases = expand_pipeline(pipeline_path).map_err(|e| miette::miette!("{e}"))?;
-    let work_dir = std::env::current_dir().map_err(|e| miette::miette!("{e}"))?;
     let belt = belt_dir();
 
-    let mut targets = serde_json::Map::new();
-    let mut all_passed_flag = true;
-
-    for target_id in &phase.regate {
-        // Skip regate for skipped phases (auto-passed per spec)
-        if state.skipped_phases.contains(target_id) {
-            targets.insert(
-                target_id.clone(),
-                json!({ "passed": true, "skipped": true, "checks": [] }),
-            );
-            continue;
-        }
-
-        let target_phase = all_phases
-            .iter()
-            .find(|p| &p.id == target_id)
-            .ok_or_else(|| {
-                miette::miette!("regate target '{}' not found in pipeline", target_id)
-            })?;
-
-        let run_dir = belt.join("runs").join(&state.run_id);
-        let output_dir = run_dir.join(target_id.replace('/', "_"));
-        let results = execute_gates(&target_phase.gate, &work_dir, &output_dir);
-        let passed = all_passed(&results);
-        if !passed {
-            all_passed_flag = false;
-        }
-        targets.insert(
-            target_id.clone(),
-            json!({ "passed": passed, "checks": results }),
-        );
-    }
+    let (targets, all_passed_flag) = execute_regate_targets(&phase, &state, &all_phases, &belt)?;
 
     engine
         .record_regate(&mut state, all_passed_flag)
         .map_err(|e| miette::miette!("{e}"))?;
+
+    let regate_result = json!({
+        "phase": phase.id,
+        "targets": targets.clone(),
+        "all_passed": all_passed_flag,
+        "timestamp": belt_core::engine::now_iso8601(),
+    });
+    write_result_file(&belt, &state.run_id, "regate", &phase.id, &regate_result);
 
     let out = json!({
         "run_id": state.run_id,
