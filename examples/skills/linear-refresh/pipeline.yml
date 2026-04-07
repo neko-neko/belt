@@ -8,6 +8,7 @@ phases:
     description: "Fetch all tickets and explore external sources (1-hop + 2-hop)."
     config:
       skill: "/linear-refresh"
+      reference: "references/collect-agent.md"
     gate:
       - file_exists: ".belt/collected-context.json"
 
@@ -23,6 +24,7 @@ phases:
     description: "Ground Truth audit — verify CollectedContext completeness and Plan quality."
     config:
       skill: "/linear-refresh"
+      reference: "references/audit-agent.md"
     gate:
       - file_exists: ".belt/refresh-plan.json"
     validate:
@@ -37,11 +39,13 @@ phases:
     when: "!args.force"
     config:
       skill: "/linear-refresh"
+      reference: "references/approve-format.md"
     confirm: true
 
   - id: execute
     description: "Execute cleanup changes, then add changes."
     config:
       skill: "/linear-refresh"
+      reference: "references/execute-agent.md"
     gate:
       - file_exists: ".belt/refresh-result.json"

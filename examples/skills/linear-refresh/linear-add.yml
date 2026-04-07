@@ -6,5 +6,6 @@ phases:
     description: "Identify create/link/skip candidates from external sources."
     config:
       skill: "/linear-add"
+      reference: "references/add-agent.md"
     gate:
       - file_exists: ".belt/plan-b.json"
