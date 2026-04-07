@@ -7,6 +7,24 @@ fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
     path
 }
 
+/// Helper: run belt-agent with args in a dir, return parsed JSON.
+fn run_belt_agent(dir: &TempDir, args: &[&str]) -> serde_json::Value {
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(args)
+        .current_dir(dir.path())
+        .output()
+        .unwrap_or_else(|e| panic!("belt-agent {:?} failed: {e}", args));
+    assert!(
+        output.status.success(),
+        "belt-agent {:?} exit non-zero: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("invalid JSON from belt-agent {:?}: {e}", args))
+}
+
 #[test]
 fn init_produces_valid_json() {
     let dir = TempDir::new().unwrap();
@@ -438,4 +456,158 @@ fn init_config_invalid_toml_errors() {
         stderr.contains("config parse error") || stderr.contains("parse"),
         "stderr should mention config parse: {stderr}"
     );
+}
+
+// ===========================================================================
+// BELT-24: regate command tests
+// ===========================================================================
+
+#[test]
+fn regate_command_runs_target_gates() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-cli
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+    std::fs::write(dir.path().join("build.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // verify design -> step to build
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+
+    // verify build
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+
+    // regate — design.ok exists, should pass
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["all_passed"], true);
+    assert_eq!(regate["targets"]["design"]["passed"], true);
+}
+
+#[test]
+fn regate_command_target_gate_fails() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-fail
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+    std::fs::write(dir.path().join("build.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+
+    // Remove design.ok -> regate fails
+    std::fs::remove_file(dir.path().join("design.ok")).unwrap();
+
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["all_passed"], false);
+    assert_eq!(regate["targets"]["design"]["passed"], false);
+}
+
+#[test]
+fn regate_no_targets_returns_empty() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: no-regate
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["all_passed"], true);
+    assert!(regate["targets"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn regate_before_verify_returns_error() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-pre-verify
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+"#,
+    );
+
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // Advance to build without verify
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+
+    // regate without verify on build -> error
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["error"], "verify_not_passed");
 }

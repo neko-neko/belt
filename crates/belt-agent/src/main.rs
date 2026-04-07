@@ -1,6 +1,7 @@
 use belt_core::config::{parse_config, resolve_pipeline_path};
 use belt_core::engine::Engine;
 use belt_core::error::BeltError;
+use belt_core::expander::expand_pipeline;
 use belt_core::gate::{all_passed, execute_gates};
 use clap::{Parser, Subcommand};
 use serde_json::json;
@@ -8,10 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(
-    name = "belt-agent",
-    about = "belt-agent — workflow runtime for LLM"
-)]
+#[command(name = "belt-agent", about = "belt-agent — workflow runtime for LLM")]
 struct Cli {
     /// Path to belt.toml config file
     #[arg(long, global = true)]
@@ -39,6 +37,11 @@ enum Command {
     },
     /// Run gate checks for current phase
     Verify {
+        #[arg(long)]
+        run: Option<String>,
+    },
+    /// Run regate checks for current phase targets
+    Regate {
         #[arg(long)]
         run: Option<String>,
     },
@@ -117,6 +120,7 @@ fn main() -> miette::Result<()> {
         }
         Command::Next { run } => cmd_next(&engine, run.as_ref())?,
         Command::Verify { run } => cmd_verify(&engine, run.as_ref())?,
+        Command::Regate { run } => cmd_regate(&engine, run.as_ref())?,
         Command::Step { run, confirm } => cmd_step(&engine, run.as_ref(), confirm)?,
         Command::Status { run } => cmd_status(&engine, run.as_ref())?,
     }
@@ -326,6 +330,114 @@ fn cmd_step(engine: &Engine, run: Option<&String>, confirm: bool) -> miette::Res
         }
         Err(e) => return Err(miette::miette!("{e}")),
     }
+    Ok(())
+}
+
+fn cmd_regate(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
+    let run_id = resolve_run(engine, run)?;
+    let mut state = engine
+        .load_state(&run_id)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    if state.current_phase == "COMPLETED" {
+        let out = json!({
+            "error": "pipeline_completed",
+            "message": "pipeline is already completed"
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+        );
+        return Ok(());
+    }
+
+    // Pre-check: verify must have passed
+    if state.phase_verify_passed.get(&state.current_phase) != Some(&true) {
+        let out = json!({
+            "error": "verify_not_passed",
+            "phase": state.current_phase,
+            "message": "verify must pass before regate"
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+        );
+        return Ok(());
+    }
+
+    let pipeline_path_str = state.pipeline_file.clone();
+    let pipeline_path = Path::new(&pipeline_path_str);
+    let phase = engine
+        .next_phase_info(&state, pipeline_path)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    // No regate targets
+    if phase.regate.is_empty() {
+        let out = json!({
+            "run_id": state.run_id,
+            "phase": phase.id,
+            "targets": {},
+            "all_passed": true
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+        );
+        return Ok(());
+    }
+
+    // Get all expanded phases for target lookup
+    let all_phases = expand_pipeline(pipeline_path).map_err(|e| miette::miette!("{e}"))?;
+    let work_dir = std::env::current_dir().map_err(|e| miette::miette!("{e}"))?;
+    let belt = belt_dir();
+
+    let mut targets = serde_json::Map::new();
+    let mut all_passed_flag = true;
+
+    for target_id in &phase.regate {
+        // Skip regate for skipped phases (auto-passed per spec)
+        if state.skipped_phases.contains(target_id) {
+            targets.insert(
+                target_id.clone(),
+                json!({ "passed": true, "skipped": true, "checks": [] }),
+            );
+            continue;
+        }
+
+        let target_phase = all_phases
+            .iter()
+            .find(|p| &p.id == target_id)
+            .ok_or_else(|| {
+                miette::miette!("regate target '{}' not found in pipeline", target_id)
+            })?;
+
+        let run_dir = belt.join("runs").join(&state.run_id);
+        let output_dir = run_dir.join(target_id.replace('/', "_"));
+        let results = execute_gates(&target_phase.gate, &work_dir, &output_dir);
+        let passed = all_passed(&results);
+        if !passed {
+            all_passed_flag = false;
+        }
+        targets.insert(
+            target_id.clone(),
+            json!({ "passed": passed, "checks": results }),
+        );
+    }
+
+    engine
+        .record_regate(&mut state, all_passed_flag)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    let out = json!({
+        "run_id": state.run_id,
+        "phase": phase.id,
+        "targets": targets,
+        "all_passed": all_passed_flag
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+    );
     Ok(())
 }
 
