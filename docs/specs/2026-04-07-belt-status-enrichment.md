@@ -21,6 +21,10 @@ Enrich `belt-agent status` output with a structured view model so that any consu
 - Pipeline-level progress summary
 - Pipeline-level status (in_progress/completed)
 
+**Documentation updates:**
+- `skills/belt-agent/SKILL.md` — Update status command description with enriched output format
+- `README.md` — Update status description to reflect enriched output
+
 **Out of scope:**
 - Phase definition info (description, gate definitions, validate, config) — `next` command's responsibility
 - Per-check gate results — BELT-30
@@ -244,6 +248,23 @@ fn cmd_status(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
     Ok(())
 }
 ```
+
+## Documentation Updates
+
+### skills/belt-agent/SKILL.md
+
+Update the `status` command description. Current description is just "Inspect full run state". Replace with enriched output explanation:
+
+- Document that status returns a structured view with per-phase status, progress, and output paths
+- Add a brief output format example showing key fields (status, current_phase, progress, phases)
+- Add decision rule: "Use `status` to understand pipeline state after context recovery or before resuming work"
+
+### README.md
+
+Update the Key Concepts or CLI section:
+
+- Mention that `status` returns an enriched view (not raw state)
+- Briefly note the per-phase status labels and progress summary
 
 ## Test Plan
 
