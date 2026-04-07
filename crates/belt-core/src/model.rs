@@ -67,6 +67,8 @@ pub struct Phase {
 pub enum GateCheck {
     Cmd {
         cmd: String,
+        #[serde(default = "default_gate_timeout")]
+        timeout: u64,
     },
     FileExists {
         file_exists: String,
@@ -164,4 +166,9 @@ pub struct ExpandedPhase {
     /// `output_dir` is computed at runtime, not from YAML.
     #[serde(skip)]
     pub output_dir: Option<String>,
+}
+
+/// Default gate command timeout in seconds (30 minutes).
+fn default_gate_timeout() -> u64 {
+    1800
 }

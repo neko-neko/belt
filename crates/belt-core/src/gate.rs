@@ -29,7 +29,7 @@ pub struct GateResult {
 #[must_use]
 pub fn execute_gate(check: &GateCheck, work_dir: &Path, output_dir: &Path) -> GateResult {
     match check {
-        GateCheck::Cmd { cmd } => execute_cmd(cmd, work_dir),
+        GateCheck::Cmd { cmd, .. } => execute_cmd(cmd, work_dir),
         GateCheck::FileExists { file_exists } => execute_file_exists(file_exists, work_dir),
         GateCheck::GitClean { git_clean } => execute_git_clean(*git_clean, work_dir),
         GateCheck::HasOutput { has_output } => execute_has_output(*has_output, output_dir),

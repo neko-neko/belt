@@ -8,6 +8,7 @@ use belt_core::model::GateCheck;
 fn cmd_gate_pass() {
     let check = GateCheck::Cmd {
         cmd: "true".to_owned(),
+        timeout: 1800,
     };
     let tmp = tempfile::tempdir().expect("tempdir");
     let result = execute_gate(&check, tmp.path(), tmp.path());
@@ -22,6 +23,7 @@ fn cmd_gate_pass() {
 fn cmd_gate_fail() {
     let check = GateCheck::Cmd {
         cmd: "false".to_owned(),
+        timeout: 1800,
     };
     let tmp = tempfile::tempdir().expect("tempdir");
     let result = execute_gate(&check, tmp.path(), tmp.path());
@@ -122,6 +124,7 @@ fn all_passed_integration() {
     let checks = vec![
         GateCheck::Cmd {
             cmd: "true".to_owned(),
+            timeout: 1800,
         },
         GateCheck::FileExists {
             file_exists: "*.txt".to_owned(),

@@ -23,7 +23,7 @@ phases:
     assert_eq!(phase.id, "build");
     assert_eq!(phase.gate.len(), 1);
     match &phase.gate[0] {
-        GateCheck::Cmd { cmd } => assert_eq!(cmd, "cargo build"),
+        GateCheck::Cmd { cmd, .. } => assert_eq!(cmd, "cargo build"),
         other => panic!("expected GateCheck::Cmd, got {other:?}"),
     }
 }
@@ -80,7 +80,7 @@ phases:
     // gate variants
     assert_eq!(phase.gate.len(), 5);
     match &phase.gate[0] {
-        GateCheck::Cmd { cmd } => assert_eq!(cmd, "make test"),
+        GateCheck::Cmd { cmd, .. } => assert_eq!(cmd, "make test"),
         other => panic!("expected Cmd, got {other:?}"),
     }
     match &phase.gate[1] {
@@ -154,7 +154,7 @@ checks:
 
     assert_eq!(gate.checks.len(), 2);
     match &gate.checks[0] {
-        GateCheck::Cmd { cmd } => {
+        GateCheck::Cmd { cmd, .. } => {
             assert!(cmd.contains("trivy"));
         }
         other => panic!("expected Cmd, got {other:?}"),
@@ -254,6 +254,99 @@ phases:
         par.default.as_ref().and_then(serde_json::Value::as_u64),
         Some(4)
     );
+}
+
+/// `cmd: "cargo test"` without timeout field deserializes with default 1800.
+#[test]
+fn cmd_default_timeout() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: build
+    gate:
+      - cmd: "cargo test"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("parse");
+    match &pipeline.phases[0].gate[0] {
+        GateCheck::Cmd { cmd, timeout } => {
+            assert_eq!(cmd, "cargo test");
+            assert_eq!(*timeout, 1800);
+        }
+        other => panic!("expected Cmd, got {other:?}"),
+    }
+}
+
+/// `{ cmd: "make lint", timeout: 60 }` deserializes with explicit timeout.
+#[test]
+fn cmd_explicit_timeout() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: build
+    gate:
+      - cmd: "make lint"
+        timeout: 60
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("parse");
+    match &pipeline.phases[0].gate[0] {
+        GateCheck::Cmd { cmd, timeout } => {
+            assert_eq!(cmd, "make lint");
+            assert_eq!(*timeout, 60);
+        }
+        other => panic!("expected Cmd, got {other:?}"),
+    }
+}
+
+/// `{ cmd: "sleep 999", timeout: 0 }` deserializes with zero (no timeout).
+#[test]
+fn cmd_timeout_zero() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: build
+    gate:
+      - cmd: "sleep 999"
+        timeout: 0
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("parse");
+    match &pipeline.phases[0].gate[0] {
+        GateCheck::Cmd { cmd, timeout } => {
+            assert_eq!(cmd, "sleep 999");
+            assert_eq!(*timeout, 0);
+        }
+        other => panic!("expected Cmd, got {other:?}"),
+    }
+}
+
+/// Adding timeout to Cmd does not affect other GateCheck variants.
+#[test]
+fn cmd_timeout_does_not_affect_other_variants() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: build
+    gate:
+      - file_exists: "*.md"
+      - cmd: "test"
+        timeout: 10
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("parse");
+    assert_eq!(pipeline.phases[0].gate.len(), 2);
+    match &pipeline.phases[0].gate[0] {
+        GateCheck::FileExists { file_exists } => assert_eq!(file_exists, "*.md"),
+        other => panic!("expected FileExists, got {other:?}"),
+    }
+    match &pipeline.phases[0].gate[1] {
+        GateCheck::Cmd { cmd, timeout } => {
+            assert_eq!(cmd, "test");
+            assert_eq!(*timeout, 10);
+        }
+        other => panic!("expected Cmd, got {other:?}"),
+    }
 }
 
 /// RunState deserialisation without `regate_passed` defaults to empty HashMap
