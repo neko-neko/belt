@@ -1611,3 +1611,122 @@ phases:
         "expected RegateRequired (not MaxRetriesExceeded), got: {result:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 11: verify -> regate(PASS) -> re-verify -> regate cleared -> step blocked
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_verify_regate_reverify_resets_regate() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine.record_regate(&mut state, true).expect("regate PASS");
+    // re-verify clears regate
+    engine.verify_verdict(&mut state, true).expect("re-verify");
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::RegateRequired { .. })),
+        "re-verify should reset regate, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 12: regate FAIL -> re-verify clears state for fresh retry
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_fail_then_reverify_clears_state() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine
+        .record_regate(&mut state, false)
+        .expect("regate FAIL");
+    assert_eq!(state.regate_passed.get("build"), Some(&false));
+    // re-verify clears failed regate
+    engine.verify_verdict(&mut state, true).expect("re-verify");
+    assert!(state.regate_passed.get("build").is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Test 13: multiple regate targets — partial fail -> all_passed false
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_multiple_targets_partial_fail() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: multi-regate
+version: 1
+phases:
+  - id: alpha
+    description: "Alpha"
+    gate:
+      - file_exists: "alpha.ok"
+  - id: beta
+    description: "Beta"
+    gate:
+      - file_exists: "beta.ok"
+  - id: check
+    description: "Check"
+    gate:
+      - file_exists: "check.ok"
+    regate: [alpha, beta]
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Advance: alpha -> beta -> check
+    engine.verify_verdict(&mut state, true).expect("v alpha");
+    engine.step(&mut state, &pipeline_path).expect("step");
+    engine.verify_verdict(&mut state, true).expect("v beta");
+    engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(state.current_phase, "check");
+
+    engine.verify_verdict(&mut state, true).expect("v check");
+    engine
+        .record_regate(&mut state, false)
+        .expect("regate partial fail");
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::RegateFailed { .. })),
+        "partial regate fail should block step: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 14: record_regate is idempotent
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_record_idempotent() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine.record_regate(&mut state, true).expect("regate 1");
+    engine.record_regate(&mut state, true).expect("regate 2");
+
+    assert_eq!(state.regate_passed.get("build"), Some(&true));
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("test"));
+}
