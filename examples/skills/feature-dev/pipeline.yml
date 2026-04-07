@@ -34,12 +34,7 @@ phases:
 
   # ─── Spec Review ───
   - id: spec-review
-    description: "4-perspective spec review"
-    config:
-      skill: "/spec-review"
-      codex: "args.codex"
-      iterations: "args.iterations"
-      swarm: "args.swarm"
+    uses: ../spec-review/pipeline.yml
 
   - id: spec-review-audit
     description: "Audit spec review completion"
@@ -76,12 +71,7 @@ phases:
 
   # ─── Plan Review ───
   - id: plan-review
-    description: "3-perspective implementation plan review"
-    config:
-      skill: "/implementation-review"
-      codex: "args.codex"
-      iterations: "args.iterations"
-      ui: "args.ui"
+    uses: ../implementation-review/pipeline.yml
 
   - id: plan-review-audit
     description: "Audit plan review completion"
@@ -160,12 +150,7 @@ phases:
 
   # ─── Code Review ───
   - id: code-review
-    description: "7-perspective code review"
-    config:
-      skill: "/code-review"
-      codex: "args.codex"
-      iterations: "args.iterations"
-      swarm: "args.swarm"
+    uses: ../code-review/pipeline.yml
 
   - id: code-review-audit
     description: "Audit code review and verify regression"
@@ -182,12 +167,8 @@ phases:
 
   # ─── Test Review (conditional) ───
   - id: test-review
-    description: "3-perspective test review"
     when: "args.e2e"
-    config:
-      skill: "/test-review"
-      codex: "args.codex"
-      iterations: "args.iterations"
+    uses: ../test-review/pipeline.yml
 
   - id: test-review-audit
     description: "Audit test review and verify regression"
