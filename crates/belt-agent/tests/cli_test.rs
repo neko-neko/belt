@@ -1147,3 +1147,194 @@ phases:
         verify["checks"][0]["detail"]
     );
 }
+
+// ===========================================================================
+// BELT-30: verify file persistence tests
+// ===========================================================================
+
+/// verify writes per-check result file.
+#[test]
+fn verify_writes_result_file() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: persist-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+
+    let verify_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("verify/build.json");
+    assert!(verify_file.exists(), "verify file should exist");
+
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    assert_eq!(content["phase"], "build");
+    assert_eq!(content["verdict"], "PASS");
+    assert!(content["checks"].is_array());
+    assert!(content["timestamp"].is_string());
+}
+
+/// verify FAIL writes result file with failure details.
+#[test]
+fn verify_fail_writes_result_file() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: persist-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "false"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+
+    let verify_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("verify/build.json");
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    assert_eq!(content["verdict"], "FAIL");
+    assert!(content["checks"][0]["detail"].is_string());
+}
+
+/// verify overwrites result file on retry.
+#[test]
+fn verify_overwrites_on_retry() {
+    let dir = TempDir::new().unwrap();
+    let marker = dir.path().join("marker.txt");
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: persist-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "marker.txt"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // First verify: FAIL
+    run_belt_agent(&dir, &["verify"]);
+    let verify_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("verify/build.json");
+    let c1: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    assert_eq!(c1["verdict"], "FAIL");
+
+    // Fix: create marker
+    std::fs::write(&marker, "ok").unwrap();
+
+    // Second verify: PASS
+    run_belt_agent(&dir, &["verify"]);
+    let c2: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    assert_eq!(c2["verdict"], "PASS");
+    assert!(
+        c2["attempt"].as_u64().unwrap() > c1["attempt"].as_u64().unwrap(),
+        "attempt should increment"
+    );
+}
+
+/// verify file includes timestamp field.
+#[test]
+fn verify_file_has_timestamp() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: ts-test
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+
+    let verify_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("verify/build.json");
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    let ts = content["timestamp"].as_str().unwrap();
+    assert!(ts.contains('T') && ts.ends_with('Z'), "bad timestamp: {ts}");
+}
+
+/// verify result file includes timed_out field from BELT-31.
+#[test]
+fn verify_result_file_includes_timed_out() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: timeout-persist
+version: 1
+phases:
+  - id: hang
+    description: "Hang"
+    gate:
+      - cmd: "sleep 60"
+        timeout: 1
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+
+    let verify_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("verify/hang.json");
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    assert_eq!(content["checks"][0]["timed_out"], true);
+}

@@ -85,6 +85,31 @@ fn belt_dir() -> PathBuf {
     PathBuf::from(".belt")
 }
 
+fn sanitize_phase_id(id: &str) -> String {
+    id.replace('/', "_")
+}
+
+fn write_result_file(
+    belt: &Path,
+    run_id: &str,
+    subdir: &str,
+    phase_id: &str,
+    json: &serde_json::Value,
+) {
+    let dir = belt.join("runs").join(run_id).join(subdir);
+    if std::fs::create_dir_all(&dir).is_err() {
+        eprintln!("warning: failed to create {}", dir.display());
+        return;
+    }
+    let file = dir.join(format!("{}.json", sanitize_phase_id(phase_id)));
+    if let Err(e) = std::fs::write(
+        &file,
+        serde_json::to_string_pretty(json).unwrap_or_default(),
+    ) {
+        eprintln!("warning: failed to write {}: {e}", file.display());
+    }
+}
+
 fn resolve_run(engine: &Engine, run: Option<&String>) -> miette::Result<String> {
     match run {
         Some(id) => Ok(id.clone()),
@@ -234,6 +259,21 @@ fn cmd_verify(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
         .verify_verdict(&mut state, verdict)
         .map_err(|e| miette::miette!("{e}"))?;
     let attempt = state.phase_attempts.get(&phase.id).copied().unwrap_or(0);
+
+    let verify_result = json!({
+        "phase": phase.id,
+        "verdict": if verdict { "PASS" } else { "FAIL" },
+        "checks": results,
+        "attempt": attempt,
+        "timestamp": belt_core::engine::now_iso8601(),
+    });
+    write_result_file(
+        &belt_dir(),
+        &state.run_id,
+        "verify",
+        &phase.id,
+        &verify_result,
+    );
 
     let out = json!({
         "run_id": state.run_id,
