@@ -467,12 +467,12 @@ fn cmd_regate(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
 
 fn cmd_status(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
     let run_id = resolve_run(engine, run)?;
-    let state = engine
-        .load_state(&run_id)
+    let view = engine
+        .enriched_status(&run_id)
         .map_err(|e| miette::miette!("{e}"))?;
     println!(
         "{}",
-        serde_json::to_string_pretty(&state).map_err(|e| miette::miette!("{e}"))?
+        serde_json::to_string_pretty(&view).map_err(|e| miette::miette!("{e}"))?
     );
     Ok(())
 }

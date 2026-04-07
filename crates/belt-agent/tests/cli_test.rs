@@ -914,3 +914,174 @@ phases:
         "expected error for regate on completed pipeline, got: {regate}"
     );
 }
+
+// ===========================================================================
+// BELT-29: enriched status view tests
+// ===========================================================================
+
+#[test]
+fn status_after_init_returns_enriched_view() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: status-e2e
+version: 1
+phases:
+  - id: build
+    description: "Build"
+  - id: test
+    description: "Test"
+  - id: deploy
+    description: "Deploy"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().expect("run_id");
+
+    let status = run_belt_agent(&dir, &["status", "--run", run_id]);
+
+    assert_eq!(status["status"], "in_progress");
+    assert_eq!(status["current_phase"], "build");
+    assert_eq!(status["pipeline"], "status-e2e");
+    assert_eq!(status["progress"]["completed"], 0);
+    assert_eq!(status["progress"]["total"], 3);
+    assert_eq!(status["progress"]["remaining"], 3);
+
+    let phases = status["phases"].as_array().expect("phases array");
+    assert_eq!(phases.len(), 3);
+    assert_eq!(phases[0]["id"], "build");
+    assert_eq!(phases[0]["status"], "current");
+    assert_eq!(phases[1]["id"], "test");
+    assert_eq!(phases[1]["status"], "pending");
+    assert_eq!(phases[2]["id"], "deploy");
+    assert_eq!(phases[2]["status"], "pending");
+}
+
+#[test]
+fn status_after_verify_reflects_result() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: verify-status
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().expect("run_id");
+
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    let status = run_belt_agent(&dir, &["status", "--run", run_id]);
+
+    let phases = status["phases"].as_array().expect("phases");
+    assert_eq!(phases[0]["verify_passed"], true);
+    assert_eq!(phases[0]["attempt"], 1);
+}
+
+#[test]
+fn status_after_step_shows_progression() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: step-status
+version: 1
+phases:
+  - id: build
+    description: "Build"
+  - id: test
+    description: "Test"
+  - id: deploy
+    description: "Deploy"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().expect("run_id");
+
+    // build is gate-less -> auto verify_passed
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+    let status = run_belt_agent(&dir, &["status", "--run", run_id]);
+
+    assert_eq!(status["current_phase"], "test");
+    assert_eq!(status["progress"]["completed"], 1);
+
+    let phases = status["phases"].as_array().expect("phases");
+    assert_eq!(phases[0]["status"], "completed");
+    assert_eq!(phases[1]["status"], "current");
+    assert_eq!(phases[2]["status"], "pending");
+}
+
+#[test]
+fn status_after_completion_shows_null_current() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: complete-status
+version: 1
+phases:
+  - id: only
+    description: "Only phase"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().expect("run_id");
+
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+    let status = run_belt_agent(&dir, &["status", "--run", run_id]);
+
+    assert_eq!(status["status"], "completed");
+    assert!(status["current_phase"].is_null());
+    assert_eq!(status["progress"]["completed"], 1);
+    assert_eq!(status["progress"]["remaining"], 0);
+}
+
+#[test]
+fn status_run_flag_selects_correct_run() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: multi-run
+version: 1
+phases:
+  - id: build
+    description: "Build"
+  - id: test
+    description: "Test"
+"#,
+    );
+
+    let init1 = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run1 = init1["run_id"].as_str().expect("run_id").to_string();
+
+    run_belt_agent(&dir, &["step", "--run", &run1]);
+
+    let init2 = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run2 = init2["run_id"].as_str().expect("run_id").to_string();
+
+    let status1 = run_belt_agent(&dir, &["status", "--run", &run1]);
+    assert_eq!(status1["run_id"], run1);
+    assert_eq!(status1["current_phase"], "test");
+
+    let status2 = run_belt_agent(&dir, &["status", "--run", &run2]);
+    assert_eq!(status2["run_id"], run2);
+    assert_eq!(status2["current_phase"], "build");
+}

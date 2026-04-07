@@ -104,7 +104,7 @@ phases:
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["phase"]["id"], "code-review/review");
 
-    // status — verify completed_phases includes "build"
+    // status — verify enriched view shows build as completed
     let out = Command::cargo_bin("belt-agent")
         .unwrap()
         .args(["status", "--run", run_id])
@@ -114,10 +114,10 @@ phases:
     assert!(out.status.success());
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["current_phase"], "code-review/review");
-    assert!(
-        json["completed_phases"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("build"))
-    );
+    let phases = json["phases"].as_array().expect("phases array");
+    let build_phase = phases
+        .iter()
+        .find(|p| p["id"] == "build")
+        .expect("build phase");
+    assert_eq!(build_phase["status"], "completed");
 }
