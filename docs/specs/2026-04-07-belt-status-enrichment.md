@@ -261,10 +261,26 @@ Update the `status` command description. Current description is just "Inspect fu
 
 ### README.md
 
-Update the Key Concepts or CLI section:
+Add a `status` section under CLI with:
 
-- Mention that `status` returns an enriched view (not raw state)
-- Briefly note the per-phase status labels and progress summary
+- Command syntax and arguments (`belt-agent status [--run <id>]`)
+- What the command does (assembles pipeline state from RunState + pipeline YAML + filesystem)
+- Abbreviated output sample showing key structure:
+
+```json
+{
+  "status": "in_progress",
+  "current_phase": "review",
+  "progress": { "completed": 2, "skipped": 0, "remaining": 2, "total": 4 },
+  "phases": [
+    { "id": "build", "status": "completed", "verify_passed": true, "attempt": 1, "outputs": ["report.json"] },
+    { "id": "review", "status": "current", "verify_passed": false, "attempt": 2, "outputs": [] },
+    ...
+  ]
+}
+```
+
+- Brief note on use cases: context recovery, TUI consumption, multi-agent orchestration
 
 ## Test Plan
 
