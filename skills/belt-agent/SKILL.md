@@ -23,9 +23,13 @@ belt-agent next --run <run_id>
 belt-agent verify
 belt-agent verify --run <run_id>
 
+# Run regate checks for target phases
+belt-agent regate
+belt-agent regate --run <run_id>
+
 # Advance to next phase
 belt-agent step
-belt-agent step --confirm          # required when phase has validate criteria
+belt-agent step --confirm
 belt-agent step --run <run_id>
 
 # Inspect full run state (enriched view)
@@ -38,15 +42,8 @@ belt-agent status --run <run_id>
 ## Workflow
 
 ```
-init → next → execute phase → verify (if gates) → step → next → ... → completed
+init → next → execute → verify (if gates) → regate (if targets) → step → next → ... → completed
 ```
-
-1. `init` starts a run and returns the first active phase.
-2. `next` returns the current phase info. If `completed: true`, the pipeline is done.
-3. Execute the phase work (see `config.skill`).
-4. If the phase has `gate`, run `verify`. On FAIL, fix and re-verify.
-5. `step` to advance. If `advanced: false`, check the `reason` field.
-6. Repeat from `next`.
 
 ## Decision Rules
 
@@ -54,10 +51,21 @@ init → next → execute phase → verify (if gates) → step → next → ... 
 |-----------|--------|
 | Phase has no `gate` | Skip `verify`. Go directly to `step`. |
 | `verify` returns FAIL | Read `checks` array. Fix failing items. Re-run `verify`. |
-| `verify` FAIL with `regate` phases | Fix **those regate phases' work** (not the current phase). Re-run `verify`. |
+| Phase has `regate` targets | After `verify` PASS, run `regate`. On FAIL, fix target phases and re-run `verify` (verify clears regate state). |
+| Phase has no `regate` targets | Skip `regate`. Go directly to `step`. |
 | Phase has `validate` criteria | Verify each criterion yourself, then `step --confirm`. |
-| `step` returns `advanced: false` | Read `reason`. Typically `confirmation_required` — verify criteria and retry with `--confirm`. |
-| Need pipeline state overview | Run `status`. Use for context recovery, progress checks. |
+
+## Step Troubleshooting
+
+When `step` returns `advanced: false`, read the `reason` field:
+
+| `reason` | Action |
+|----------|--------|
+| `confirmation_required` | Phase has `validate` or `confirm`. Verify criteria, then `step --confirm`. |
+| `verify_required` | Run `verify` first. |
+| `regate_not_executed` | Run `regate` first. |
+| `regate_failed` | Fix regate target phases. Re-run `verify` then `regate`. |
+| `max_retries_exceeded` | Escalate. Pipeline author defines recovery via `on_escalation`. |
 
 ## Status Output
 
@@ -70,31 +78,22 @@ init → next → execute phase → verify (if gates) → step → next → ... 
   "progress": { "completed": 2, "skipped": 0, "remaining": 2, "total": 4 },
   "phases": [
     { "id": "build", "status": "completed", "verify_passed": true, "attempt": 1, "outputs": ["report.json"] },
-    { "id": "review", "status": "current", "verify_passed": false, "attempt": 2, "outputs": [] },
-    { "id": "test", "status": "pending", "verify_passed": null, "attempt": 0, "outputs": [] },
-    { "id": "deploy", "status": "pending", "verify_passed": null, "attempt": 0, "outputs": [] }
+    { "id": "review", "status": "current", "verify_passed": false, "attempt": 2, "outputs": [] }
   ]
 }
 ```
 
-Use `status` to understand pipeline state after context recovery or before resuming work.
-When pipeline completes, `status` is `"completed"` and `current_phase` is `null`.
+Use `status` for context recovery or progress checks.
 
 ## Well-known Config Keys
 
 `config` is an opaque map that belt passes through without interpretation.
-Only the following key has a defined meaning in this protocol:
 
 | Key | Type | Meaning |
 |-----|------|---------|
 | `config.skill` | `string` | Skill to invoke for this phase. |
 
-### Rules
-
-- Unknown config keys MAY be ignored (forward compatibility).
-- Pipeline-specific skills MAY add custom keys freely (belt does not interpret them).
-- Dispatch implementation (which agents to launch, how to execute) is the
-  pipeline-specific skill's responsibility.
+Unknown config keys MAY be ignored. Pipeline-specific skills MAY add custom keys freely.
 
 ## HARD-GATE
 
