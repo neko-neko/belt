@@ -257,6 +257,24 @@ impl Engine {
         self.load_state(run_id)
     }
 
+    /// Return an enriched status view for a given run.
+    ///
+    /// Assembles `RunState` + expanded pipeline YAML + filesystem scan
+    /// into a [`StatusView`] projection. Does not modify any state.
+    pub fn enriched_status(&self, run_id: &str) -> BeltResult<crate::view::StatusView> {
+        let state = self.load_state(run_id)?;
+        let pipeline_path = std::path::Path::new(&state.pipeline_file);
+        if !pipeline_path.exists() {
+            return Err(BeltError::FileNotFound {
+                path: state.pipeline_file.clone(),
+            });
+        }
+        let phases = expand_pipeline(pipeline_path)?;
+        let phase_ids: Vec<String> = phases.iter().map(|p| p.id.clone()).collect();
+        let run_dir = self.belt_dir.join("runs").join(run_id);
+        Ok(crate::view::build_status_view(&state, &phase_ids, &run_dir))
+    }
+
     /// Find the most recent run ID by lexicographic ordering.
     ///
     /// Works because `UUIDv7` embeds a monotonic timestamp prefix,

@@ -1,3 +1,4 @@
+use belt_core::engine::Engine;
 use belt_core::model::RunState;
 use belt_core::view::{PhaseState, PipelineStatus, build_status_view};
 use std::collections::HashMap;
@@ -363,4 +364,106 @@ fn yaml_drift_phase_removed_skipped() {
     assert_eq!(view.phases.len(), 3);
     assert_eq!(view.phases[2].id, "old-phase");
     assert_eq!(view.phases[2].status, PhaseState::Skipped);
+}
+
+// --- Task 7: Engine enriched_status integration tests ---
+
+fn fixture_path(name: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(name)
+}
+
+#[test]
+fn engine_enriched_status_after_init() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline = fixture_path("status_pipeline.yml");
+
+    let args = HashMap::new();
+    let state = engine.init(&pipeline, &args).expect("init");
+
+    let view = engine
+        .enriched_status(&state.run_id)
+        .expect("enriched_status");
+
+    assert_eq!(view.status, PipelineStatus::InProgress);
+    assert_eq!(view.current_phase.as_deref(), Some("build"));
+    assert_eq!(view.phases.len(), 3);
+    assert_eq!(view.phases[0].id, "build");
+    assert_eq!(view.phases[0].status, PhaseState::Current);
+    assert_eq!(view.phases[1].id, "review");
+    assert_eq!(view.phases[1].status, PhaseState::Pending);
+    assert_eq!(view.phases[2].id, "deploy");
+    assert_eq!(view.phases[2].status, PhaseState::Pending);
+    assert_eq!(view.progress.total, 3);
+    assert_eq!(view.progress.remaining, 3);
+}
+
+#[test]
+fn engine_enriched_status_with_skipped_phase() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline = fixture_path("status_pipeline.yml");
+
+    let mut args = HashMap::new();
+    args.insert("skip_review".to_string(), serde_json::Value::Bool(true));
+    let mut state = engine.init(&pipeline, &args).expect("init");
+
+    // verify and step past build
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine.step(&mut state, &pipeline).expect("step");
+
+    let view = engine
+        .enriched_status(&state.run_id)
+        .expect("enriched_status");
+
+    assert_eq!(view.phases[0].status, PhaseState::Completed); // build
+    assert_eq!(view.phases[1].status, PhaseState::Skipped); // review
+    assert_eq!(view.phases[2].status, PhaseState::Current); // deploy
+    assert_eq!(view.progress.completed, 1);
+    assert_eq!(view.progress.skipped, 1);
+    assert_eq!(view.progress.remaining, 1);
+}
+
+#[test]
+fn engine_enriched_status_pipeline_not_found() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline = fixture_path("status_pipeline.yml");
+
+    let state = engine.init(&pipeline, &HashMap::new()).expect("init");
+
+    // Tamper with state to point to a non-existent pipeline
+    let mut loaded = engine.load_state(&state.run_id).expect("load");
+    loaded.pipeline_file = "/nonexistent/pipeline.yml".to_string();
+    engine.save_state(&loaded).expect("save");
+
+    let result = engine.enriched_status(&state.run_id);
+    assert!(result.is_err());
+}
+
+#[test]
+fn engine_enriched_status_output_files_visible() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let pipeline = fixture_path("status_pipeline.yml");
+
+    let state = engine.init(&pipeline, &HashMap::new()).expect("init");
+
+    // Write a file into the build phase output directory
+    let output_dir = belt_dir.join("runs").join(&state.run_id).join("build");
+    std::fs::create_dir_all(&output_dir).expect("mkdir");
+    std::fs::write(output_dir.join("artifact.tar.gz"), b"data").expect("write");
+
+    let view = engine
+        .enriched_status(&state.run_id)
+        .expect("enriched_status");
+
+    assert_eq!(view.phases[0].outputs, vec!["artifact.tar.gz"]);
 }
