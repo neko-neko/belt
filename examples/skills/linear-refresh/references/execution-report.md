@@ -1,6 +1,6 @@
 # Execution Report
 
-Format for the `.belt/refresh-result.json` artifact produced by the execute phase.
+Format for the `.linear-refresh/result.json` artifact produced by Step 5 (Execute).
 
 ## JSON Structure
 
