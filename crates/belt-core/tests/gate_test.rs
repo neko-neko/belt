@@ -1,6 +1,6 @@
 use std::fs;
 
-use belt_core::gate::{all_passed, execute_gate};
+use belt_core::gate::{all_passed, execute_gate, execute_gates};
 use belt_core::model::GateCheck;
 
 /// `cmd: "true"` exits 0 -> gate passes.
@@ -306,5 +306,53 @@ fn all_passed_integration() {
         .map(|c| execute_gate(c, tmp.path(), tmp.path()))
         .collect();
 
+    assert!(all_passed(&results));
+}
+
+/// One timeout among multiple checks fails the overall result.
+#[test]
+fn execute_gates_one_timeout_fails_all() {
+    let checks = vec![
+        GateCheck::Cmd {
+            cmd: "true".to_owned(),
+            timeout: 5,
+        },
+        GateCheck::Cmd {
+            cmd: "sleep 60".to_owned(),
+            timeout: 1,
+        },
+    ];
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let results = execute_gates(&checks, tmp.path(), tmp.path());
+
+    assert_eq!(results.len(), 2);
+    assert!(results[0].passed);
+    assert!(!results[0].timed_out);
+    assert!(!results[1].passed);
+    assert!(results[1].timed_out);
+    assert!(!all_passed(&results));
+}
+
+/// All checks pass with timeout set.
+#[test]
+fn execute_gates_all_pass_with_timeout() {
+    let checks = vec![
+        GateCheck::Cmd {
+            cmd: "true".to_owned(),
+            timeout: 5,
+        },
+        GateCheck::Cmd {
+            cmd: "echo ok".to_owned(),
+            timeout: 5,
+        },
+    ];
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let results = execute_gates(&checks, tmp.path(), tmp.path());
+
+    assert_eq!(results.len(), 2);
+    assert!(results[0].passed);
+    assert!(results[1].passed);
+    assert!(!results[0].timed_out);
+    assert!(!results[1].timed_out);
     assert!(all_passed(&results));
 }
