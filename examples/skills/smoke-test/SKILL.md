@@ -19,15 +19,6 @@ Invoke /belt-agent for protocol details.
 - `smoke-*.png` — browser screenshots (one per scenario minimum)
 - Status: PASS / FAIL / PAUSE
 
-## Phase Map
-
-| Phase | What to do | Reference |
-|-------|-----------|-----------|
-| env-setup | Start dev server, verify accessible | [server-detection.md](references/server-detection.md) |
-| adhoc-test | Generate & execute smoke scenarios | [scenario-generation.md](references/scenario-generation.md), [report-template.md](references/report-template.md) |
-| vrt-check | Run VRT if tooling detected | [vrt-detection.md](references/vrt-detection.md) |
-| e2e-detection | Run E2E with flaky detection | [e2e-flaky-detection.md](references/e2e-flaky-detection.md) |
-
 ## Phase: env-setup
 
 1. If `args.server` and `args.port` are set, use them directly.
