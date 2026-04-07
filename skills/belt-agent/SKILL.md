@@ -28,7 +28,7 @@ belt-agent step
 belt-agent step --confirm          # required when phase has validate criteria
 belt-agent step --run <run_id>
 
-# Inspect full run state
+# Inspect full run state (enriched view)
 belt-agent status
 belt-agent status --run <run_id>
 ```
@@ -57,6 +57,28 @@ init → next → execute phase → verify (if gates) → step → next → ... 
 | `verify` FAIL with `regate` phases | Fix **those regate phases' work** (not the current phase). Re-run `verify`. |
 | Phase has `validate` criteria | Verify each criterion yourself, then `step --confirm`. |
 | `step` returns `advanced: false` | Read `reason`. Typically `confirmation_required` — verify criteria and retry with `--confirm`. |
+| Need pipeline state overview | Run `status`. Use for context recovery, progress checks. |
+
+## Status Output
+
+`status` returns an enriched view assembled from run state, pipeline YAML, and output directories:
+
+```json
+{
+  "status": "in_progress",
+  "current_phase": "review",
+  "progress": { "completed": 2, "skipped": 0, "remaining": 2, "total": 4 },
+  "phases": [
+    { "id": "build", "status": "completed", "verify_passed": true, "attempt": 1, "outputs": ["report.json"] },
+    { "id": "review", "status": "current", "verify_passed": false, "attempt": 2, "outputs": [] },
+    { "id": "test", "status": "pending", "verify_passed": null, "attempt": 0, "outputs": [] },
+    { "id": "deploy", "status": "pending", "verify_passed": null, "attempt": 0, "outputs": [] }
+  ]
+}
+```
+
+Use `status` to understand pipeline state after context recovery or before resuming work.
+When pipeline completes, `status` is `"completed"` and `current_phase` is `null`.
 
 ## Well-known Config Keys
 

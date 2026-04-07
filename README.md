@@ -71,6 +71,32 @@ loop {
 All `belt-agent` output is JSON. The agent never needs the full pipeline —
 just the current phase.
 
+### Status
+
+Check pipeline state at any time:
+
+```bash
+belt-agent status                  # latest run
+belt-agent status --run <run_id>   # specific run
+```
+
+Returns an enriched view assembled from run state, pipeline YAML, and output
+directories — enough for a new LLM session to resume work without prior context:
+
+```json
+{
+  "status": "in_progress",
+  "current_phase": "review",
+  "progress": { "completed": 2, "skipped": 0, "remaining": 2, "total": 4 },
+  "phases": [
+    { "id": "build", "status": "completed", "verify_passed": true, "attempt": 1, "outputs": ["report.json"] },
+    { "id": "review", "status": "current", "verify_passed": false, "attempt": 2, "outputs": [] },
+    { "id": "test", "status": "pending", "verify_passed": null, "attempt": 0, "outputs": [] },
+    { "id": "deploy", "status": "pending", "verify_passed": null, "attempt": 0, "outputs": [] }
+  ]
+}
+```
+
 ## Key Concepts
 
 - **gate** (verification) — Deterministic checks belt runs automatically:
