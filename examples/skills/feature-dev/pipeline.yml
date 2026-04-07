@@ -1,0 +1,214 @@
+name: feature-dev
+description: "Quality-gated development orchestrator"
+version: 1
+args:
+  e2e:        { type: bool, default: false }
+  smoke:      { type: bool, default: false }
+  doc:        { type: bool, default: false }
+  codex:      { type: bool, default: false }
+  ui:         { type: bool, default: false }
+  iterations: { type: number, default: 3 }
+  swarm:      { type: bool, default: false }
+
+phases:
+  # ─── Design ───
+  - id: design
+    description: "Create design spec via brainstorming"
+    config:
+      skill: "/brainstorming"
+      swarm: "args.swarm"
+    gate:
+      - file_exists: "docs/plans/*-design.md"
+
+  - id: design-audit
+    description: "Audit design spec against done-criteria"
+    config:
+      audit: required
+      criteria: "design"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/design.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Spec Review ───
+  - id: spec-review
+    description: "4-perspective spec review"
+    config:
+      skill: "/spec-review"
+      codex: "args.codex"
+      iterations: "args.iterations"
+      swarm: "args.swarm"
+
+  - id: spec-review-audit
+    description: "Audit spec review completion"
+    config:
+      audit: required
+      criteria: "spec-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/spec-review.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Plan ───
+  - id: plan
+    description: "Create implementation plan and test cases"
+    config:
+      skill: "/writing-plans"
+    gate:
+      - file_exists: "docs/plans/*-plan.md"
+      - file_exists: "docs/plans/*-test-cases.md"
+
+  - id: plan-audit
+    description: "Audit implementation plan"
+    config:
+      audit: required
+      criteria: "plan"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/plan.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Plan Review ───
+  - id: plan-review
+    description: "3-perspective implementation plan review"
+    config:
+      skill: "/implementation-review"
+      codex: "args.codex"
+      iterations: "args.iterations"
+      ui: "args.ui"
+
+  - id: plan-review-audit
+    description: "Audit plan review completion"
+    config:
+      audit: required
+      criteria: "plan-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/plan-review.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Execute ───
+  - id: execute
+    description: "TDD implementation following the plan"
+    config:
+      skill: "/subagent-driven-development"
+    gate:
+      - cmd: "make test"
+    max_retries: 3
+
+  - id: execute-audit
+    description: "Audit implementation against plan"
+    config:
+      audit: required
+      criteria: "execute"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/execute.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Doc Audit (conditional) ───
+  - id: doc-audit
+    description: "4-layer document audit"
+    when: "args.doc"
+    config:
+      skill: "/doc-audit"
+
+  - id: doc-audit-audit
+    description: "Audit doc audit completion"
+    when: "args.doc"
+    config:
+      audit: required
+      criteria: "doc-audit"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/doc-audit.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Smoke Test (conditional) ───
+  - id: smoke-test
+    description: "Local smoke test with browser verification"
+    when: "args.smoke"
+    config:
+      skill: "/smoke-test"
+    gate:
+      - file_exists: "smoke-test-report.md"
+
+  - id: smoke-test-audit
+    description: "Audit smoke test results"
+    when: "args.smoke"
+    config:
+      audit: required
+      criteria: "smoke-test"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/smoke-test.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Code Review ───
+  - id: code-review
+    description: "7-perspective code review"
+    config:
+      skill: "/code-review"
+      codex: "args.codex"
+      iterations: "args.iterations"
+      swarm: "args.swarm"
+
+  - id: code-review-audit
+    description: "Audit code review and verify regression"
+    config:
+      audit: required
+      criteria: "code-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/code-review.md pass"
+    confirm: true
+    max_retries: 3
+    regate: [execute, smoke-test, doc-audit]
+
+  # ─── Test Review (conditional) ───
+  - id: test-review
+    description: "3-perspective test review"
+    when: "args.e2e"
+    config:
+      skill: "/test-review"
+      codex: "args.codex"
+      iterations: "args.iterations"
+
+  - id: test-review-audit
+    description: "Audit test review and verify regression"
+    when: "args.e2e"
+    config:
+      audit: required
+      criteria: "test-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/test-review.md pass"
+    confirm: true
+    max_retries: 3
+    regate: [execute]
+
+  # ─── Integrate ───
+  - id: integrate
+    description: "Merge, PR, or branch management"
+    config:
+      skill: "/worktrunk"
+    validate:
+      - "Integration method chosen and executed"
+      - "All pre-merge checks pass"
+    confirm: true
