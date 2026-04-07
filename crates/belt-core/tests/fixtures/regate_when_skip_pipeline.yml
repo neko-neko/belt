@@ -1,0 +1,17 @@
+name: regate-when-skip
+version: 1
+args:
+  run_optional: { type: bool, default: false }
+phases:
+  - id: optional
+    description: "Optional phase"
+    when: "args.run_optional"
+    gate:
+      - file_exists: "optional.ok"
+  - id: main
+    description: "Main phase"
+    gate:
+      - file_exists: "main.ok"
+    regate: [optional]
+  - id: done
+    description: "Done"

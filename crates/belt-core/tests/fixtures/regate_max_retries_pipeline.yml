@@ -1,0 +1,15 @@
+name: regate-max-retries
+version: 1
+phases:
+  - id: collect
+    description: "Collect data"
+    gate:
+      - file_exists: "collect.ok"
+  - id: audit
+    description: "Audit quality"
+    gate:
+      - file_exists: "audit.ok"
+    regate: [collect]
+    max_retries: 2
+  - id: done
+    description: "Done"

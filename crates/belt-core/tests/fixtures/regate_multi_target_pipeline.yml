@@ -1,0 +1,18 @@
+name: regate-multi-target
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: impl
+    description: "Implement"
+    gate:
+      - file_exists: "impl.ok"
+  - id: review
+    description: "Review"
+    gate:
+      - file_exists: "review.ok"
+    regate: [design, impl]
+  - id: done
+    description: "Done"

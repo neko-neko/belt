@@ -1,0 +1,12 @@
+name: regate-gateless
+version: 1
+phases:
+  - id: prep
+    description: "Preparation"
+    gate:
+      - file_exists: "prep.ok"
+  - id: check
+    description: "Gateless check with regate"
+    regate: [prep]
+  - id: done
+    description: "Done"
