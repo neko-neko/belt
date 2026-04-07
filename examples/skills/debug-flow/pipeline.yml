@@ -1,0 +1,157 @@
+name: debug-flow
+description: "Quality-gated debugging orchestrator"
+version: 1
+args:
+  e2e:        { type: bool, default: false }
+  smoke:      { type: bool, default: false }
+  codex:      { type: bool, default: false }
+  ui:         { type: bool, default: false }
+  iterations: { type: number, default: 3 }
+  swarm:      { type: bool, default: false }
+
+phases:
+  # ─── Root Cause Analysis ───
+  - id: rca
+    description: "Investigate root cause via parallel exploration"
+    config:
+      skill: "/systematic-debugging"
+      swarm: "args.swarm"
+    gate:
+      - file_exists: "docs/plans/*-rca-report.md"
+
+  - id: rca-audit
+    description: "Audit RCA report against done-criteria"
+    config:
+      audit: required
+      criteria: "rca"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/rca.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Fix Plan ───
+  - id: fix-plan
+    description: "Create fix plan from RCA report"
+    config:
+      skill: "/writing-plans"
+    gate:
+      - file_exists: "docs/plans/*-fix-plan.md"
+
+  - id: fix-plan-audit
+    description: "Audit fix plan"
+    config:
+      audit: required
+      criteria: "fix-plan"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/fix-plan.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Fix Plan Review ───
+  - id: fix-plan-review
+    uses: ../implementation-review/pipeline.yml
+
+  - id: fix-plan-review-audit
+    description: "Audit fix plan review completion"
+    config:
+      audit: required
+      criteria: "fix-plan-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/fix-plan-review.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Execute ───
+  - id: execute
+    description: "TDD implementation following the fix plan"
+    config:
+      skill: "/subagent-driven-development"
+    gate:
+      - cmd: "make test"
+    max_retries: 3
+
+  - id: execute-audit
+    description: "Audit implementation against fix plan"
+    config:
+      audit: required
+      criteria: "execute"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/execute.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Smoke Test (conditional) ───
+  - id: smoke-test
+    description: "Local smoke test with browser verification"
+    when: "args.smoke"
+    config:
+      skill: "/smoke-test"
+    gate:
+      - file_exists: "smoke-test-report.md"
+
+  - id: smoke-test-audit
+    description: "Audit smoke test results"
+    when: "args.smoke"
+    config:
+      audit: required
+      criteria: "smoke-test"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/smoke-test.md pass"
+    confirm: true
+    max_retries: 3
+
+  # ─── Code Review ───
+  - id: code-review
+    uses: ../code-review/pipeline.yml
+
+  - id: code-review-audit
+    description: "Audit code review and verify regression"
+    config:
+      audit: required
+      criteria: "code-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/code-review.md pass"
+    confirm: true
+    max_retries: 3
+    regate: [execute, smoke-test]
+
+  # ─── Test Review (conditional) ───
+  - id: test-review
+    when: "args.e2e"
+    uses: ../test-review/pipeline.yml
+
+  - id: test-review-audit
+    description: "Audit test review and verify regression"
+    when: "args.e2e"
+    config:
+      audit: required
+      criteria: "test-review"
+    gate:
+      - has_output: true
+    validate:
+      - "All criteria in references/done-criteria/test-review.md pass"
+    confirm: true
+    max_retries: 3
+    regate: [execute]
+
+  # ─── Integrate ───
+  - id: integrate
+    description: "Merge, PR, or branch management"
+    config:
+      skill: "/worktrunk"
+    validate:
+      - "Integration method chosen and executed"
+      - "All pre-merge checks pass"
+    confirm: true
