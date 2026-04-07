@@ -141,6 +141,150 @@ fn gate_result_timed_out_serializes() {
     assert!(json.contains(r#""timed_out":true"#), "json: {json}");
 }
 
+/// cmd completes within timeout — passes normally.
+#[test]
+fn cmd_with_timeout_passes() {
+    let check = GateCheck::Cmd {
+        cmd: "true".to_owned(),
+        timeout: 5,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(result.passed);
+    assert!(!result.timed_out);
+    assert!(result.duration_ms.unwrap() < 5000);
+}
+
+/// cmd fails normally (non-zero exit) within timeout — FAIL, not timeout.
+#[test]
+fn cmd_with_timeout_fails_normally() {
+    let check = GateCheck::Cmd {
+        cmd: "false".to_owned(),
+        timeout: 5,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(!result.passed);
+    assert!(!result.timed_out);
+    assert!(result.detail.as_deref().unwrap_or("").contains("exit"));
+}
+
+/// cmd with timeout: 0 completes normally (no timeout applied).
+#[test]
+fn cmd_with_timeout_zero_passes() {
+    let check = GateCheck::Cmd {
+        cmd: "true".to_owned(),
+        timeout: 0,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(result.passed);
+    assert!(!result.timed_out);
+}
+
+/// cmd exceeds timeout — killed, timed_out = true.
+#[test]
+fn cmd_timeout_kills_hanging_process() {
+    let check = GateCheck::Cmd {
+        cmd: "sleep 60".to_owned(),
+        timeout: 1,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(!result.passed);
+    assert!(result.timed_out);
+    assert!(
+        result.detail.as_deref().unwrap_or("").contains("timed out"),
+        "detail: {:?}",
+        result.detail
+    );
+}
+
+/// Timeout duration_ms reflects the timeout value.
+#[test]
+fn cmd_timeout_duration_reflects_timeout() {
+    let check = GateCheck::Cmd {
+        cmd: "sleep 60".to_owned(),
+        timeout: 2,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(result.timed_out);
+    let ms = result.duration_ms.unwrap();
+    assert!(ms >= 2000, "duration_ms too low: {ms}");
+    assert!(ms < 4000, "duration_ms too high: {ms}");
+}
+
+/// Fast command finishes before timeout.
+#[test]
+fn cmd_fast_finish_before_timeout() {
+    let check = GateCheck::Cmd {
+        cmd: "echo fast".to_owned(),
+        timeout: 1,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(result.passed);
+    assert!(!result.timed_out);
+    assert!(result.duration_ms.unwrap() < 1000);
+}
+
+/// Spawn failure with timeout — not a timeout error.
+#[test]
+fn cmd_spawn_failure_with_timeout() {
+    let check = GateCheck::Cmd {
+        cmd: "/nonexistent_binary_xyz_123".to_owned(),
+        timeout: 5,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(!result.passed);
+    assert!(!result.timed_out);
+    // sh -c returns exit 127 for command not found
+    assert!(
+        result.detail.as_deref().unwrap_or("").contains("exit")
+            || result.detail.as_deref().unwrap_or("").contains("not found"),
+        "detail: {:?}",
+        result.detail
+    );
+}
+
+/// stderr output preserved on normal failure with timeout.
+#[test]
+fn cmd_stderr_output_on_failure_with_timeout() {
+    let check = GateCheck::Cmd {
+        cmd: "echo err >&2 && false".to_owned(),
+        timeout: 5,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(!result.passed);
+    assert!(!result.timed_out);
+    assert!(
+        result.detail.as_deref().unwrap_or("").contains("err"),
+        "detail should contain stderr, got: {:?}",
+        result.detail
+    );
+}
+
+/// Signal exit with timeout — not a timeout.
+#[test]
+fn cmd_signal_exit_with_timeout() {
+    let check = GateCheck::Cmd {
+        cmd: "kill -9 $$".to_owned(),
+        timeout: 5,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(!result.passed);
+    assert!(!result.timed_out);
+    assert!(
+        result.detail.as_deref().unwrap_or("").contains("signal"),
+        "detail should mention signal, got: {:?}",
+        result.detail
+    );
+}
+
 /// `all_passed` returns true only when every result passed.
 #[test]
 fn all_passed_integration() {

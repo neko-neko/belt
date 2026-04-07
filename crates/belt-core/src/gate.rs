@@ -32,7 +32,7 @@ pub struct GateResult {
 #[must_use]
 pub fn execute_gate(check: &GateCheck, work_dir: &Path, output_dir: &Path) -> GateResult {
     match check {
-        GateCheck::Cmd { cmd, .. } => execute_cmd(cmd, work_dir),
+        GateCheck::Cmd { cmd, timeout } => execute_cmd(cmd, work_dir, *timeout),
         GateCheck::FileExists { file_exists } => execute_file_exists(file_exists, work_dir),
         GateCheck::GitClean { git_clean } => execute_git_clean(*git_clean, work_dir),
         GateCheck::HasOutput { has_output } => execute_has_output(*has_output, output_dir),
@@ -65,20 +65,122 @@ pub fn all_passed(results: &[GateResult]) -> bool {
 // Per-variant handlers
 // ---------------------------------------------------------------------------
 
-/// Run `sh -c <cmd>` in `work_dir` and check exit status.
-fn execute_cmd(cmd: &str, work_dir: &Path) -> GateResult {
+/// Run `sh -c <cmd>` in `work_dir` with a timeout in seconds.
+/// `timeout_secs == 0` means no timeout (original behavior).
+fn execute_cmd(cmd: &str, work_dir: &Path, timeout_secs: u64) -> GateResult {
     let start = Instant::now();
+
+    if timeout_secs == 0 {
+        return execute_cmd_no_timeout(cmd, work_dir, start);
+    }
+
+    let mut child = match Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(work_dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return GateResult {
+                check_type: "cmd".to_owned(),
+                passed: false,
+                detail: Some(format!("failed to spawn: {e}")),
+                duration_ms: Some(elapsed_ms(start)),
+                timed_out: false,
+            };
+        }
+    };
+
+    // Read stdout/stderr in threads to prevent pipe buffer deadlock.
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+
+    let stdout_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut r) = stdout_pipe {
+            std::io::Read::read_to_end(&mut r, &mut buf).ok();
+        }
+        buf
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut r) = stderr_pipe {
+            std::io::Read::read_to_end(&mut r, &mut buf).ok();
+        }
+        buf
+    });
+
+    let deadline = start + std::time::Duration::from_secs(timeout_secs);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break Some(s),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return GateResult {
+                    check_type: "cmd".to_owned(),
+                    passed: false,
+                    detail: Some(format!("try_wait error: {e}")),
+                    duration_ms: Some(elapsed_ms(start)),
+                    timed_out: false,
+                };
+            }
+        }
+    };
+
+    let stderr_bytes = stderr_handle.join().unwrap_or_default();
+    let _stdout_bytes = stdout_handle.join().unwrap_or_default();
+    let duration_ms = elapsed_ms(start);
+
+    match status {
+        None => GateResult {
+            check_type: "cmd".to_owned(),
+            passed: false,
+            detail: Some(format!("timed out after {timeout_secs}s")),
+            duration_ms: Some(duration_ms),
+            timed_out: true,
+        },
+        Some(exit_status) => {
+            let passed = exit_status.success();
+            let detail = if passed {
+                None
+            } else {
+                let stderr = String::from_utf8_lossy(&stderr_bytes);
+                let code = exit_status
+                    .code()
+                    .map_or_else(|| "signal".to_owned(), |c| c.to_string());
+                Some(format!("exit {code}: {}", stderr.trim_end()))
+            };
+            GateResult {
+                check_type: "cmd".to_owned(),
+                passed,
+                detail,
+                duration_ms: Some(duration_ms),
+                timed_out: false,
+            }
+        }
+    }
+}
+
+/// Execute cmd without timeout — uses simple `output()` (original behavior).
+fn execute_cmd_no_timeout(cmd: &str, work_dir: &Path, start: Instant) -> GateResult {
     let result = Command::new("sh")
         .arg("-c")
         .arg(cmd)
         .current_dir(work_dir)
         .output();
-    let elapsed = start.elapsed().as_millis();
-
-    // Saturating cast: u128 -> u64 (overflow extremely unlikely for
-    // wall-clock durations, but we stay safe).
-    #[allow(clippy::cast_possible_truncation)]
-    let duration_ms = elapsed.min(u128::from(u64::MAX)) as u64;
+    let duration_ms = elapsed_ms(start);
 
     match result {
         Ok(output) => {
@@ -109,6 +211,13 @@ fn execute_cmd(cmd: &str, work_dir: &Path) -> GateResult {
             timed_out: false,
         },
     }
+}
+
+/// Helper: elapsed milliseconds since `start`, saturating to u64.
+#[allow(clippy::cast_possible_truncation)]
+fn elapsed_ms(start: Instant) -> u64 {
+    let ms = start.elapsed().as_millis();
+    ms.min(u128::from(u64::MAX)) as u64
 }
 
 /// Match `pattern` (glob) relative to `work_dir`.  Passes if at least one
