@@ -328,6 +328,30 @@ fn cmd_step(engine: &Engine, run: Option<&String>, confirm: bool) -> miette::Res
                 serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
             );
         }
+        Err(BeltError::RegateRequired { phase_id, targets }) => {
+            let out = json!({
+                "advanced": false,
+                "reason": "regate_not_executed",
+                "phase": phase_id,
+                "regate_targets": targets,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+            );
+        }
+        Err(BeltError::RegateFailed { phase_id, targets }) => {
+            let out = json!({
+                "advanced": false,
+                "reason": "regate_failed",
+                "phase": phase_id,
+                "regate_targets": targets,
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
+            );
+        }
         Err(e) => return Err(miette::miette!("{e}")),
     }
     Ok(())

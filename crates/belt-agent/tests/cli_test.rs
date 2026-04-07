@@ -577,6 +577,56 @@ phases:
 }
 
 #[test]
+fn step_json_regate_not_executed() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-step-block
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+    std::fs::write(dir.path().join("build.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // Advance to build
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+
+    // Verify build but skip regate
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+
+    // step should return regate_not_executed
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["advanced"], false);
+    assert_eq!(step["reason"], "regate_not_executed");
+    assert_eq!(step["phase"], "build");
+    assert!(
+        step["regate_targets"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("design"))
+    );
+}
+
+#[test]
 fn regate_before_verify_returns_error() {
     let dir = TempDir::new().unwrap();
     write_yaml(
