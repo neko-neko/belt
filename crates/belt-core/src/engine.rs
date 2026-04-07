@@ -339,7 +339,8 @@ fn first_active_phase<'a>(
 ///
 /// Uses `SystemTime` + Hinnant's civil-from-days algorithm to avoid
 /// pulling in `chrono` or `time` crates.
-fn now_iso8601() -> String {
+#[must_use]
+pub fn now_iso8601() -> String {
     let dur = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
