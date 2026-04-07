@@ -513,6 +513,7 @@ Estimated size: ~120-150 lines. Analysis guideline details (cleanup: ~250 lines,
 | `examples/skills/linear-refresh/references/audit-agent.md` | Belt audit removed |
 | `examples/skills/linear-refresh/references/approve-format.md` | Absorbed into SKILL.md Step 4 |
 | `examples/skills/linear-refresh/references/ground-truth-audit.md` | Replaced by self-check in Step 3 |
+| `examples/skills/linear-refresh/references/execute-agent.md` | Step 5 runs in main agent, no sub-agent needed |
 | `examples/skills/linear-cleanup/` | Consolidated into linear-refresh |
 | `examples/skills/linear-add/` | Consolidated into linear-refresh |
 
