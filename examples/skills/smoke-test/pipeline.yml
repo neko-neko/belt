@@ -16,6 +16,7 @@ phases:
     description: "Start dev server and verify it is accessible."
     config:
       skill: "/smoke-test"
+      reference: "references/env-setup-procedure.md"
     gate:
       - cmd: "curl -sf http://localhost:${args.port:-3000}/ > /dev/null"
 
@@ -23,6 +24,7 @@ phases:
     description: "Generate and execute ad-hoc smoke test scenarios via browser."
     config:
       skill: "/smoke-test"
+      reference: "references/adhoc-test-procedure.md"
     artifacts:
       - "smoke-test-report.md"
     gate:
@@ -38,9 +40,11 @@ phases:
     when: "!args.skip_vrt"
     config:
       skill: "/smoke-test"
+      reference: "references/vrt-check-procedure.md"
 
   - id: e2e-detection
     description: "Run E2E test suite with flaky detection (2-pass execution)."
     when: "!args.skip_e2e"
     config:
       skill: "/smoke-test"
+      reference: "references/e2e-detection-procedure.md"
