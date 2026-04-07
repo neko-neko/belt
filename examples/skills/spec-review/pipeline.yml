@@ -1,0 +1,25 @@
+name: spec-review
+version: 1
+args:
+  iterations: { type: number, default: 3 }
+  codex: { type: bool, default: false }
+  ui: { type: bool, default: false }
+  swarm: { type: bool, default: false }
+phases:
+  - id: review
+    description: "4-perspective spec review"
+    config:
+      agents:
+        - spec-review-requirements
+        - spec-review-design-judgment
+        - spec-review-feasibility
+        - spec-review-consistency
+      ui_agent: spec-review-ui-design
+      codex: "args.codex"
+      iterations: "args.iterations"
+      swarm: "args.swarm"
+    confirm: true
+  - id: fix
+    description: "Fix accepted findings"
+    gate:
+      - has_output: true
