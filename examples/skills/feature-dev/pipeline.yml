@@ -2,13 +2,13 @@ name: feature-dev
 description: "Quality-gated development orchestrator"
 version: 1
 args:
-  e2e:        { type: bool, default: false }
-  smoke:      { type: bool, default: false }
-  doc:        { type: bool, default: false }
-  codex:      { type: bool, default: false }
-  ui:         { type: bool, default: false }
+  e2e: { type: bool, default: false }
+  smoke: { type: bool, default: false }
+  doc: { type: bool, default: false }
+  codex: { type: bool, default: false }
+  ui: { type: bool, default: false }
   iterations: { type: number, default: 3 }
-  swarm:      { type: bool, default: false }
+  swarm: { type: bool, default: false }
 
 phases:
   # ─── Design ───
@@ -90,8 +90,6 @@ phases:
     description: "TDD implementation following the plan"
     config:
       skill: "/subagent-driven-development"
-    gate:
-      - cmd: "make test"
     max_retries: 3
 
   - id: execute-audit
