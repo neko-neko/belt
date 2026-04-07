@@ -100,4 +100,4 @@ cargo build -p belt-agent    # agent runtime
 
 ## License
 
-MIT OR Apache-2.0
+MIT
