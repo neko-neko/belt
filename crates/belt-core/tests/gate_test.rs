@@ -356,3 +356,31 @@ fn execute_gates_all_pass_with_timeout() {
     assert!(!results[1].timed_out);
     assert!(all_passed(&results));
 }
+
+/// GateResult round-trips through JSON serialization.
+#[test]
+fn gate_result_deserialize_round_trip() {
+    let original = belt_core::gate::GateResult {
+        check_type: "cmd".to_owned(),
+        passed: false,
+        detail: Some("exit 1: error".to_owned()),
+        duration_ms: Some(234),
+        timed_out: false,
+    };
+    let json = serde_json::to_string(&original).expect("serialize");
+    let restored: belt_core::gate::GateResult = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(restored.check_type, "cmd");
+    assert!(!restored.passed);
+    assert_eq!(restored.detail.as_deref(), Some("exit 1: error"));
+    assert_eq!(restored.duration_ms, Some(234));
+    assert!(!restored.timed_out);
+}
+
+/// GateResult without timed_out field deserializes with default false.
+#[test]
+fn gate_result_deserialize_missing_timed_out() {
+    let json = r#"{"check_type":"cmd","passed":true,"detail":null,"duration_ms":100}"#;
+    let result: belt_core::gate::GateResult = serde_json::from_str(json).expect("deserialize");
+    assert!(result.passed);
+    assert!(!result.timed_out);
+}

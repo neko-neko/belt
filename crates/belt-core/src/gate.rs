@@ -2,12 +2,12 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::GateCheck;
 
 /// Result of executing a single gate check.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GateResult {
     /// Human-readable check type (e.g. "cmd", "`file_exists`", "`git_clean`").
     pub check_type: String,
