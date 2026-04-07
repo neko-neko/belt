@@ -1,6 +1,7 @@
 # CollectedContext Schema
 
-JSON schema for the `.belt/collected-context.json` artifact produced by the collect phase.
+JSON schema for the `.linear-refresh/collected-context.json` artifact produced
+by Step 1 (Collect) and extended by Step 2 (Discover).
 
 ## Structure
 
@@ -8,7 +9,8 @@ JSON schema for the `.belt/collected-context.json` artifact produced by the coll
 {
   "team_id": "string",
   "tickets": [],
-  "external_sources": []
+  "external_sources": [],
+  "discovery_sources": []
 }
 ```
 
@@ -18,7 +20,7 @@ Each ticket entry contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Linear issue identifier (e.g., "BELT-20") |
+| `id` | string | Linear issue identifier (e.g., "RAKMY-20") |
 | `title` | string | Issue title |
 | `status` | string | Current status (Backlog, Todo, In Progress, Done, Cancelled) |
 | `priority` | string | Priority level (Urgent, High, Medium, Low, No priority) |
@@ -34,7 +36,7 @@ Each ticket entry contains:
 
 ## external_sources[]
 
-Each external source entry contains:
+Sources discovered via ticket URLs (Step 1). Each entry:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -47,3 +49,19 @@ Each external source entry contains:
 | `latest_activity_ts` | string | ISO 8601 timestamp of last activity |
 | `deferred_signals` | string[] | Detected deferred commitment patterns |
 | `source_type` | string | One of: slack_thread, github_issue, github_pr, github_comment, document |
+
+## discovery_sources[]
+
+Sources discovered via keyword search / ticket reverse-lookup (Step 2).
+Separate from external_sources because provenance and confidence differ.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `url` | string | Discovered URL |
+| `discovery_query` | string | The search query that found this source |
+| `related_tickets` | string[] | Ticket IDs this source is judged to relate to |
+| `accessible` | boolean | Whether the URL was successfully fetched |
+| `summary` | string | Content summary (budget per external-source-exploration.md) |
+| `latest_activity_ts` | string | ISO 8601 timestamp of last activity |
+| `deferred_signals` | string[] | Detected deferred commitment patterns |
+| `source_type` | string | One of: slack_message, slack_thread, github_issue, github_pr |
