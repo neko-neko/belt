@@ -203,6 +203,13 @@ CI + pre-commit で `cargo clippy --workspace -- -D warnings` を実行すれば
 - 動詞は意図が明確 (例: `step` (advance ではない))
 - binary 名は audience を示す (`belt` = human, `belt-agent` = agent runtime)
 
+### SKILL.md Authoring Principle
+
+- SKILL.md documents only what pipeline.yml and belt-agent SKILL.md cannot express
+- Phase structure is declared by pipeline.yml and returned dynamically by belt-agent next/status. Do not re-describe in SKILL.md
+- Protocol is taught by belt-agent SKILL.md. Do not re-state
+- SKILL.md responsibilities: (1) config key interpretation rules, (2) domain-specific constraints, (3) references/ pointers
+
 ### Verification Contract
 
 - 非 trivial な変更 (3 ファイル以上 / backend / infrastructure) は独立 verification 必須
