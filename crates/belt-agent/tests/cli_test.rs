@@ -661,3 +661,256 @@ phases:
     let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
     assert_eq!(regate["error"], "verify_not_passed");
 }
+
+// ===========================================================================
+// BELT-24: lifecycle + edge case tests
+// ===========================================================================
+
+// Test 20: full lifecycle with regate
+#[test]
+fn regate_pipeline_full_lifecycle() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: lifecycle
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: test
+    description: "Test"
+    gate:
+      - file_exists: "test.ok"
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+    std::fs::write(dir.path().join("build.ok"), "").unwrap();
+    std::fs::write(dir.path().join("test.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // design: verify -> step
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["to"], "build");
+
+    // build: verify -> regate -> step
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["all_passed"], true);
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["to"], "test");
+
+    // test: verify -> step (no regate)
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["to"], "done");
+
+    // done: gateless -> step -> COMPLETED
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["completed"], true);
+}
+
+// Test 21: regate fail -> fix -> retry lifecycle
+#[test]
+fn regate_fail_retry_lifecycle() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: retry
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    std::fs::write(dir.path().join("build.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // design: create file, verify, step
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+
+    // build: verify PASS
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+
+    // Remove design.ok -> regate FAIL
+    std::fs::remove_file(dir.path().join("design.ok")).unwrap();
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["all_passed"], false);
+
+    // step blocked
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["reason"], "regate_failed");
+
+    // Fix: restore design.ok, re-verify, re-regate
+    std::fs::write(dir.path().join("design.ok"), "").unwrap();
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert_eq!(regate["all_passed"], true);
+
+    // step succeeds
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["advanced"], true);
+}
+
+// Test 22: regate loop exhausts max_retries -> escalation
+#[test]
+fn regate_with_max_retries_escalation() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: escalation
+version: 1
+phases:
+  - id: collect
+    description: "Collect"
+    gate:
+      - file_exists: "collect.ok"
+  - id: audit
+    description: "Audit"
+    gate:
+      - file_exists: "audit.ok"
+    regate: [collect]
+    max_retries: 2
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    std::fs::write(dir.path().join("collect.ok"), "").unwrap();
+    std::fs::write(dir.path().join("audit.ok"), "").unwrap();
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // Advance to audit
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+
+    // 3 verify cycles (exceeds max_retries: 2)
+    for _ in 0..3 {
+        run_belt_agent(&dir, &["verify", "--run", run_id]);
+        run_belt_agent(&dir, &["regate", "--run", run_id]);
+    }
+
+    // step -> 3 attempts > max_retries 2 -> escalation
+    let step = run_belt_agent(&dir, &["step", "--run", run_id]);
+    assert_eq!(step["advanced"], false);
+    assert_eq!(step["reason"], "max_retries_exceeded");
+    assert_eq!(step["escalation"], true);
+}
+
+// Test 24: regate target not found (bypasses lint)
+#[test]
+fn regate_target_not_found_returns_error() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-regate
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+    regate: [nonexistent]
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    // init may fail if lint catches it — that's OK
+    let init_output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["init", "pipeline.yml"])
+        .current_dir(dir.path())
+        .output()
+        .expect("init");
+
+    if !init_output.status.success() {
+        // lint caught it — acceptable behavior
+        return;
+    }
+
+    let init_json: serde_json::Value = serde_json::from_slice(&init_output.stdout).unwrap();
+    let run_id = init_json["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify", "--run", run_id]);
+
+    let output = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["regate", "--run", run_id])
+        .current_dir(dir.path())
+        .output()
+        .expect("regate");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stderr.contains("not found") || stdout.contains("not found") || !output.status.success(),
+        "expected error for nonexistent regate target"
+    );
+}
+
+// Test 28: regate on completed pipeline
+#[test]
+fn regate_on_completed_pipeline_returns_error() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: completed
+version: 1
+phases:
+  - id: only
+    description: "Only phase"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // Gateless -> auto-verify -> step -> COMPLETED
+    run_belt_agent(&dir, &["step", "--run", run_id]);
+
+    // regate on completed pipeline
+    let regate = run_belt_agent(&dir, &["regate", "--run", run_id]);
+    assert!(
+        regate.get("error").is_some(),
+        "expected error for regate on completed pipeline, got: {regate}"
+    );
+}

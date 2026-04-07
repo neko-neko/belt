@@ -1730,3 +1730,154 @@ fn regate_record_idempotent() {
     let next = engine.step(&mut state, &pipeline_path).expect("step");
     assert_eq!(next.as_deref(), Some("test"));
 }
+
+// ---------------------------------------------------------------------------
+// Test 23: gateless phase with regate targets
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_gateless_phase_with_regate_targets() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: gateless-regate
+version: 1
+phases:
+  - id: prep
+    description: "Prep"
+    gate:
+      - file_exists: "prep.ok"
+  - id: check
+    description: "Gateless with regate"
+    regate: [prep]
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // Advance to check phase
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify prep");
+    engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to check");
+    assert_eq!(state.current_phase, "check");
+
+    // check is gateless -> auto-verify. But regate still required.
+    assert_eq!(state.phase_verify_passed.get("check"), Some(&true));
+
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::RegateRequired { .. })),
+        "gateless phase with regate should still require regate: {result:?}"
+    );
+
+    // record regate -> step succeeds
+    engine.record_regate(&mut state, true).expect("regate");
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test 25: regate target skipped phase — auto-passed
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_target_skipped_phase_auto_passed() {
+    let dir = TempDir::new().expect("tempdir");
+    // Structure: start -> optional(when:false) -> main(regate:[optional]) -> done
+    // optional is skipped during step from start, so it lands in skipped_phases.
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: skip-regate
+version: 1
+args:
+  run_optional: { type: bool, default: false }
+phases:
+  - id: start
+    description: "Start"
+  - id: optional
+    description: "Optional"
+    when: "args.run_optional"
+    gate:
+      - file_exists: "optional.ok"
+  - id: main
+    description: "Main"
+    gate:
+      - file_exists: "main.ok"
+    regate: [optional]
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+
+    // init starts at "start" (first active phase)
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    assert_eq!(state.current_phase, "start");
+
+    // step from start -> optional is skipped (when: false) -> lands on main
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("main"));
+    assert!(state.skipped_phases.contains(&"optional".to_string()));
+
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify main");
+    // Simulate cmd_regate auto-passing for skipped target
+    engine.record_regate(&mut state, true).expect("regate");
+
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("done"));
+}
+
+// ---------------------------------------------------------------------------
+// Test 26: regate target with empty gate -> treated as passed
+// ---------------------------------------------------------------------------
+#[test]
+fn regate_target_with_empty_gate() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: empty-gate-regate
+version: 1
+phases:
+  - id: prep
+    description: "Prep (no gate)"
+  - id: check
+    description: "Check"
+    gate:
+      - file_exists: "check.ok"
+    regate: [prep]
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+
+    // prep is gateless -> auto-verify -> step to check
+    engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to check");
+    assert_eq!(state.current_phase, "check");
+
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify check");
+    // empty gate target -> all_passed(&[]) = true
+    engine.record_regate(&mut state, true).expect("regate");
+
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("done"));
+}
