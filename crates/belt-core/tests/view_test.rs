@@ -190,3 +190,177 @@ fn metadata_fields_propagated() {
     assert_eq!(view.created_at, "2026-04-07T10:00:00Z");
     assert_eq!(view.updated_at, "2026-04-07T11:00:00Z");
 }
+
+// --- Task 3: Verify / regate / attempt state tests ---
+
+#[test]
+fn verify_not_run_is_none() {
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert!(view.phases[0].verify_passed.is_none());
+}
+
+#[test]
+fn verify_pass_reflected() {
+    let mut state = make_state("build", &[], &[]);
+    state.phase_verify_passed.insert("build".to_string(), true);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].verify_passed, Some(true));
+}
+
+#[test]
+fn verify_fail_reflected() {
+    let mut state = make_state("build", &[], &[]);
+    state.phase_verify_passed.insert("build".to_string(), false);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].verify_passed, Some(false));
+}
+
+#[test]
+fn regate_pass_reflected() {
+    let mut state = make_state("build", &[], &[]);
+    state.regate_passed.insert("build".to_string(), true);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].regate_passed, Some(true));
+}
+
+#[test]
+fn regate_not_run_is_none() {
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert!(view.phases[0].regate_passed.is_none());
+}
+
+#[test]
+fn attempt_zero_when_not_run() {
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].attempt, 0);
+}
+
+#[test]
+fn attempt_count_reflected() {
+    let mut state = make_state("build", &[], &[]);
+    state.phase_attempts.insert("build".to_string(), 3);
+    let ids = phase_ids(&["build"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].attempt, 3);
+}
+
+// --- Task 4: Output directory scanning tests ---
+
+#[test]
+fn outputs_lists_files() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let phase_dir = dir.path().join("build");
+    std::fs::create_dir_all(&phase_dir).expect("mkdir");
+    std::fs::write(phase_dir.join("report.json"), "{}").expect("write");
+    std::fs::write(phase_dir.join("a_summary.md"), "# ok").expect("write");
+
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let view = build_status_view(&state, &ids, dir.path());
+
+    // Sorted alphabetically
+    assert_eq!(view.phases[0].outputs, vec!["a_summary.md", "report.json"]);
+}
+
+#[test]
+fn outputs_empty_when_no_dir() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let view = build_status_view(&state, &ids, dir.path());
+    assert!(view.phases[0].outputs.is_empty());
+}
+
+#[test]
+fn outputs_empty_when_dir_exists_but_empty() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let phase_dir = dir.path().join("build");
+    std::fs::create_dir_all(&phase_dir).expect("mkdir");
+
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let view = build_status_view(&state, &ids, dir.path());
+    assert!(view.phases[0].outputs.is_empty());
+}
+
+#[test]
+fn outputs_excludes_subdirectories() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let phase_dir = dir.path().join("build");
+    std::fs::create_dir_all(phase_dir.join("subdir")).expect("mkdir");
+    std::fs::write(phase_dir.join("file.txt"), "data").expect("write");
+
+    let state = make_state("build", &[], &[]);
+    let ids = phase_ids(&["build"]);
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].outputs, vec!["file.txt"]);
+}
+
+#[test]
+fn outputs_sub_pipeline_phase_uses_underscore_dir() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let phase_dir = dir.path().join("review_triage");
+    std::fs::create_dir_all(&phase_dir).expect("mkdir");
+    std::fs::write(phase_dir.join("findings.md"), "# findings").expect("write");
+
+    let state = make_state("review/triage", &[], &[]);
+    let ids = phase_ids(&["review/triage"]);
+    let view = build_status_view(&state, &ids, dir.path());
+    assert_eq!(view.phases[0].outputs, vec!["findings.md"]);
+}
+
+// --- Task 5: YAML drift tests ---
+
+#[test]
+fn yaml_drift_phase_added() {
+    let state = make_state("test", &["build"], &[]);
+    let ids = phase_ids(&["build", "lint", "test"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+
+    assert_eq!(view.phases[0].status, PhaseState::Completed); // build
+    assert_eq!(view.phases[1].status, PhaseState::Pending); // lint (new)
+    assert_eq!(view.phases[2].status, PhaseState::Current); // test
+}
+
+#[test]
+fn yaml_drift_phase_removed_completed() {
+    let state = make_state("test", &["old-phase", "build"], &[]);
+    let ids = phase_ids(&["build", "test"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+
+    assert_eq!(view.phases[0].status, PhaseState::Completed);
+    assert_eq!(view.phases[1].status, PhaseState::Current);
+    assert_eq!(view.phases.len(), 3);
+    assert_eq!(view.phases[2].id, "old-phase");
+    assert_eq!(view.phases[2].status, PhaseState::Completed);
+}
+
+#[test]
+fn yaml_drift_phase_removed_skipped() {
+    let state = make_state("test", &["build"], &["old-phase"]);
+    let ids = phase_ids(&["build", "test"]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let view = build_status_view(&state, &ids, dir.path());
+
+    assert_eq!(view.phases.len(), 3);
+    assert_eq!(view.phases[2].id, "old-phase");
+    assert_eq!(view.phases[2].status, PhaseState::Skipped);
+}
