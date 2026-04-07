@@ -115,6 +115,32 @@ fn has_output_gate_fail_empty_dir() {
     );
 }
 
+/// GateResult for non-cmd gates has timed_out = false.
+#[test]
+fn gate_result_timed_out_default_false() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(tmp.path().join("a.txt"), "x").expect("write");
+    let check = GateCheck::FileExists {
+        file_exists: "*.txt".to_owned(),
+    };
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+    assert!(!result.timed_out);
+}
+
+/// GateResult.timed_out serializes to JSON correctly.
+#[test]
+fn gate_result_timed_out_serializes() {
+    let result = belt_core::gate::GateResult {
+        check_type: "cmd".to_owned(),
+        passed: false,
+        detail: Some("timed out after 1s".to_owned()),
+        duration_ms: Some(1000),
+        timed_out: true,
+    };
+    let json = serde_json::to_string(&result).expect("serialize");
+    assert!(json.contains(r#""timed_out":true"#), "json: {json}");
+}
+
 /// `all_passed` returns true only when every result passed.
 #[test]
 fn all_passed_integration() {

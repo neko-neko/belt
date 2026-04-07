@@ -18,6 +18,9 @@ pub struct GateResult {
     /// Wall-clock duration in milliseconds (populated for checks that run
     /// external processes).
     pub duration_ms: Option<u64>,
+    /// Whether the check was terminated due to timeout.
+    #[serde(default)]
+    pub timed_out: bool,
 }
 
 /// Execute a single gate check.
@@ -38,6 +41,7 @@ pub fn execute_gate(check: &GateCheck, work_dir: &Path, output_dir: &Path) -> Ga
             passed: true,
             detail: Some(format!("uses: {uses} not yet resolved")),
             duration_ms: None,
+            timed_out: false,
         },
     }
 }
@@ -94,6 +98,7 @@ fn execute_cmd(cmd: &str, work_dir: &Path) -> GateResult {
                 passed,
                 detail,
                 duration_ms: Some(duration_ms),
+                timed_out: false,
             }
         }
         Err(e) => GateResult {
@@ -101,6 +106,7 @@ fn execute_cmd(cmd: &str, work_dir: &Path) -> GateResult {
             passed: false,
             detail: Some(format!("failed to spawn: {e}")),
             duration_ms: Some(duration_ms),
+            timed_out: false,
         },
     }
 }
@@ -123,6 +129,7 @@ fn execute_file_exists(pattern: &str, work_dir: &Path) -> GateResult {
                 passed,
                 detail,
                 duration_ms: None,
+                timed_out: false,
             }
         }
         Err(e) => GateResult {
@@ -130,6 +137,7 @@ fn execute_file_exists(pattern: &str, work_dir: &Path) -> GateResult {
             passed: false,
             detail: Some(format!("invalid glob pattern: {e}")),
             duration_ms: None,
+            timed_out: false,
         },
     }
 }
@@ -163,6 +171,7 @@ fn execute_git_clean(expect_clean: bool, work_dir: &Path) -> GateResult {
                 passed,
                 detail,
                 duration_ms: Some(duration_ms),
+                timed_out: false,
             }
         }
         Err(e) => GateResult {
@@ -170,6 +179,7 @@ fn execute_git_clean(expect_clean: bool, work_dir: &Path) -> GateResult {
             passed: false,
             detail: Some(format!("failed to run git: {e}")),
             duration_ms: Some(duration_ms),
+            timed_out: false,
         },
     }
 }
@@ -193,6 +203,7 @@ fn execute_has_output(expect_output: bool, output_dir: &Path) -> GateResult {
         passed,
         detail,
         duration_ms: None,
+        timed_out: false,
     }
 }
 
@@ -213,12 +224,14 @@ mod tests {
                 passed: true,
                 detail: None,
                 duration_ms: None,
+                timed_out: false,
             },
             GateResult {
                 check_type: "b".to_owned(),
                 passed: false,
                 detail: None,
                 duration_ms: None,
+                timed_out: false,
             },
         ];
         assert!(!all_passed(&results));
