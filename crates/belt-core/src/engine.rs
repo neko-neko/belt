@@ -317,14 +317,44 @@ fn first_active_phase<'a>(
     phases.iter().find(|p| eval_when(p.when.as_ref(), args))
 }
 
-/// Produce a simple Unix epoch timestamp string.
+/// Produce an ISO 8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`).
 ///
-/// Uses `SystemTime` to avoid pulling in `chrono` or `time` crates.
+/// Uses `SystemTime` + Hinnant's civil-from-days algorithm to avoid
+/// pulling in `chrono` or `time` crates.
 fn now_iso8601() -> String {
     let dur = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    format!("{}Z", dur.as_secs())
+    epoch_to_iso8601(dur.as_secs())
+}
+
+/// Convert Unix epoch seconds to an ISO 8601 UTC string.
+///
+/// Algorithm: Howard Hinnant's `civil_from_days` for the date portion,
+/// simple modular arithmetic for the time portion.
+fn epoch_to_iso8601(secs: u64) -> String {
+    // Safe: secs/86400 fits in i64 for any realistic timestamp (up to year ~25 billion)
+    #[allow(clippy::cast_possible_wrap)]
+    let days = (secs / 86_400) as i64;
+    let time_of_day = secs % 86_400;
+
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    // Hinnant's civil_from_days (epoch = 1970-01-01)
+    let z = days + 719_468;
+    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
 #[cfg(test)]
@@ -385,5 +415,42 @@ mod tests {
         );
         let expr = "args.name".to_string();
         assert!(eval_when(Some(&expr), &args));
+    }
+
+    #[test]
+    fn epoch_to_iso8601_unix_epoch() {
+        assert_eq!(epoch_to_iso8601(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn epoch_to_iso8601_known_date() {
+        // 2024-01-01T00:00:00Z = 1704067200
+        assert_eq!(epoch_to_iso8601(1_704_067_200), "2024-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn epoch_to_iso8601_with_time() {
+        // 2023-06-15T14:30:45Z = 1686836445 (but let me use a verified value)
+        // 2000-02-29T23:59:59Z (leap year) = 951868799
+        assert_eq!(epoch_to_iso8601(951_868_799), "2000-02-29T23:59:59Z");
+    }
+
+    #[test]
+    fn epoch_to_iso8601_leap_second_boundary() {
+        // 2000-03-01T00:00:00Z = 951868800
+        assert_eq!(epoch_to_iso8601(951_868_800), "2000-03-01T00:00:00Z");
+    }
+
+    #[test]
+    fn now_iso8601_format() {
+        let ts = now_iso8601();
+        // Must match YYYY-MM-DDTHH:MM:SSZ pattern
+        assert_eq!(ts.len(), 20, "timestamp length: {ts}");
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[7..8], "-");
+        assert_eq!(&ts[10..11], "T");
+        assert_eq!(&ts[13..14], ":");
+        assert_eq!(&ts[16..17], ":");
+        assert_eq!(&ts[19..], "Z");
     }
 }

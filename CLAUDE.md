@@ -121,7 +121,6 @@ phases:
 | `miette` | `7.6` | core は plain、binary は `fancy-no-backtrace` |
 | `thiserror` | `2.0.18` | |
 | `uuid` | `1.23` | v7 (time-ordered run ID) |
-| `regex` | `1.12` | |
 | `glob` | `0.3` | file_exists gate 用 |
 
 ### Workspace Lints (clippy + rust-lint)
@@ -158,7 +157,7 @@ CI + pre-commit で `cargo clippy --workspace -- -D warnings` を実行すれば
 | 1.x crates | `"X.Y"` caret 許容 | SemVer 準拠で安全 |
 
 **完全ピン対象 (0.x)**: `serde-saphyr`
-**caret 許容 (1.x+)**: `clap`, `serde`, `miette`, `thiserror`, `uuid`, `regex`
+**caret 許容 (1.x+)**: `clap`, `serde`, `miette`, `thiserror`, `uuid`
 
 ### Cargo.lock
 
