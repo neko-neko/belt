@@ -448,6 +448,124 @@ fn engine_enriched_status_pipeline_not_found() {
 }
 
 #[test]
+// --- BELT-30: verify_checks / regate_checks in status ---
+
+/// status includes verify_checks when verify file exists.
+#[test]
+fn status_includes_verify_checks() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(run_dir.join("verify")).unwrap();
+    std::fs::write(
+        run_dir.join("verify/build.json"),
+        r#"{"phase":"build","verdict":"PASS","checks":[{"check_type":"cmd","passed":true,"detail":null,"duration_ms":100,"timed_out":false}],"attempt":1,"timestamp":"2026-04-07T12:00:00Z"}"#,
+    )
+    .unwrap();
+
+    let state = make_state("build", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["build"]), &run_dir);
+
+    assert!(view.phases[0].verify_checks.is_some());
+    let checks = view.phases[0].verify_checks.as_ref().unwrap();
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].check_type, "cmd");
+    assert!(checks[0].passed);
+}
+
+/// status returns verify_checks = None when no verify file.
+#[test]
+fn status_verify_checks_none_when_no_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(&run_dir).unwrap();
+
+    let state = make_state("build", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["build"]), &run_dir);
+
+    assert!(view.phases[0].verify_checks.is_none());
+}
+
+/// status returns verify_checks = None on corrupt file (graceful degradation).
+#[test]
+fn status_verify_checks_none_on_corrupt_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(run_dir.join("verify")).unwrap();
+    std::fs::write(run_dir.join("verify/build.json"), "not json{{{").unwrap();
+
+    let state = make_state("build", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["build"]), &run_dir);
+
+    assert!(view.phases[0].verify_checks.is_none());
+}
+
+/// status reads verify file for sub-pipeline phase with sanitized ID.
+#[test]
+fn status_verify_checks_sub_pipeline_phase() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(run_dir.join("verify")).unwrap();
+    std::fs::write(
+        run_dir.join("verify/review_triage.json"),
+        r#"{"phase":"review/triage","verdict":"FAIL","checks":[{"check_type":"cmd","passed":false,"detail":"exit 1:","duration_ms":50,"timed_out":false}],"attempt":1,"timestamp":"2026-04-07T12:00:00Z"}"#,
+    )
+    .unwrap();
+
+    let state = make_state("review/triage", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["review/triage"]), &run_dir);
+
+    assert!(view.phases[0].verify_checks.is_some());
+    assert!(!view.phases[0].verify_checks.as_ref().unwrap()[0].passed);
+}
+
+/// status includes regate_checks when regate file exists.
+#[test]
+fn status_includes_regate_checks() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(run_dir.join("regate")).unwrap();
+    std::fs::write(
+        run_dir.join("regate/audit.json"),
+        r#"{"phase":"audit","targets":{"collect":{"passed":true,"checks":[]}},"all_passed":true,"timestamp":"2026-04-07T12:00:00Z"}"#,
+    )
+    .unwrap();
+
+    let state = make_state("audit", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["audit"]), &run_dir);
+
+    assert!(view.phases[0].regate_checks.is_some());
+    let targets = view.phases[0].regate_checks.as_ref().unwrap();
+    assert!(targets["collect"]["passed"].as_bool().unwrap());
+}
+
+/// status returns regate_checks = None when no regate file.
+#[test]
+fn status_regate_checks_none_when_no_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(&run_dir).unwrap();
+
+    let state = make_state("build", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["build"]), &run_dir);
+
+    assert!(view.phases[0].regate_checks.is_none());
+}
+
+/// status returns regate_checks = None on corrupt file.
+#[test]
+fn status_regate_checks_none_on_corrupt_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let run_dir = dir.path().join("run1");
+    std::fs::create_dir_all(run_dir.join("regate")).unwrap();
+    std::fs::write(run_dir.join("regate/build.json"), "corrupt!!!").unwrap();
+
+    let state = make_state("build", &[], &[]);
+    let view = build_status_view(&state, &phase_ids(&["build"]), &run_dir);
+
+    assert!(view.phases[0].regate_checks.is_none());
+}
+
+#[test]
 fn engine_enriched_status_output_files_visible() {
     let dir = tempfile::tempdir().expect("tempdir");
     let belt_dir = dir.path().join(".belt");

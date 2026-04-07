@@ -1,3 +1,4 @@
+use crate::gate::GateResult;
 use crate::model::RunState;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -46,6 +47,10 @@ pub struct PhaseView {
     pub regate_passed: Option<bool>,
     pub attempt: u32,
     pub outputs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify_checks: Option<Vec<GateResult>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regate_checks: Option<serde_json::Value>,
 }
 
 /// State of an individual phase within the pipeline run.
@@ -88,6 +93,27 @@ fn determine_phase_state(phase_id: &str, state: &RunState) -> PhaseState {
     }
 }
 
+/// Read verify per-check results from file. Returns `None` on any error.
+fn read_verify_checks(run_dir: &Path, phase_id: &str) -> Option<Vec<GateResult>> {
+    let file = run_dir
+        .join("verify")
+        .join(format!("{}.json", phase_id.replace('/', "_")));
+    let content = std::fs::read_to_string(&file).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let checks = parsed.get("checks")?;
+    serde_json::from_value(checks.clone()).ok()
+}
+
+/// Read regate targets from file. Returns `None` on any error.
+fn read_regate_checks(run_dir: &Path, phase_id: &str) -> Option<serde_json::Value> {
+    let file = run_dir
+        .join("regate")
+        .join(format!("{}.json", phase_id.replace('/', "_")));
+    let content = std::fs::read_to_string(&file).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+    parsed.get("targets").cloned()
+}
+
 /// Build an enriched status view from `RunState` + phase ID list + run directory.
 #[must_use]
 pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path) -> StatusView {
@@ -108,6 +134,8 @@ pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path)
                 regate_passed: state.regate_passed.get(id).copied(),
                 attempt: state.phase_attempts.get(id).copied().unwrap_or(0),
                 outputs: scan_phase_outputs(run_dir, id),
+                verify_checks: read_verify_checks(run_dir, id),
+                regate_checks: read_regate_checks(run_dir, id),
             }
         })
         .collect();
@@ -123,6 +151,8 @@ pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path)
                 regate_passed: state.regate_passed.get(id).copied(),
                 attempt: state.phase_attempts.get(id).copied().unwrap_or(0),
                 outputs: scan_phase_outputs(run_dir, id),
+                verify_checks: read_verify_checks(run_dir, id),
+                regate_checks: read_regate_checks(run_dir, id),
             });
         }
     }
@@ -135,6 +165,8 @@ pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path)
                 regate_passed: None,
                 attempt: 0,
                 outputs: Vec::new(),
+                verify_checks: None,
+                regate_checks: None,
             });
         }
     }
