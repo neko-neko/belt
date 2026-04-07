@@ -1085,3 +1085,65 @@ phases:
     assert_eq!(status2["run_id"], run2);
     assert_eq!(status2["current_phase"], "build");
 }
+
+/// verify outputs timed_out field in JSON for passing cmd.
+#[test]
+fn verify_outputs_timed_out_field() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: timeout-test
+version: 1
+phases:
+  - id: fast
+    description: "Fast check"
+    gate:
+      - cmd: "true"
+        timeout: 5
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    assert!(init["run_id"].is_string());
+
+    let verify = run_belt_agent(&dir, &["verify"]);
+    assert_eq!(verify["verdict"], "PASS");
+    assert_eq!(verify["checks"][0]["timed_out"], false);
+}
+
+/// verify returns FAIL with timed_out = true for hanging cmd.
+#[test]
+fn verify_timeout_returns_fail() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: timeout-test
+version: 1
+phases:
+  - id: hang
+    description: "Hanging check"
+    gate:
+      - cmd: "sleep 60"
+        timeout: 1
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    assert!(init["run_id"].is_string());
+
+    let verify = run_belt_agent(&dir, &["verify"]);
+    assert_eq!(verify["verdict"], "FAIL");
+    assert_eq!(verify["checks"][0]["timed_out"], true);
+    assert!(
+        verify["checks"][0]["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("timed out"),
+        "detail: {}",
+        verify["checks"][0]["detail"]
+    );
+}
