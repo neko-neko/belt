@@ -1091,6 +1091,9 @@ fn regate_pipeline_verify_step_works() {
     engine
         .verify_verdict(&mut state, true)
         .expect("verify build");
+    engine
+        .record_regate(&mut state, true)
+        .expect("regate build");
     let next = engine
         .step(&mut state, &pipeline_path)
         .expect("step build->test");
@@ -1481,4 +1484,130 @@ fn regate_passed_persists_across_save_load() {
         .expect("record_regate");
     let loaded = engine.load_state(&state.run_id).expect("load");
     assert_eq!(loaded.regate_passed.get("build"), Some(&true));
+}
+
+#[test]
+fn regate_step_requires_regate_when_targets_exist() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    engine.verify_verdict(&mut state, true).expect("verify");
+    // Skip regate — step should fail
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::RegateRequired { phase_id, targets })
+            if phase_id == "build" && targets == &vec!["design".to_string()]),
+        "expected RegateRequired, got: {result:?}"
+    );
+}
+
+#[test]
+fn regate_step_blocked_when_regate_failed() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine
+        .record_regate(&mut state, false)
+        .expect("regate FAIL");
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::RegateFailed { phase_id, targets })
+            if phase_id == "build" && targets == &vec!["design".to_string()]),
+        "expected RegateFailed, got: {result:?}"
+    );
+}
+
+#[test]
+fn regate_step_succeeds_after_verify_and_regate_pass() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine.record_regate(&mut state, true).expect("regate PASS");
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("test"));
+}
+
+#[test]
+fn regate_step_succeeds_without_regate_when_no_targets() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    // design phase has no regate targets — only verify needed
+    engine.verify_verdict(&mut state, true).expect("verify");
+    let next = engine.step(&mut state, &pipeline_path).expect("step");
+    assert_eq!(next.as_deref(), Some("build"));
+}
+
+#[test]
+fn regate_verify_guard_priority_over_regate_guard() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    // Clear verify state
+    state.phase_verify_passed.remove("build");
+    engine.save_state(&state).expect("save");
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::VerifyRequired { .. })),
+        "expected VerifyRequired (not RegateRequired), got: {result:?}"
+    );
+}
+
+#[test]
+fn regate_guard_priority_over_max_retries() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-retries
+version: 1
+phases:
+  - id: prep
+    description: "Prep"
+    gate:
+      - file_exists: "prep.ok"
+  - id: check
+    description: "Check"
+    gate:
+      - file_exists: "check.ok"
+    regate: [prep]
+    max_retries: 1
+  - id: done
+    description: "Done"
+"#,
+    );
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify prep");
+    engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to check");
+    // Exceed max_retries but don't run regate
+    engine.verify_verdict(&mut state, false).expect("v1");
+    engine.verify_verdict(&mut state, true).expect("v2");
+    let result = engine.step(&mut state, &pipeline_path);
+    assert!(
+        matches!(&result, Err(BeltError::RegateRequired { .. })),
+        "expected RegateRequired (not MaxRetriesExceeded), got: {result:?}"
+    );
 }

@@ -147,8 +147,27 @@ impl Engine {
             });
         }
 
-        // Guard: max_retries
+        // Guard: regate-before-step
         let current_phase_def = &phases[current_idx];
+        if !current_phase_def.regate.is_empty() {
+            match state.regate_passed.get(&state.current_phase) {
+                Some(true) => {}
+                Some(false) => {
+                    return Err(BeltError::RegateFailed {
+                        phase_id: state.current_phase.clone(),
+                        targets: current_phase_def.regate.clone(),
+                    });
+                }
+                None => {
+                    return Err(BeltError::RegateRequired {
+                        phase_id: state.current_phase.clone(),
+                        targets: current_phase_def.regate.clone(),
+                    });
+                }
+            }
+        }
+
+        // Guard: max_retries
         if current_phase_def.max_retries > 0 {
             let attempts = state
                 .phase_attempts
