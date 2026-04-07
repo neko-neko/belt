@@ -1373,3 +1373,112 @@ fn init_nonexistent_path_returns_parse_error() {
         "error should come from parse_pipeline, not canonicalize: {err}"
     );
 }
+
+// ===========================================================================
+// BELT-24: regate auto-execution
+// ===========================================================================
+
+/// Helper: create a pipeline with regate target.
+/// design -> build(regate:[design]) -> test
+fn regate_pipeline(dir: &TempDir) -> std::path::PathBuf {
+    write_yaml(
+        dir,
+        "pipeline.yml",
+        r#"
+name: regate-test
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - file_exists: "build.ok"
+    regate: [design]
+  - id: test
+    description: "Test"
+    gate:
+      - file_exists: "test.ok"
+"#,
+    )
+}
+
+/// Helper: advance to build phase (verify design, step to build).
+fn advance_to_build(
+    engine: &Engine,
+    state: &mut belt_core::model::RunState,
+    pipeline_path: &std::path::Path,
+) {
+    engine.verify_verdict(state, true).expect("verify design");
+    engine.step(state, pipeline_path).expect("step to build");
+    assert_eq!(state.current_phase, "build");
+}
+
+#[test]
+fn regate_init_does_not_set_regate_passed() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    assert!(
+        state.regate_passed.is_empty(),
+        "init should not set regate_passed"
+    );
+}
+
+#[test]
+fn regate_record_stores_result() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify build");
+    engine
+        .record_regate(&mut state, true)
+        .expect("record_regate");
+    assert_eq!(state.regate_passed.get("build"), Some(&true));
+}
+
+#[test]
+fn regate_verify_clears_regate_passed() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine
+        .record_regate(&mut state, true)
+        .expect("record_regate");
+    assert_eq!(state.regate_passed.get("build"), Some(&true));
+    // re-verify clears regate
+    engine.verify_verdict(&mut state, true).expect("re-verify");
+    assert!(
+        state.regate_passed.get("build").is_none(),
+        "verify should clear regate_passed"
+    );
+}
+
+#[test]
+fn regate_passed_persists_across_save_load() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = regate_pipeline(&dir);
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine.init(&pipeline_path, &HashMap::new()).expect("init");
+    advance_to_build(&engine, &mut state, &pipeline_path);
+    engine.verify_verdict(&mut state, true).expect("verify");
+    engine
+        .record_regate(&mut state, true)
+        .expect("record_regate");
+    let loaded = engine.load_state(&state.run_id).expect("load");
+    assert_eq!(loaded.regate_passed.get("build"), Some(&true));
+}

@@ -206,7 +206,8 @@ impl Engine {
     /// Record a gate verification result.
     ///
     /// Increments the attempt counter for the current phase and returns
-    /// the `passed` value unchanged.
+    /// the `passed` value unchanged. Clears any existing `regate_passed`
+    /// entry for the current phase so that re-verification forces re-regate.
     pub fn verify_verdict(&self, state: &mut RunState, passed: bool) -> BeltResult<bool> {
         let count = state
             .phase_attempts
@@ -216,9 +217,20 @@ impl Engine {
         state
             .phase_verify_passed
             .insert(state.current_phase.clone(), passed);
+        state.regate_passed.remove(&state.current_phase);
         state.updated_at = now_iso8601();
         self.save_state(state)?;
         Ok(passed)
+    }
+
+    /// Record the result of regate gate checks for the current phase.
+    pub fn record_regate(&self, state: &mut RunState, all_passed: bool) -> BeltResult<()> {
+        state
+            .regate_passed
+            .insert(state.current_phase.clone(), all_passed);
+        state.updated_at = now_iso8601();
+        self.save_state(state)?;
+        Ok(())
     }
 
     /// Return the current `RunState` (alias for `load_state`).
