@@ -1479,3 +1479,80 @@ phases:
         serde_json::from_str(&std::fs::read_to_string(&regate_file).unwrap()).unwrap();
     assert_eq!(content["all_passed"], false);
 }
+
+// ===========================================================================
+// BELT-30: status with verify_checks / regate_checks
+// ===========================================================================
+
+/// status shows verify_checks after verify.
+#[test]
+fn status_shows_verify_checks_after_verify() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: status-checks
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    run_belt_agent(&dir, &["verify"]);
+    let status = run_belt_agent(&dir, &["status"]);
+
+    let checks = &status["phases"][0]["verify_checks"];
+    assert!(
+        checks.is_array(),
+        "verify_checks should be array, got: {checks}"
+    );
+    assert_eq!(checks[0]["check_type"], "cmd");
+    assert_eq!(checks[0]["passed"], true);
+}
+
+/// status shows regate_checks after regate.
+#[test]
+fn status_shows_regate_checks_after_regate() {
+    let dir = TempDir::new().unwrap();
+    let design_marker = dir.path().join("design.ok");
+    std::fs::write(&design_marker, "ok").unwrap();
+
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: status-regate
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: "design.ok"
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+    regate: [design]
+"#,
+    );
+
+    run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    run_belt_agent(&dir, &["verify"]);
+    run_belt_agent(&dir, &["step"]);
+    run_belt_agent(&dir, &["verify"]);
+    run_belt_agent(&dir, &["regate"]);
+
+    let status = run_belt_agent(&dir, &["status"]);
+
+    let regate = &status["phases"][1]["regate_checks"];
+    assert!(
+        regate.is_object(),
+        "regate_checks should be object, got: {regate}"
+    );
+    assert!(regate["design"]["passed"].as_bool().unwrap());
+}
