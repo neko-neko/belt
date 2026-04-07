@@ -1556,3 +1556,93 @@ phases:
     );
     assert!(regate["design"]["passed"].as_bool().unwrap());
 }
+
+/// verify writes result file with sanitized phase ID for sub-pipeline phases.
+#[test]
+fn verify_sub_pipeline_phase_sanitized() {
+    let dir = TempDir::new().unwrap();
+
+    // Sub-pipeline
+    std::fs::create_dir_all(dir.path().join("pipelines")).unwrap();
+    std::fs::write(
+        dir.path().join("pipelines/review.yml"),
+        r#"
+name: review
+version: 1
+phases:
+  - id: check
+    description: "Run checks"
+    gate:
+      - cmd: "true"
+"#,
+    )
+    .unwrap();
+
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: sub-test
+version: 1
+phases:
+  - id: review
+    uses: ./pipelines/review.yml
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    run_belt_agent(&dir, &["verify"]);
+
+    // Sub-pipeline phase "review/check" should produce "review_check.json"
+    let verify_file = dir
+        .path()
+        .join(".belt/runs")
+        .join(run_id)
+        .join("verify/review_check.json");
+    assert!(
+        verify_file.exists(),
+        "verify file should use sanitized name: review_check.json"
+    );
+
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&verify_file).unwrap()).unwrap();
+    assert_eq!(content["phase"], "review/check");
+    assert_eq!(content["verdict"], "PASS");
+}
+
+/// verify still succeeds when file write fails (non-fatal).
+#[test]
+fn verify_file_write_failure_non_fatal() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: write-fail
+version: 1
+phases:
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap();
+
+    // Make runs dir read-only to prevent verify file write
+    let runs_dir = dir.path().join(".belt/runs").join(run_id);
+    std::fs::set_permissions(&runs_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+    // verify should still succeed (file write is non-fatal)
+    let result = run_belt_agent(&dir, &["verify"]);
+    assert_eq!(result["verdict"], "PASS");
+
+    // Restore permissions for cleanup
+    std::fs::set_permissions(&runs_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+}

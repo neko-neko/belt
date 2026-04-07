@@ -447,7 +447,6 @@ fn engine_enriched_status_pipeline_not_found() {
     assert!(result.is_err());
 }
 
-#[test]
 // --- BELT-30: verify_checks / regate_checks in status ---
 
 /// status includes verify_checks when verify file exists.
