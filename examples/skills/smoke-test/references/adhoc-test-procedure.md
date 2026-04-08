@@ -11,6 +11,7 @@ Generate and execute ad-hoc smoke test scenarios via browser.
    - If `args.perspectives` is set, dispatch review agents for additional perspectives.
 3. Invoke `/agent-browser` and execute each scenario (reconnaissance-then-action pattern).
    - Do NOT use Playwright MCP tools or other browser automation directly.
-4. Take a screenshot after each scenario: `smoke-<scenario_name>.png`
-5. On scenario failure, retry up to 2 times before marking FAIL.
-6. Write report per [report-template.md](report-template.md).
+4. Invoke `/dogfood` and execute.
+5. Take a screenshot after each scenario: `smoke-<scenario_name>.png`
+6. On scenario failure, retry up to 2 times before marking FAIL.
+7. Write report per [report-template.md](report-template.md).
