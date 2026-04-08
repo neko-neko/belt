@@ -21,32 +21,18 @@ phases:
       - file_exists: "docs/plans/*-design.md"
 
   - id: design-audit
-    description: "Audit design spec against done-criteria"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "design"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/design.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Spec Review ───
   - id: spec-review
     uses: ../spec-review/pipeline.yml
 
   - id: spec-review-audit
-    description: "Audit spec review completion"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "spec-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/spec-review.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Plan ───
   - id: plan
@@ -58,32 +44,18 @@ phases:
       - file_exists: "docs/plans/*-test-cases.md"
 
   - id: plan-audit
-    description: "Audit implementation plan"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "plan"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/plan.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Plan Review ───
   - id: plan-review
     uses: ../implementation-review/pipeline.yml
 
   - id: plan-review-audit
-    description: "Audit plan review completion"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "plan-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/plan-review.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Execute ───
   - id: execute
@@ -93,16 +65,9 @@ phases:
     max_retries: 3
 
   - id: execute-audit
-    description: "Audit implementation against plan"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "execute"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/execute.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Doc Audit (conditional) ───
   - id: doc-audit
@@ -112,17 +77,10 @@ phases:
       skill: "/doc-audit"
 
   - id: doc-audit-audit
-    description: "Audit doc audit completion"
     when: "args.doc"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "doc-audit"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/doc-audit.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Smoke Test (conditional) ───
   - id: smoke-test
@@ -134,33 +92,19 @@ phases:
       - file_exists: "smoke-test-report.md"
 
   - id: smoke-test-audit
-    description: "Audit smoke test results"
     when: "args.smoke"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "smoke-test"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/smoke-test.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Code Review ───
   - id: code-review
     uses: ../code-review/pipeline.yml
 
   - id: code-review-audit
-    description: "Audit code review and verify regression"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "code-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/code-review.md pass"
-    confirm: true
-    max_retries: 3
     regate: [execute, smoke-test, doc-audit]
 
   # ─── Test Review (conditional) ───
@@ -169,17 +113,10 @@ phases:
     uses: ../test-review/pipeline.yml
 
   - id: test-review-audit
-    description: "Audit test review and verify regression"
     when: "args.e2e"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "test-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/test-review.md pass"
-    confirm: true
-    max_retries: 3
     regate: [execute]
 
   # ─── Integrate ───
