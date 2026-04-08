@@ -1,0 +1,14 @@
+name: audit-gate
+description: "Reusable audit gate — dispatches phase-auditor against done-criteria"
+version: 1
+phases:
+  - id: check
+    description: "Phase-auditor dispatch against done-criteria"
+    config:
+      audit: required
+    gate:
+      - has_output: true
+    validate:
+      - "All audit criteria pass"
+    confirm: true
+    max_retries: 3
