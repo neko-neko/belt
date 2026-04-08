@@ -20,16 +20,9 @@ phases:
       - file_exists: "docs/plans/*-rca-report.md"
 
   - id: rca-audit
-    description: "Audit RCA report against done-criteria"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "rca"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/rca.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Fix Plan ───
   - id: fix-plan
@@ -40,32 +33,18 @@ phases:
       - file_exists: "docs/plans/*-fix-plan.md"
 
   - id: fix-plan-audit
-    description: "Audit fix plan"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "fix-plan"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/fix-plan.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Fix Plan Review ───
   - id: fix-plan-review
     uses: ../implementation-review/pipeline.yml
 
   - id: fix-plan-review-audit
-    description: "Audit fix plan review completion"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "fix-plan-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/fix-plan-review.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Execute ───
   - id: execute
@@ -75,16 +54,9 @@ phases:
     max_retries: 3
 
   - id: execute-audit
-    description: "Audit implementation against fix plan"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "execute"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/execute.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Smoke Test (conditional) ───
   - id: smoke-test
@@ -96,33 +68,19 @@ phases:
       - file_exists: "smoke-test-report.md"
 
   - id: smoke-test-audit
-    description: "Audit smoke test results"
     when: "args.smoke"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "smoke-test"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/smoke-test.md pass"
-    confirm: true
-    max_retries: 3
 
   # ─── Code Review ───
   - id: code-review
     uses: ../code-review/pipeline.yml
 
   - id: code-review-audit
-    description: "Audit code review and verify regression"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "code-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/code-review.md pass"
-    confirm: true
-    max_retries: 3
     regate: [execute, smoke-test]
 
   # ─── Test Review (conditional) ───
@@ -131,17 +89,10 @@ phases:
     uses: ../test-review/pipeline.yml
 
   - id: test-review-audit
-    description: "Audit test review and verify regression"
     when: "args.e2e"
+    uses: ../audit-gate/pipeline.yml
     config:
-      audit: required
       criteria: "test-review"
-    gate:
-      - has_output: true
-    validate:
-      - "All criteria in references/done-criteria/test-review.md pass"
-    confirm: true
-    max_retries: 3
     regate: [execute]
 
   # ─── Integrate ───
