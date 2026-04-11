@@ -236,3 +236,86 @@ phases:
         "expected diagnostic mentioning 'leaf phase' or 'description', got: {errors:?}"
     );
 }
+
+#[test]
+fn lint_detects_invoke_skill_without_leading_slash() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-invoke-skill
+version: 1
+phases:
+  - id: p
+    description: "p"
+    invoke:
+      skill: brainstorming
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|d| d.message.contains("brainstorming") && d.message.contains("slash")),
+        "expected diagnostic about leading slash, got: {errors:?}"
+    );
+}
+
+#[test]
+fn lint_accepts_invoke_skill_with_leading_slash() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: good-invoke-skill
+version: 1
+phases:
+  - id: p
+    description: "p"
+    invoke:
+      skill: /brainstorming
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}
+
+#[test]
+fn lint_detects_invoke_skill_empty() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: empty-invoke-skill
+version: 1
+phases:
+  - id: p
+    description: "p"
+    invoke:
+      skill: ""
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.iter().any(|d| d.message.contains("empty")),
+        "expected diagnostic about empty skill, got: {errors:?}"
+    );
+}

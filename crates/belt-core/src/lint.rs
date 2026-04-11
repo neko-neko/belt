@@ -119,6 +119,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: invoke.pipeline references exist
     check_invoke_pipeline_exists(&pipeline, base_dir, &mut diagnostics);
 
+    // Check: invoke.skill has leading slash
+    check_invoke_skill_format(&pipeline, &mut diagnostics);
+
     // Phase 2: Try expansion (catches issues in sub-pipelines)
     if diagnostics.iter().all(|d| d.severity != Severity::Error) {
         if let Err(e) = expand_pipeline(path) {
@@ -173,6 +176,29 @@ fn check_invoke_pipeline_exists(
                     message: format!(
                         "phase '{}': invoke pipeline '{}' not found",
                         phase.id, sub_path
+                    ),
+                });
+            }
+        }
+    }
+}
+
+/// Lint rule: `invoke: { skill: ... }` must be non-empty and start with a
+/// leading slash (skill invocation convention).
+fn check_invoke_skill_format(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    for phase in &pipeline.phases {
+        if let Some(Invoker::Skill { skill, .. }) = &phase.invoke {
+            if skill.is_empty() {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Error,
+                    message: format!("phase '{}': invoke skill is empty", phase.id),
+                });
+            } else if !skill.starts_with('/') {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Error,
+                    message: format!(
+                        "phase '{}': invoke skill '{}' must start with a leading slash (e.g. '/{}')",
+                        phase.id, skill, skill
                     ),
                 });
             }
