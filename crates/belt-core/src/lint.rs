@@ -1,8 +1,8 @@
 use crate::error::BeltResult;
 use crate::expander::expand_pipeline;
-use crate::model::{GateCheck, Invoker, Pipeline};
+use crate::model::{ArtifactRef, GateCheck, Invoker, Pipeline};
 use crate::parser::parse_pipeline;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +122,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: invoke.skill has leading slash
     check_invoke_skill_format(&pipeline, &mut diagnostics);
 
+    // Check: produces uniqueness per phase + consumes resolves to earlier phase
+    check_artifact_flow(&pipeline, &mut diagnostics);
+
     // Phase 2: Try expansion (catches issues in sub-pipelines)
     if diagnostics.iter().all(|d| d.severity != Severity::Error) {
         if let Err(e) = expand_pipeline(path) {
@@ -201,6 +204,74 @@ fn check_invoke_skill_format(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiag
                         phase.id, skill, skill
                     ),
                 });
+            }
+        }
+    }
+}
+
+/// Lint rule: `produces:` names must be unique within a phase, and every
+/// `consumes:` reference must resolve to an artifact produced by an earlier
+/// phase (Named → any earlier phase; Qualified → specific earlier `phase_id`).
+fn check_artifact_flow(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    // Check: produces names are unique within a phase
+    for phase in &pipeline.phases {
+        let mut seen_names: HashSet<&str> = HashSet::new();
+        for artifact in &phase.produces {
+            if !seen_names.insert(artifact.name.as_str()) {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Error,
+                    message: format!(
+                        "phase '{}': duplicate produces name '{}'",
+                        phase.id, artifact.name
+                    ),
+                });
+            }
+        }
+    }
+
+    // Build index of (name → Vec<(phase_index, phase_id)>) for all produces.
+    let mut produces_index: HashMap<String, Vec<(usize, String)>> = HashMap::new();
+    for (i, phase) in pipeline.phases.iter().enumerate() {
+        for artifact in &phase.produces {
+            produces_index
+                .entry(artifact.name.clone())
+                .or_default()
+                .push((i, phase.id.clone()));
+        }
+    }
+
+    // Check: consumes references resolve to an earlier phase's produces
+    for (i, phase) in pipeline.phases.iter().enumerate() {
+        for consumed in &phase.consumes {
+            match consumed {
+                ArtifactRef::Named(name) => {
+                    let found = produces_index
+                        .get(name)
+                        .is_some_and(|locs| locs.iter().any(|(j, _)| *j < i));
+                    if !found {
+                        diagnostics.push(LintDiagnostic {
+                            severity: Severity::Error,
+                            message: format!(
+                                "phase '{}': consumes '{}' not produced by any earlier phase",
+                                phase.id, name
+                            ),
+                        });
+                    }
+                }
+                ArtifactRef::Qualified { name, from } => {
+                    let found = produces_index.get(name).is_some_and(|locs| {
+                        locs.iter().any(|(j, phase_id)| phase_id == from && *j < i)
+                    });
+                    if !found {
+                        diagnostics.push(LintDiagnostic {
+                            severity: Severity::Error,
+                            message: format!(
+                                "phase '{}': consumes {{name: '{}', from: '{}'}} not found in earlier phases",
+                                phase.id, name, from
+                            ),
+                        });
+                    }
+                }
             }
         }
     }

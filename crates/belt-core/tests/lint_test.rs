@@ -319,3 +319,175 @@ phases:
         "expected diagnostic about empty skill, got: {errors:?}"
     );
 }
+
+#[test]
+fn lint_detects_duplicate_produces_name_in_one_phase() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: dup-produces
+version: 1
+phases:
+  - id: p
+    description: "p"
+    produces:
+      - name: doc
+        path: "a.md"
+      - name: doc
+        path: "b.md"
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|d| d.message.contains("duplicate") && d.message.contains("doc")),
+        "expected duplicate produces name error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn lint_detects_unresolved_consumes_named() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: unresolved-consumes
+version: 1
+phases:
+  - id: first
+    description: "first"
+    produces:
+      - name: design_doc
+        path: "design.md"
+  - id: second
+    description: "second"
+    consumes:
+      - phantom_artifact
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|d| d.message.contains("phantom_artifact") && d.message.contains("consumes")),
+        "expected unresolved consumes error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn lint_detects_unresolved_consumes_qualified_unknown_phase() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: unresolved-qualified
+version: 1
+phases:
+  - id: first
+    description: "first"
+    produces:
+      - name: doc
+        path: "doc.md"
+  - id: second
+    description: "second"
+    consumes:
+      - name: doc
+        from: nonexistent
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|d| d.message.contains("nonexistent") && d.message.contains("consumes")),
+        "expected unresolved qualified consumes error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn lint_accepts_consumes_resolved_to_earlier_phase() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: good-consumes
+version: 1
+phases:
+  - id: design
+    description: "d"
+    produces:
+      - name: design_doc
+        path: "design.md"
+  - id: plan
+    description: "p"
+    consumes:
+      - design_doc
+  - id: review
+    description: "r"
+    consumes:
+      - name: design_doc
+        from: design
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}
+
+#[test]
+fn lint_detects_consumes_from_later_phase() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-forward-consumes
+version: 1
+phases:
+  - id: early
+    description: "e"
+    consumes:
+      - late_doc
+  - id: late
+    description: "l"
+    produces:
+      - name: late_doc
+        path: "late.md"
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.iter().any(|d| d.message.contains("late_doc")),
+        "expected error about consuming later phase's output, got: {errors:?}"
+    );
+}
