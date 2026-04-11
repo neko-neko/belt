@@ -170,3 +170,99 @@ phases:
         BeltError::InvalidPipeline { .. }
     ));
 }
+
+/// A phase using `invoke: { pipeline: "./sub.yml" }` expands into the
+/// sub-pipeline's phases with namespaced IDs, identically to using
+/// `uses: "./sub.yml"` at the phase level.
+#[test]
+fn expand_invoke_pipeline_variant() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    // Sub-pipeline with 2 phases.
+    write_yaml(
+        &dir,
+        "sub.yml",
+        r#"
+name: sub
+version: 1
+phases:
+  - id: work
+    description: "sub work"
+  - id: audit
+    description: "sub audit"
+"#,
+    );
+
+    // Top-level pipeline using invoke: { pipeline: ... }.
+    let top_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r"
+name: top
+version: 1
+phases:
+  - id: review
+    invoke:
+      pipeline: ./sub.yml
+",
+    );
+
+    let expanded = expand_pipeline(&top_path).expect("expand should succeed");
+
+    // Expect 2 phases, namespaced `review/work` and `review/audit`.
+    assert_eq!(expanded.len(), 2);
+    assert_eq!(expanded[0].id, "review/work");
+    assert_eq!(expanded[1].id, "review/audit");
+}
+
+/// Both `uses:` and `invoke: { pipeline: ... }` produce identical expansion.
+#[test]
+fn expand_uses_and_invoke_pipeline_equivalent() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "sub.yml",
+        r#"
+name: sub
+version: 1
+phases:
+  - id: run
+    description: "sub run"
+"#,
+    );
+
+    // Pipeline A: uses:
+    let a_path = write_yaml(
+        &dir,
+        "a.yml",
+        r"
+name: a
+version: 1
+phases:
+  - id: x
+    uses: ./sub.yml
+",
+    );
+
+    // Pipeline B: invoke: { pipeline: ... }
+    let b_path = write_yaml(
+        &dir,
+        "b.yml",
+        r"
+name: b
+version: 1
+phases:
+  - id: x
+    invoke:
+      pipeline: ./sub.yml
+",
+    );
+
+    let a_exp = expand_pipeline(&a_path).expect("expand a");
+    let b_exp = expand_pipeline(&b_path).expect("expand b");
+
+    assert_eq!(a_exp.len(), b_exp.len());
+    assert_eq!(a_exp[0].id, b_exp[0].id);
+    assert_eq!(a_exp[0].id, "x/run");
+}

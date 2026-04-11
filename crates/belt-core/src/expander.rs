@@ -23,8 +23,19 @@ pub fn expand_pipeline(pipeline_path: &Path) -> BeltResult<Vec<ExpandedPhase>> {
 
     let mut expanded = Vec::new();
     for phase in &pipeline.phases {
-        if let Some(uses) = &phase.uses {
-            let sub_path = base_dir.join(uses);
+        // Resolve the sub-pipeline path from either `phase.uses` or
+        // `phase.invoke: { pipeline: ... }`. `uses:` takes precedence if both
+        // are present (legacy behavior during the BELT-32 transition).
+        let sub_path_opt: Option<&str> = if let Some(uses) = &phase.uses {
+            Some(uses.as_str())
+        } else if let Some(crate::model::Invoker::Pipeline { pipeline, .. }) = &phase.invoke {
+            Some(pipeline.as_str())
+        } else {
+            None
+        };
+
+        if let Some(sub_rel) = sub_path_opt {
+            let sub_path = base_dir.join(sub_rel);
             let sub = parse_sub_pipeline(&sub_path)?;
             let sub_phases = expand_sub_pipeline(&phase.id, phase, &sub);
             expanded.extend(sub_phases);
@@ -84,6 +95,14 @@ fn expand_sub_pipeline(parent_id: &str, parent: &Phase, sub: &SubPipeline) -> Ve
 }
 
 fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
+    // Sanity: if the phase has `invoke: { pipeline: ... }`, it should have
+    // been handled by the sub-pipeline branch in `expand_pipeline`. Hitting
+    // this case is a bug in the expander branching logic, not a user error.
+    debug_assert!(
+        !matches!(phase.invoke, Some(crate::model::Invoker::Pipeline { .. })),
+        "leaf_phase called with Invoker::Pipeline — expander branch logic is wrong"
+    );
+
     let description = phase
         .description
         .clone()
