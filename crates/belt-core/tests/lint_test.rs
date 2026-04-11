@@ -204,3 +204,35 @@ phases:
         "expected no errors for valid invoke pipeline path, got: {errors:?}"
     );
 }
+
+#[test]
+fn lint_detects_invoke_skill_without_description() {
+    // An `invoke: { skill: ... }` phase executes at the current phase rather
+    // than delegating to a sub-pipeline, so it must still carry a description
+    // for human-readable status output.
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: invoke-skill-no-desc
+version: 1
+phases:
+  - id: review
+    invoke:
+      skill: /code-review
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|d| d.message.contains("leaf phase") || d.message.contains("description")),
+        "expected diagnostic mentioning 'leaf phase' or 'description', got: {errors:?}"
+    );
+}

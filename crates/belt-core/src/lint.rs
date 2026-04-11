@@ -84,9 +84,14 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     }
 
     // Check: leaf phase must have description.
-    // A phase is a leaf unless it delegates via `uses:` or `invoke:`.
+    // A phase is a leaf unless it delegates to a sub-pipeline via `uses:` or
+    // `invoke: { pipeline: ... }`. Other `Invoker` variants (`Skill`, `Agent`,
+    // `Agents`) execute at the current phase and still need a human-readable
+    // description for `belt-agent status` / `belt-agent next` output.
     for phase in &pipeline.phases {
-        if phase.uses.is_none() && phase.invoke.is_none() && phase.description.is_none() {
+        let delegates_to_sub_pipeline =
+            phase.uses.is_some() || matches!(phase.invoke, Some(Invoker::Pipeline { .. }));
+        if !delegates_to_sub_pipeline && phase.description.is_none() {
             diagnostics.push(LintDiagnostic {
                 severity: Severity::Error,
                 message: format!("phase '{}': leaf phase must have a description", phase.id),
