@@ -1,6 +1,6 @@
 use belt_core::model::{
-    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline,
-    ValidationSource,
+    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, Pipeline, RunState,
+    SubPipeline, ValidationSource,
 };
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
@@ -629,4 +629,157 @@ phases:
 "#;
     let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
     assert!(pipeline.phases[0].consumes.is_empty());
+}
+
+/// Parse a phase with `invoke: { skill: "/foo" }`.
+#[test]
+fn parse_invoke_skill_variant() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    invoke:
+      skill: /brainstorming
+      args:
+        swarm: true
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Skill { skill, args } => {
+            assert_eq!(skill, "/brainstorming");
+            assert_eq!(
+                args.get("swarm").and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
+        }
+        other => panic!("expected Skill, got {other:?}"),
+    }
+}
+
+/// Parse a phase with `invoke: { agent: "phase-auditor" }`.
+#[test]
+fn parse_invoke_agent_variant() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: audit
+    description: "Audit"
+    invoke:
+      agent: phase-auditor
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Agent { agent, args } => {
+            assert_eq!(agent, "phase-auditor");
+            assert!(args.is_empty());
+        }
+        other => panic!("expected Agent, got {other:?}"),
+    }
+}
+
+/// Parse a phase with `invoke: { agents: [a, b], iterations: 3 }`.
+#[test]
+fn parse_invoke_agents_variant() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: review
+    description: "Review"
+    invoke:
+      agents:
+        - spec-review-requirements
+        - spec-review-consistency
+      iterations: 3
+      args:
+        codex: true
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Agents {
+            agents,
+            iterations,
+            args,
+        } => {
+            assert_eq!(agents.len(), 2);
+            assert_eq!(agents[0], "spec-review-requirements");
+            assert_eq!(*iterations, 3);
+            assert_eq!(
+                args.get("codex").and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
+        }
+        other => panic!("expected Agents, got {other:?}"),
+    }
+}
+
+/// Parse a phase with `invoke: { pipeline: "./sub.yml" }`.
+#[test]
+fn parse_invoke_pipeline_variant() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: spec-review
+    description: "Spec review sub-pipeline"
+    invoke:
+      pipeline: ../spec-review/pipeline.yml
+      with:
+        iterations: 2
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Pipeline { pipeline: p, with } => {
+            assert_eq!(p, "../spec-review/pipeline.yml");
+            assert_eq!(
+                with.get("iterations").and_then(serde_json::Value::as_u64),
+                Some(2)
+            );
+        }
+        other => panic!("expected Pipeline, got {other:?}"),
+    }
+}
+
+/// Phase without `invoke` field: `invoke` is None.
+#[test]
+fn parse_phase_invoke_default_none() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: "p"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert!(pipeline.phases[0].invoke.is_none());
+}
+
+/// Adversarial: a phase invoke that has both `skill` and `agent` (should
+/// prefer the first matching variant — Skill). This is malformed YAML but
+/// should pick Skill deterministically.
+#[test]
+fn parse_invoke_variant_order_is_deterministic() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: "p"
+    invoke:
+      skill: /foo
+      agent: bar
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    // With Skill variant declared first, serde-saphyr should match Skill.
+    // `agent` becomes an extra key and is either ignored or included in args.
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Skill { skill, .. } => assert_eq!(skill, "/foo"),
+        other => panic!(
+            "expected Skill variant (declared first), got {other:?}; \
+             variant ordering may not be deterministic"
+        ),
+    }
 }

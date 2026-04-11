@@ -76,6 +76,7 @@ fn expand_sub_pipeline(parent_id: &str, parent: &Phase, sub: &SubPipeline) -> Ve
             confirm: sub_phase.confirm,
             max_retries: sub_phase.max_retries,
             when,
+            invoke: sub_phase.invoke.clone(),
             output_dir: None,
         });
     }
@@ -102,6 +103,7 @@ fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
         confirm: phase.confirm,
         max_retries: phase.max_retries,
         when: phase.when.clone(),
+        invoke: phase.invoke.clone(),
         output_dir: None,
     })
 }

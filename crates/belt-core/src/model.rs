@@ -45,6 +45,8 @@ pub struct Phase {
     #[serde(default)]
     pub when: Option<String>,
     #[serde(default)]
+    pub invoke: Option<Invoker>,
+    #[serde(default)]
     pub config: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub artifacts: Vec<String>,
@@ -135,6 +137,43 @@ pub enum ArtifactRef {
     Qualified { name: String, from: String },
 }
 
+/// Typed invocation target for a phase. Parallel to the existing `GateCheck`
+/// untagged enum: belt-core models the invocation shape but the LLM
+/// orchestrator is responsible for actually dispatching the skill, agent, or
+/// sub-pipeline at runtime.
+///
+/// Variant ordering for serde-saphyr untagged enum disambiguation:
+/// `Skill` (field: `skill`) → `Agent` (field: `agent`) → `Agents` (field:
+/// `agents`) → `Pipeline` (field: `pipeline`). Each variant has a unique
+/// required discriminating field, so ordering is defensive rather than
+/// strictly necessary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Invoker {
+    Skill {
+        skill: String,
+        #[serde(default)]
+        args: HashMap<String, serde_json::Value>,
+    },
+    Agent {
+        agent: String,
+        #[serde(default)]
+        args: HashMap<String, serde_json::Value>,
+    },
+    Agents {
+        agents: Vec<String>,
+        #[serde(default)]
+        iterations: u32,
+        #[serde(default)]
+        args: HashMap<String, serde_json::Value>,
+    },
+    Pipeline {
+        pipeline: String,
+        #[serde(default)]
+        with: HashMap<String, serde_json::Value>,
+    },
+}
+
 /// Reusable gate definition (standalone YAML file).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GateDefinition {
@@ -216,6 +255,8 @@ pub struct ExpandedPhase {
     pub max_retries: u32,
     #[serde(default)]
     pub when: Option<String>,
+    #[serde(default)]
+    pub invoke: Option<Invoker>,
     /// `output_dir` is computed at runtime, not from YAML.
     #[serde(skip)]
     pub output_dir: Option<String>,
