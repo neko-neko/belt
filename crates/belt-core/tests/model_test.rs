@@ -1,5 +1,5 @@
 use belt_core::model::{
-    ArgType, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline, ValidationSource,
+    ArgType, Artifact, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline, ValidationSource,
 };
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
@@ -477,4 +477,61 @@ phases:
         &pipeline.phases[0].validate[2],
         ValidationSource::Inline(s) if s == "inline two"
     ));
+}
+
+/// Parse a phase with one produces artifact (all fields populated).
+#[test]
+fn parse_phase_produces_single_artifact() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: design
+    description: "Create design"
+    produces:
+      - name: design_doc
+        path: "docs/plans/*-design.md"
+        description: "Brainstormed design document"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].produces.len(), 1);
+    let a: &Artifact = &pipeline.phases[0].produces[0];
+    assert_eq!(a.name, "design_doc");
+    assert_eq!(a.path, "docs/plans/*-design.md");
+    assert_eq!(
+        a.description.as_deref(),
+        Some("Brainstormed design document")
+    );
+}
+
+/// Parse a phase with produces artifact where description is omitted.
+#[test]
+fn parse_phase_produces_without_description() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: design
+    description: "Create design"
+    produces:
+      - name: design_doc
+        path: "docs/plans/*-design.md"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].produces.len(), 1);
+    assert!(pipeline.phases[0].produces[0].description.is_none());
+}
+
+/// Phase with no produces field defaults to empty vec.
+#[test]
+fn parse_phase_produces_default_empty() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: design
+    description: "Create design"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert!(pipeline.phases[0].produces.is_empty());
 }

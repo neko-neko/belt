@@ -49,6 +49,8 @@ pub struct Phase {
     #[serde(default)]
     pub artifacts: Vec<String>,
     #[serde(default)]
+    pub produces: Vec<Artifact>,
+    #[serde(default)]
     pub gate: Vec<GateCheck>,
     #[serde(default)]
     pub validate: Vec<ValidationSource>,
@@ -100,6 +102,21 @@ pub enum GateCheck {
 pub enum ValidationSource {
     Inline(String),
     File { file: String },
+}
+
+/// A typed artifact produced by a phase. The `name` is a logical identifier
+/// by which later phases reference the artifact via `consumes:`. The `path`
+/// is the filesystem path the LLM is expected to produce (glob permitted for
+/// runtime-determined filenames like `docs/plans/*-design.md`).
+///
+/// Glob resolution semantics are intentionally not specified here; they are
+/// deferred to the Plan B examples migration implementation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Artifact {
+    pub name: String,
+    pub path: String,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Reusable gate definition (standalone YAML file).
@@ -167,6 +184,8 @@ pub struct ExpandedPhase {
     pub config: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub artifacts: Vec<String>,
+    #[serde(default)]
+    pub produces: Vec<Artifact>,
     #[serde(default)]
     pub gate: Vec<GateCheck>,
     #[serde(default)]
