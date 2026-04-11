@@ -1,5 +1,6 @@
 use crate::error::BeltResult;
 use crate::expander::expand_pipeline;
+use crate::model::{GateCheck, Invoker, Pipeline};
 use crate::parser::parse_pipeline;
 use std::collections::HashSet;
 use std::path::Path;
@@ -82,9 +83,10 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
         }
     }
 
-    // Check: leaf phase must have description
+    // Check: leaf phase must have description.
+    // A phase is a leaf unless it delegates via `uses:` or `invoke:`.
     for phase in &pipeline.phases {
-        if phase.uses.is_none() && phase.description.is_none() {
+        if phase.uses.is_none() && phase.invoke.is_none() && phase.description.is_none() {
             diagnostics.push(LintDiagnostic {
                 severity: Severity::Error,
                 message: format!("phase '{}': leaf phase must have a description", phase.id),
@@ -107,19 +109,10 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     }
 
     // Check: gate uses: references exist
-    for phase in &pipeline.phases {
-        for check in &phase.gate {
-            if let crate::model::GateCheck::Uses { uses, .. } = check {
-                let resolved = base_dir.join(uses);
-                if !resolved.exists() {
-                    diagnostics.push(LintDiagnostic {
-                        severity: Severity::Error,
-                        message: format!("phase '{}': gate uses '{}' not found", phase.id, uses),
-                    });
-                }
-            }
-        }
-    }
+    check_gate_uses_exist(&pipeline, base_dir, &mut diagnostics);
+
+    // Check: invoke.pipeline references exist
+    check_invoke_pipeline_exists(&pipeline, base_dir, &mut diagnostics);
 
     // Phase 2: Try expansion (catches issues in sub-pipelines)
     if diagnostics.iter().all(|d| d.severity != Severity::Error) {
@@ -132,4 +125,52 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     }
 
     Ok(diagnostics)
+}
+
+/// Verify that every `gate: uses:` reference points to an existing file on disk.
+fn check_gate_uses_exist(
+    pipeline: &Pipeline,
+    base_dir: &Path,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for phase in &pipeline.phases {
+        for check in &phase.gate {
+            if let GateCheck::Uses { uses, .. } = check {
+                let resolved = base_dir.join(uses);
+                if !resolved.exists() {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Error,
+                        message: format!("phase '{}': gate uses '{}' not found", phase.id, uses),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Verify that every `phase.invoke.pipeline` reference points to an existing
+/// file on disk. Other `Invoker` variants (`Skill`, `Agent`, `Agents`) are not
+/// path-like and are checked elsewhere.
+fn check_invoke_pipeline_exists(
+    pipeline: &Pipeline,
+    base_dir: &Path,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for phase in &pipeline.phases {
+        if let Some(Invoker::Pipeline {
+            pipeline: sub_path, ..
+        }) = &phase.invoke
+        {
+            let resolved = base_dir.join(sub_path);
+            if !resolved.exists() {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Error,
+                    message: format!(
+                        "phase '{}': invoke pipeline '{}' not found",
+                        phase.id, sub_path
+                    ),
+                });
+            }
+        }
+    }
 }

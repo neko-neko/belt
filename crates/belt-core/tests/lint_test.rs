@@ -134,3 +134,73 @@ phases:
         "expected no Error diagnostics, got: {errors:?}",
     );
 }
+
+#[test]
+fn lint_detects_missing_invoke_pipeline_file() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-invoke-pipeline
+version: 1
+phases:
+  - id: sub
+    description: "sub"
+    invoke:
+      pipeline: ./nonexistent.yml
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.iter().any(|d| d.message.contains("nonexistent.yml")
+            && (d.message.contains("invoke") || d.message.contains("pipeline"))),
+        "expected diagnostic mentioning 'nonexistent.yml' and invoke/pipeline, got: {errors:?}"
+    );
+}
+
+#[test]
+fn lint_accepts_valid_invoke_pipeline_path() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    // Write a valid sub-pipeline file first.
+    write_yaml(
+        &dir,
+        "sub.yml",
+        r#"
+name: sub
+version: 1
+phases:
+  - id: run
+    description: "sub run"
+"#,
+    );
+
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: good-invoke-pipeline
+version: 1
+phases:
+  - id: s
+    invoke:
+      pipeline: ./sub.yml
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "expected no errors for valid invoke pipeline path, got: {errors:?}"
+    );
+}
