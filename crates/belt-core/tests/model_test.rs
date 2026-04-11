@@ -1,4 +1,6 @@
-use belt_core::model::{ArgType, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline};
+use belt_core::model::{
+    ArgType, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline, ValidationSource,
+};
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
 #[test]
@@ -405,4 +407,74 @@ fn run_state_regate_passed_round_trip() {
     assert_eq!(deserialized.regate_passed.len(), 2);
     assert_eq!(deserialized.regate_passed.get("design"), Some(&true));
     assert_eq!(deserialized.regate_passed.get("review"), Some(&false));
+}
+
+/// Backwards compat: `validate: ["string"]` must still parse to `Inline`.
+#[test]
+fn parse_validate_inline_backwards_compat() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: "p"
+    validate:
+      - "inline criterion"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].validate.len(), 1);
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::Inline(s) => assert_eq!(s, "inline criterion"),
+        other => panic!("expected Inline, got {other:?}"),
+    }
+}
+
+/// New: `validate: [{ file: "./path" }]` parses to `File`.
+#[test]
+fn parse_validate_file_reference() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: "p"
+    validate:
+      - file: "./criteria/p.md"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].validate.len(), 1);
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::File { file } => assert_eq!(file, "./criteria/p.md"),
+        other => panic!("expected File, got {other:?}"),
+    }
+}
+
+/// Mixed inline and file references in one validate list.
+#[test]
+fn parse_validate_mixed_inline_and_file() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: "p"
+    validate:
+      - "inline one"
+      - file: "./criteria/p.md"
+      - "inline two"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].validate.len(), 3);
+    assert!(matches!(
+        &pipeline.phases[0].validate[0],
+        ValidationSource::Inline(s) if s == "inline one"
+    ));
+    assert!(matches!(
+        &pipeline.phases[0].validate[1],
+        ValidationSource::File { file } if file == "./criteria/p.md"
+    ));
+    assert!(matches!(
+        &pipeline.phases[0].validate[2],
+        ValidationSource::Inline(s) if s == "inline two"
+    ));
 }

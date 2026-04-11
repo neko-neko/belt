@@ -51,7 +51,7 @@ pub struct Phase {
     #[serde(default)]
     pub gate: Vec<GateCheck>,
     #[serde(default)]
-    pub validate: Vec<String>,
+    pub validate: Vec<ValidationSource>,
     #[serde(default)]
     pub regate: Vec<String>,
     #[serde(default)]
@@ -84,6 +84,22 @@ pub enum GateCheck {
         #[serde(default)]
         with: HashMap<String, serde_json::Value>,
     },
+}
+
+/// A single validation criterion. Either an inline string that the
+/// orchestrator evaluates directly, or a reference to a markdown file whose
+/// contents are the criteria. The file form replaces the audit-gate
+/// sub-pipeline pattern used in BELT-20 MVP examples.
+///
+/// Ordering is significant for serde-saphyr untagged enum deserialization:
+/// `Inline` (scalar string) is checked before `File` (mapping with a `file`
+/// key), matching the `GateCheck` precedent where more specific struct
+/// variants come after scalar variants.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ValidationSource {
+    Inline(String),
+    File { file: String },
 }
 
 /// Reusable gate definition (standalone YAML file).
@@ -154,7 +170,7 @@ pub struct ExpandedPhase {
     #[serde(default)]
     pub gate: Vec<GateCheck>,
     #[serde(default)]
-    pub validate: Vec<String>,
+    pub validate: Vec<ValidationSource>,
     #[serde(default)]
     pub regate: Vec<String>,
     #[serde(default)]
