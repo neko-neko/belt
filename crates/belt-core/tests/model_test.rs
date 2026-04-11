@@ -1,5 +1,6 @@
 use belt_core::model::{
-    ArgType, Artifact, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline, ValidationSource,
+    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Pipeline, RunState, SubPipeline,
+    ValidationSource,
 };
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
@@ -534,4 +535,98 @@ phases:
 "#;
     let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
     assert!(pipeline.phases[0].produces.is_empty());
+}
+
+/// Parse consumes as a list of short (Named) references.
+#[test]
+fn parse_phase_consumes_named() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: plan
+    description: "Plan"
+    consumes:
+      - design_doc
+      - requirements
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].consumes.len(), 2);
+    assert!(matches!(
+        &pipeline.phases[0].consumes[0],
+        ArtifactRef::Named(s) if s == "design_doc"
+    ));
+    assert!(matches!(
+        &pipeline.phases[0].consumes[1],
+        ArtifactRef::Named(s) if s == "requirements"
+    ));
+}
+
+/// Parse consumes as a list of qualified references.
+#[test]
+fn parse_phase_consumes_qualified() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: plan
+    description: "Plan"
+    consumes:
+      - name: design_doc
+        from: design
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].consumes.len(), 1);
+    match &pipeline.phases[0].consumes[0] {
+        ArtifactRef::Qualified { name, from } => {
+            assert_eq!(name, "design_doc");
+            assert_eq!(from, "design");
+        }
+        other => panic!("expected Qualified, got {other:?}"),
+    }
+}
+
+/// Parse consumes as a mixed list of short and qualified references.
+#[test]
+fn parse_phase_consumes_mixed() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: execute
+    description: "Execute"
+    consumes:
+      - plan_doc
+      - name: design_doc
+        from: design
+      - test_cases
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].consumes.len(), 3);
+    assert!(matches!(
+        &pipeline.phases[0].consumes[0],
+        ArtifactRef::Named(s) if s == "plan_doc"
+    ));
+    assert!(matches!(
+        &pipeline.phases[0].consumes[1],
+        ArtifactRef::Qualified { name, from } if name == "design_doc" && from == "design"
+    ));
+    assert!(matches!(
+        &pipeline.phases[0].consumes[2],
+        ArtifactRef::Named(s) if s == "test_cases"
+    ));
+}
+
+/// Phase with no consumes field defaults to empty vec.
+#[test]
+fn parse_phase_consumes_default_empty() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: "p"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert!(pipeline.phases[0].consumes.is_empty());
 }

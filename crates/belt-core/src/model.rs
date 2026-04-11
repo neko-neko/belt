@@ -51,6 +51,8 @@ pub struct Phase {
     #[serde(default)]
     pub produces: Vec<Artifact>,
     #[serde(default)]
+    pub consumes: Vec<ArtifactRef>,
+    #[serde(default)]
     pub gate: Vec<GateCheck>,
     #[serde(default)]
     pub validate: Vec<ValidationSource>,
@@ -117,6 +119,20 @@ pub struct Artifact {
     pub path: String,
     #[serde(default)]
     pub description: Option<String>,
+}
+
+/// A reference to an artifact produced by an earlier phase. `Named` is the
+/// short form — lint resolves it to the most recent earlier phase that
+/// produced that name. `Qualified` disambiguates when multiple earlier phases
+/// produce the same name.
+///
+/// Ordering: `Named` (scalar string) is checked before `Qualified` (struct
+/// mapping) for serde-saphyr untagged enum disambiguation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ArtifactRef {
+    Named(String),
+    Qualified { name: String, from: String },
 }
 
 /// Reusable gate definition (standalone YAML file).
@@ -186,6 +202,8 @@ pub struct ExpandedPhase {
     pub artifacts: Vec<String>,
     #[serde(default)]
     pub produces: Vec<Artifact>,
+    #[serde(default)]
+    pub consumes: Vec<ArtifactRef>,
     #[serde(default)]
     pub gate: Vec<GateCheck>,
     #[serde(default)]
