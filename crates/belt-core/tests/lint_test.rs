@@ -491,3 +491,88 @@ phases:
         "expected error about consuming later phase's output, got: {errors:?}"
     );
 }
+
+#[test]
+fn lint_detects_validate_file_missing() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-validate-file
+version: 1
+phases:
+  - id: p
+    description: "p"
+    validate:
+      - file: ./nonexistent-criteria.md
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.iter().any(
+            |d| d.message.contains("nonexistent-criteria.md") && d.message.contains("validate")
+        ),
+        "expected validate file missing error, got: {errors:?}"
+    );
+}
+
+#[test]
+fn lint_accepts_validate_file_present() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    // Write a criteria file.
+    write_yaml(&dir, "criteria.md", "# Criteria\n\n- C1: placeholder\n");
+
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: good-validate-file
+version: 1
+phases:
+  - id: p
+    description: "p"
+    validate:
+      - file: ./criteria.md
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}
+
+#[test]
+fn lint_validate_inline_strings_unaffected() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: inline-validate
+version: 1
+phases:
+  - id: p
+    description: "p"
+    validate:
+      - "inline criterion 1"
+      - "inline criterion 2"
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}

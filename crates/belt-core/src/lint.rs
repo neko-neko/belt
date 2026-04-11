@@ -1,6 +1,6 @@
 use crate::error::BeltResult;
 use crate::expander::expand_pipeline;
-use crate::model::{ArtifactRef, GateCheck, Invoker, Pipeline};
+use crate::model::{ArtifactRef, GateCheck, Invoker, Pipeline, ValidationSource};
 use crate::parser::parse_pipeline;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -125,6 +125,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: produces uniqueness per phase + consumes resolves to earlier phase
     check_artifact_flow(&pipeline, &mut diagnostics);
 
+    // Check: validate file references exist on disk
+    check_validate_file_refs(&pipeline, base_dir, &mut diagnostics);
+
     // Phase 2: Try expansion (catches issues in sub-pipelines)
     if diagnostics.iter().all(|d| d.severity != Severity::Error) {
         if let Err(e) = expand_pipeline(path) {
@@ -204,6 +207,33 @@ fn check_invoke_skill_format(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiag
                         phase.id, skill, skill
                     ),
                 });
+            }
+        }
+    }
+}
+
+/// Lint rule: `validate: { file: ... }` references must resolve to existing
+/// files (resolved relative to the pipeline YAML's directory). Inline
+/// variants are ignored — they are orchestrator-evaluated strings, not
+/// filesystem references.
+fn check_validate_file_refs(
+    pipeline: &Pipeline,
+    base_dir: &Path,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for phase in &pipeline.phases {
+        for v in &phase.validate {
+            if let ValidationSource::File { file } = v {
+                let resolved = base_dir.join(file);
+                if !resolved.exists() {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Error,
+                        message: format!(
+                            "phase '{}': validate file '{}' not found",
+                            phase.id, file
+                        ),
+                    });
+                }
             }
         }
     }
