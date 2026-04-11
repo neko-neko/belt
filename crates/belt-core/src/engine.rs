@@ -270,9 +270,21 @@ impl Engine {
             });
         }
         let phases = expand_pipeline(pipeline_path)?;
-        let phase_ids: Vec<String> = phases.iter().map(|p| p.id.clone()).collect();
+        let phases_meta: Vec<crate::view::PhaseMetadata> = phases
+            .iter()
+            .map(|ep| crate::view::PhaseMetadata {
+                id: ep.id.clone(),
+                invoke: ep.invoke.clone(),
+                produces: ep.produces.clone(),
+                consumes: ep.consumes.clone(),
+            })
+            .collect();
         let run_dir = self.belt_dir.join("runs").join(run_id);
-        Ok(crate::view::build_status_view(&state, &phase_ids, &run_dir))
+        Ok(crate::view::build_status_view(
+            &state,
+            &phases_meta,
+            &run_dir,
+        ))
     }
 
     /// Find the most recent run ID by lexicographic ordering.

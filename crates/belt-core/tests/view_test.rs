@@ -1,6 +1,6 @@
 use belt_core::engine::Engine;
-use belt_core::model::RunState;
-use belt_core::view::{PhaseState, PipelineStatus, build_status_view};
+use belt_core::model::{Artifact, Invoker, RunState};
+use belt_core::view::{PhaseMetadata, PhaseState, PipelineStatus, build_status_view};
 use std::collections::HashMap;
 
 fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
@@ -21,8 +21,15 @@ fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
     }
 }
 
-fn phase_ids(ids: &[&str]) -> Vec<String> {
-    ids.iter().map(|s| (*s).to_string()).collect()
+fn phase_ids(ids: &[&str]) -> Vec<PhaseMetadata> {
+    ids.iter()
+        .map(|s| PhaseMetadata {
+            id: (*s).to_string(),
+            invoke: None,
+            produces: Vec::new(),
+            consumes: Vec::new(),
+        })
+        .collect()
 }
 
 #[test]
@@ -583,4 +590,61 @@ fn engine_enriched_status_output_files_visible() {
         .expect("enriched_status");
 
     assert_eq!(view.phases[0].outputs, vec!["artifact.tar.gz"]);
+}
+
+// --- BELT-32: PhaseView invoke / produces / consumes serialization ---
+
+/// PhaseView serializes `invoke` as a nested JSON object when present.
+#[test]
+fn phase_view_serializes_invoke_skill() {
+    let state = RunState {
+        run_id: "01961234-0000-7000-8000-000000000000".to_string(),
+        pipeline: "test".to_string(),
+        pipeline_file: "pipeline.yml".to_string(),
+        version: 1,
+        args: HashMap::new(),
+        current_phase: "design".to_string(),
+        completed_phases: vec![],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        created_at: "2026-04-11T00:00:00Z".to_string(),
+        updated_at: "2026-04-11T00:00:00Z".to_string(),
+    };
+
+    let dir = tempfile::TempDir::new().expect("tempdir");
+
+    let phases = vec![PhaseMetadata {
+        id: "design".to_string(),
+        invoke: Some(Invoker::Skill {
+            skill: "/brainstorming".to_string(),
+            args: HashMap::new(),
+        }),
+        produces: vec![Artifact {
+            name: "design_doc".to_string(),
+            path: "docs/plans/*-design.md".to_string(),
+            description: Some("design".to_string()),
+        }],
+        consumes: vec![],
+    }];
+
+    let view = build_status_view(&state, &phases, dir.path());
+
+    assert_eq!(view.phases.len(), 1);
+    assert_eq!(view.phases[0].id, "design");
+    assert!(
+        view.phases[0].invoke.is_some(),
+        "expected invoke in PhaseView"
+    );
+    assert_eq!(view.phases[0].produces.len(), 1);
+    assert_eq!(view.phases[0].produces[0].name, "design_doc");
+    assert!(view.phases[0].consumes.is_empty());
+
+    // JSON round-trip check.
+    let json = serde_json::to_string(&view).expect("serialize");
+    assert!(json.contains("\"invoke\""));
+    assert!(json.contains("\"skill\":\"/brainstorming\""));
+    assert!(json.contains("\"produces\""));
+    assert!(json.contains("\"design_doc\""));
 }

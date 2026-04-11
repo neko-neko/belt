@@ -1,8 +1,20 @@
 use crate::gate::GateResult;
-use crate::model::RunState;
+use crate::model::{Artifact, ArtifactRef, Invoker, RunState};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+
+/// Subset of `ExpandedPhase` fields used by [`build_status_view`] to enrich
+/// the per-phase view. Callers (engine) pass this alongside `RunState` to
+/// produce a [`StatusView`] with typed invoke / produces / consumes data,
+/// decoupling view construction from the full `ExpandedPhase` type.
+#[derive(Debug, Clone)]
+pub struct PhaseMetadata {
+    pub id: String,
+    pub invoke: Option<Invoker>,
+    pub produces: Vec<Artifact>,
+    pub consumes: Vec<ArtifactRef>,
+}
 
 /// Enriched status view of a pipeline run, combining `RunState` data
 /// with phase output scanning and computed progress.
@@ -51,6 +63,19 @@ pub struct PhaseView {
     pub verify_checks: Option<Vec<GateResult>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub regate_checks: Option<serde_json::Value>,
+    /// Typed invocation target declared by the phase (BELT-32).
+    /// Omitted from JSON output when `None` to preserve backwards
+    /// compatibility with legacy pipelines that do not declare `invoke:`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invoke: Option<Invoker>,
+    /// Artifacts the phase is expected to produce (BELT-32).
+    /// Omitted from JSON output when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<Artifact>,
+    /// References to artifacts produced by earlier phases (BELT-32).
+    /// Omitted from JSON output when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consumes: Vec<ArtifactRef>,
 }
 
 /// State of an individual phase within the pipeline run.
@@ -114,34 +139,41 @@ fn read_regate_checks(run_dir: &Path, phase_id: &str) -> Option<serde_json::Valu
     parsed.get("targets").cloned()
 }
 
-/// Build an enriched status view from `RunState` + phase ID list + run directory.
+/// Build an enriched status view from `RunState` + phase metadata + run directory.
 #[must_use]
-pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path) -> StatusView {
+pub fn build_status_view(
+    state: &RunState,
+    phases_meta: &[PhaseMetadata],
+    run_dir: &Path,
+) -> StatusView {
     let is_completed = state.current_phase == COMPLETED_SENTINEL;
 
-    let mut phases: Vec<PhaseView> = phase_ids
+    let mut phases: Vec<PhaseView> = phases_meta
         .iter()
-        .map(|id| {
-            let status = if is_completed && state.completed_phases.contains(id) {
+        .map(|meta| {
+            let status = if is_completed && state.completed_phases.contains(&meta.id) {
                 PhaseState::Completed
             } else {
-                determine_phase_state(id, state)
+                determine_phase_state(&meta.id, state)
             };
             PhaseView {
-                id: id.clone(),
+                id: meta.id.clone(),
                 status,
-                verify_passed: state.phase_verify_passed.get(id).copied(),
-                regate_passed: state.regate_passed.get(id).copied(),
-                attempt: state.phase_attempts.get(id).copied().unwrap_or(0),
-                outputs: scan_phase_outputs(run_dir, id),
-                verify_checks: read_verify_checks(run_dir, id),
-                regate_checks: read_regate_checks(run_dir, id),
+                verify_passed: state.phase_verify_passed.get(&meta.id).copied(),
+                regate_passed: state.regate_passed.get(&meta.id).copied(),
+                attempt: state.phase_attempts.get(&meta.id).copied().unwrap_or(0),
+                outputs: scan_phase_outputs(run_dir, &meta.id),
+                verify_checks: read_verify_checks(run_dir, &meta.id),
+                regate_checks: read_regate_checks(run_dir, &meta.id),
+                invoke: meta.invoke.clone(),
+                produces: meta.produces.clone(),
+                consumes: meta.consumes.clone(),
             }
         })
         .collect();
 
     // Append orphan phases (in state but removed from YAML).
-    let yaml_ids: HashSet<&String> = phase_ids.iter().collect();
+    let yaml_ids: HashSet<&String> = phases_meta.iter().map(|m| &m.id).collect();
     for id in &state.completed_phases {
         if !yaml_ids.contains(id) {
             phases.push(PhaseView {
@@ -153,6 +185,9 @@ pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path)
                 outputs: scan_phase_outputs(run_dir, id),
                 verify_checks: read_verify_checks(run_dir, id),
                 regate_checks: read_regate_checks(run_dir, id),
+                invoke: None,
+                produces: Vec::new(),
+                consumes: Vec::new(),
             });
         }
     }
@@ -167,6 +202,9 @@ pub fn build_status_view(state: &RunState, phase_ids: &[String], run_dir: &Path)
                 outputs: Vec::new(),
                 verify_checks: None,
                 regate_checks: None,
+                invoke: None,
+                produces: Vec::new(),
+                consumes: Vec::new(),
             });
         }
     }
