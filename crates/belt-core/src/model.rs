@@ -206,6 +206,31 @@ pub enum ArtifactRef {
     Qualified { name: String, from: String },
 }
 
+/// Number of iterations for an `Invoker::Agents` invocation.
+///
+/// Accepts either a literal integer (`iterations: 3`) or a template
+/// string referencing pipeline args (`iterations: "args.iterations"`).
+/// Template resolution is performed by the skill orchestrator at
+/// dispatch time, not at parse time. The default is `Literal(0)` so
+/// that omitting the field is identical to legacy `iterations: 0`.
+///
+/// Variant ordering for serde-saphyr untagged enum disambiguation:
+/// `Literal` (YAML integer) is listed before `Template` (YAML string) so
+/// numeric literals are not coerced into strings. This mirrors the
+/// `GateCheck` ordering lesson (see `docs/specs` Known Risks).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum IterationsSpec {
+    Literal(u32),
+    Template(String),
+}
+
+impl Default for IterationsSpec {
+    fn default() -> Self {
+        Self::Literal(0)
+    }
+}
+
 /// Typed invocation target for a phase. Parallel to the existing `GateCheck`
 /// untagged enum: belt-core models the invocation shape but the LLM
 /// orchestrator is responsible for actually dispatching the skill, agent, or
@@ -232,7 +257,7 @@ pub enum Invoker {
     Agents {
         agents: Vec<String>,
         #[serde(default)]
-        iterations: u32,
+        iterations: IterationsSpec,
         #[serde(default)]
         args: HashMap<String, serde_json::Value>,
     },

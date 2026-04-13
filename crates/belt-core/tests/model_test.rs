@@ -1,6 +1,6 @@
 use belt_core::model::{
-    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, Pipeline, RunState,
-    SubPipeline, ValidationSource,
+    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, IterationsSpec, Pipeline,
+    RunState, SubPipeline, ValidationSource,
 };
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
@@ -821,7 +821,7 @@ phases:
         } => {
             assert_eq!(agents.len(), 2);
             assert_eq!(agents[0], "spec-review-requirements");
-            assert_eq!(*iterations, 3);
+            assert_eq!(*iterations, IterationsSpec::Literal(3));
             assert_eq!(
                 args.get("codex").and_then(serde_json::Value::as_bool),
                 Some(true)
@@ -897,4 +897,91 @@ phases:
              variant ordering may not be deterministic"
         ),
     }
+}
+
+/// `iterations: 3` (YAML integer) parses as `IterationsSpec::Literal(3)`.
+#[test]
+fn parse_invoke_agents_iterations_literal() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: review
+    description: "Review"
+    invoke:
+      agents: [a, b]
+      iterations: 5
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Agents { iterations, .. } => {
+            assert_eq!(*iterations, IterationsSpec::Literal(5));
+        }
+        other => panic!("expected Agents, got {other:?}"),
+    }
+}
+
+/// `iterations: "args.iterations"` (YAML string) parses as `IterationsSpec::Template`.
+#[test]
+fn parse_invoke_agents_iterations_template() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: review
+    description: "Review"
+    invoke:
+      agents: [a, b]
+      iterations: "args.iterations"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Agents { iterations, .. } => {
+            assert_eq!(
+                *iterations,
+                IterationsSpec::Template("args.iterations".to_string())
+            );
+        }
+        other => panic!("expected Agents, got {other:?}"),
+    }
+}
+
+/// `iterations:` omitted defaults to `IterationsSpec::Literal(0)`.
+#[test]
+fn parse_invoke_agents_iterations_omitted_defaults_to_literal_zero() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: review
+    description: "Review"
+    invoke:
+      agents: [a]
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
+        Invoker::Agents { iterations, .. } => {
+            assert_eq!(*iterations, IterationsSpec::Literal(0));
+        }
+        other => panic!("expected Agents, got {other:?}"),
+    }
+}
+
+/// JSON serialization round-trip for both variants.
+#[test]
+fn iterations_spec_json_roundtrip() {
+    let literal = IterationsSpec::Literal(7);
+    let json = serde_json::to_string(&literal).unwrap();
+    assert_eq!(json, "7");
+    let back: IterationsSpec = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, IterationsSpec::Literal(7));
+
+    let template = IterationsSpec::Template("args.iterations".to_string());
+    let json = serde_json::to_string(&template).unwrap();
+    assert_eq!(json, "\"args.iterations\"");
+    let back: IterationsSpec = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        back,
+        IterationsSpec::Template("args.iterations".to_string())
+    );
 }
