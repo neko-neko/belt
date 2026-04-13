@@ -286,7 +286,7 @@ pub struct InputDef {
     pub required: bool,
 }
 
-/// A sub-pipeline that can be referenced via `uses:` from a phase.
+/// A sub-pipeline that can be referenced via `invoke: { pipeline: ... }` from a phase.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubPipeline {
     pub name: String,

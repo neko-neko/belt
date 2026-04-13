@@ -84,6 +84,8 @@ If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`, `vali
 
 Use the status output's artifact graph when you need to locate the concrete path of a prior phase's output during the current phase.
 
+**Note: `next` and `init` emit declared artifacts, not resolved.** The `produces` array in `next`/`init` carries raw `{ name, path, description }` entries from pipeline.yml — without `exists` or `resolved_path`. Filesystem resolution (the mtime filter, glob matching) only happens in `status`. Call `belt-agent status` whenever you need the concrete path of a prior phase's output.
+
 ## Validate file semantics
 
 Phases may use either:
@@ -155,6 +157,8 @@ When `step` returns `advanced: false`, read the `reason` field:
   ]
 }
 ```
+
+Note: `produces`, `consumes`, and `invoke` are omitted from `status` JSON when empty/absent. Treat absence as equivalent to an empty array (or `null` for `invoke`).
 
 Use `status` for context recovery or progress checks.
 
