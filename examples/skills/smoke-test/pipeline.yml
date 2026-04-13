@@ -14,19 +14,26 @@ args:
 phases:
   - id: env-setup
     description: "Start dev server and verify it is accessible."
-    config:
-      skill: "/smoke-test"
-      reference: "references/env-setup-procedure.md"
+    invoke:
+      skill: /smoke-test
+      args:
+        reference: ./references/env-setup-procedure.md
     gate:
       - cmd: "curl -sf http://localhost:${args.port:-3000}/ > /dev/null"
 
   - id: adhoc-test
     description: "Generate and execute ad-hoc smoke test scenarios via browser."
-    config:
-      skill: "/smoke-test"
-      reference: "references/adhoc-test-procedure.md"
-    artifacts:
-      - "smoke-test-report.md"
+    invoke:
+      skill: /smoke-test
+      args:
+        reference: ./references/adhoc-test-procedure.md
+    produces:
+      - name: smoke_test_report
+        path: smoke-test-report.md
+        description: "Ad-hoc smoke test report with adversarial probes"
+      - name: smoke_test_screenshots
+        path: "smoke-*.png"
+        description: "Screenshots captured during smoke test scenarios"
     gate:
       - file_exists: "smoke-test-report.md"
       - file_exists: "smoke-*.png"
@@ -38,13 +45,15 @@ phases:
   - id: vrt-check
     description: "Run VRT diff check if VRT tooling is detected."
     when: "!args.skip_vrt"
-    config:
-      skill: "/smoke-test"
-      reference: "references/vrt-check-procedure.md"
+    invoke:
+      skill: /smoke-test
+      args:
+        reference: ./references/vrt-check-procedure.md
 
   - id: e2e-detection
     description: "Run E2E test suite with flaky detection (2-pass execution)."
     when: "!args.skip_e2e"
-    config:
-      skill: "/smoke-test"
-      reference: "references/e2e-detection-procedure.md"
+    invoke:
+      skill: /smoke-test
+      args:
+        reference: ./references/e2e-detection-procedure.md
