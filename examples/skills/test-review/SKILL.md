@@ -15,7 +15,7 @@ Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This do
 
 ## Design Spec Resolution
 
-The `test-review-design-alignment` agent requires a design spec path:
+Before the orchestrator dispatches agents, resolve the design spec path. The `test-review-design-alignment` agent requires it:
 1. Check output directory for `*-design.md`
 2. If not found, check `docs/plans/*-design.md` with matching date prefix
 3. Pass as `design_doc_path` context to the agent

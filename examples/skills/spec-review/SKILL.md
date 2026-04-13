@@ -10,7 +10,7 @@ argument-hint: "[--codex] [--iterations N] [--ui] [--swarm]"
 
 4-perspective spec review with N-way voting and interactive dialogue resolution.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only spec-review-specific concerns (voting, triage, fix strategy, verify).
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only spec-review-specific concerns (voting, triage, dialogue resolution, verify).
 
 ## Voting Protocol
 

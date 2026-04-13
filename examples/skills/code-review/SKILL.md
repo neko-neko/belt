@@ -10,7 +10,26 @@ argument-hint: "[--codex] [--iterations N] [--swarm]"
 
 7-perspective code review with N-way voting and direct selection triage.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only code-review-specific concerns (voting, triage, fix strategy, verify).
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only code-review-specific concerns (scope detection, simplify handling, impact context, voting, triage, verify).
+
+## Scope Detection
+
+Determine diff scope before dispatching agents:
+
+1. If branch differs from main → `git diff main...HEAD`
+2. If staged changes → `git diff --staged`
+3. Pass diff summary as context to all agents
+
+## /simplify Handling
+
+`/simplify` is invoked via Skill tool (not Agent tool). Its output is free-text, not structured JSON.
+Parse simplify output into findings format (file, description, suggestion).
+Simplify findings are **not subject to N-way voting** — included directly after dedup.
+
+## code-review-impact Context
+
+If a design doc exists in the output directory (`*-design.md`), pass its Impact Analysis
+section as additional context to the `code-review-impact` agent.
 
 ## Voting Protocol
 

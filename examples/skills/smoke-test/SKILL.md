@@ -10,7 +10,7 @@ Browser-based UI verification for code changes. Generates test scenarios from di
 and design docs, executes them via browser interaction, and produces an evidence-backed
 report.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only smoke-test-specific concerns (output artifacts, scenario authorship, adversarial probes).
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only smoke-test-specific concerns (output artifacts, red flags).
 
 ## Output
 

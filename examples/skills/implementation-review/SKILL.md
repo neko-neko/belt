@@ -11,7 +11,7 @@ argument-hint: "[--codex] [--iterations N] [--ui] [--swarm]"
 3-perspective implementation plan review with N-way voting and interactive
 dialogue resolution.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only implementation-review-specific concerns (voting, triage, fix strategy, verify).
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only implementation-review-specific concerns (voting, triage, dialogue resolution, verify).
 
 ## Related Design Doc Detection
 
