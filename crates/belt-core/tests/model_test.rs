@@ -399,6 +399,7 @@ fn run_state_regate_passed_round_trip() {
         phase_attempts: HashMap::new(),
         phase_verify_passed: HashMap::new(),
         regate_passed,
+        phase_start_times: HashMap::new(),
         created_at: "2026-01-01T00:00:00Z".to_string(),
         updated_at: "2026-01-01T00:00:00Z".to_string(),
     };

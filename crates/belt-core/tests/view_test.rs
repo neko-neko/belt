@@ -16,6 +16,7 @@ fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
         phase_attempts: HashMap::new(),
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
+        phase_start_times: HashMap::new(),
         created_at: "2026-04-07T00:00:00Z".to_string(),
         updated_at: "2026-04-07T00:00:00Z".to_string(),
     }
@@ -609,6 +610,7 @@ fn phase_view_serializes_invoke_skill() {
         phase_attempts: HashMap::new(),
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
+        phase_start_times: HashMap::new(),
         created_at: "2026-04-11T00:00:00Z".to_string(),
         updated_at: "2026-04-11T00:00:00Z".to_string(),
     };
@@ -637,8 +639,12 @@ fn phase_view_serializes_invoke_skill() {
         view.phases[0].invoke.is_some(),
         "expected invoke in PhaseView"
     );
-    assert_eq!(view.phases[0].produces.len(), 1);
-    assert_eq!(view.phases[0].produces[0].name, "design_doc");
+    let produces = view.phases[0]
+        .produces
+        .as_ref()
+        .expect("produces resolved on design phase");
+    assert_eq!(produces.len(), 1);
+    assert_eq!(produces[0].name, "design_doc");
     assert!(view.phases[0].consumes.is_empty());
 
     // JSON round-trip check.
@@ -647,4 +653,275 @@ fn phase_view_serializes_invoke_skill() {
     assert!(json.contains("\"skill\":\"/brainstorming\""));
     assert!(json.contains("\"produces\""));
     assert!(json.contains("\"design_doc\""));
+}
+
+// --- BELT-32 Plan B Task 2: glob resolution in build_status_view ---
+
+/// Glob resolution picks the newest matching file after the phase start time.
+#[test]
+fn glob_resolution_picks_newest_after_phase_start() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run_dir = temp.path().join("run");
+    std::fs::create_dir_all(&run_dir).expect("mkdir run_dir");
+
+    let older = temp.path().join("docs-plans-2026-01-01-old-design.md");
+    let newer = temp.path().join("docs-plans-2026-04-11-new-design.md");
+    std::fs::write(&older, "older").expect("write older");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::write(&newer, "newer").expect("write newer");
+
+    let glob_pattern = format!("{}/docs-plans-*-design.md", temp.path().display());
+
+    let metadata = vec![belt_core::view::PhaseMetadata {
+        id: "design".to_string(),
+        invoke: None,
+        produces: vec![belt_core::model::Artifact {
+            name: "design_doc".to_string(),
+            path: glob_pattern.clone(),
+            description: None,
+        }],
+        consumes: vec![],
+    }];
+
+    let mut phase_start_times = HashMap::new();
+    phase_start_times.insert("design".to_string(), phase_start);
+
+    let state = RunState {
+        run_id: "test-run".to_string(),
+        pipeline: "test".to_string(),
+        pipeline_file: "/tmp/pipeline.yml".to_string(),
+        version: 1,
+        args: HashMap::new(),
+        current_phase: "design".to_string(),
+        completed_phases: vec!["design".to_string()],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        phase_start_times,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+
+    let view = build_status_view(&state, &metadata, &run_dir);
+    let design = view
+        .phases
+        .iter()
+        .find(|p| p.id == "design")
+        .expect("design phase in view");
+
+    let resolved_produces = design
+        .produces
+        .as_ref()
+        .expect("produces present on design phase");
+    let design_doc = resolved_produces
+        .iter()
+        .find(|a| a.name == "design_doc")
+        .expect("design_doc artifact");
+    assert!(design_doc.exists, "design_doc must resolve");
+    assert_eq!(
+        design_doc.resolved_path.as_deref(),
+        Some(newer.to_str().unwrap()),
+        "must pick the newer file (older was created before phase_start)"
+    );
+}
+
+/// If no files match the glob after the filter, existence is false.
+#[test]
+fn glob_resolution_zero_matches_reports_missing() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run_dir = temp.path().join("run");
+    std::fs::create_dir_all(&run_dir).expect("mkdir run_dir");
+
+    // Create a stale file BEFORE phase_start so it gets filtered out.
+    let stale = temp.path().join("stale.md");
+    std::fs::write(&stale, "stale").expect("write stale");
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    let glob_pattern = format!("{}/*.md", temp.path().display());
+
+    let metadata = vec![belt_core::view::PhaseMetadata {
+        id: "p".to_string(),
+        invoke: None,
+        produces: vec![belt_core::model::Artifact {
+            name: "missing_doc".to_string(),
+            path: glob_pattern,
+            description: None,
+        }],
+        consumes: vec![],
+    }];
+
+    let mut phase_start_times = HashMap::new();
+    phase_start_times.insert("p".to_string(), phase_start);
+
+    let state = RunState {
+        run_id: "test-run".to_string(),
+        pipeline: "test".to_string(),
+        pipeline_file: "/tmp/pipeline.yml".to_string(),
+        version: 1,
+        args: HashMap::new(),
+        current_phase: "p".to_string(),
+        completed_phases: vec!["p".to_string()],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        phase_start_times,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+
+    let view = build_status_view(&state, &metadata, &run_dir);
+    let p = view
+        .phases
+        .iter()
+        .find(|ph| ph.id == "p")
+        .expect("p phase in view");
+    let produces = p.produces.as_ref().expect("produces list");
+    let missing = produces.iter().find(|a| a.name == "missing_doc").unwrap();
+    assert!(
+        !missing.exists,
+        "no matches after phase_start => exists=false"
+    );
+    assert!(missing.resolved_path.is_none());
+}
+
+/// Equal mtimes break ties via ascending filename.
+#[test]
+fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run_dir = temp.path().join("run");
+    std::fs::create_dir_all(&run_dir).expect("mkdir run_dir");
+
+    let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    let b = temp.path().join("b.md");
+    let a = temp.path().join("a.md");
+    std::fs::write(&b, "b").expect("write b");
+    std::fs::write(&a, "a").expect("write a");
+
+    let same = filetime::FileTime::now();
+    filetime::set_file_mtime(&a, same).expect("set a mtime");
+    filetime::set_file_mtime(&b, same).expect("set b mtime");
+
+    let glob_pattern = format!("{}/*.md", temp.path().display());
+
+    let metadata = vec![belt_core::view::PhaseMetadata {
+        id: "p".to_string(),
+        invoke: None,
+        produces: vec![belt_core::model::Artifact {
+            name: "doc".to_string(),
+            path: glob_pattern,
+            description: None,
+        }],
+        consumes: vec![],
+    }];
+
+    let mut phase_start_times = HashMap::new();
+    phase_start_times.insert("p".to_string(), phase_start);
+
+    let state = RunState {
+        run_id: "test-run".to_string(),
+        pipeline: "test".to_string(),
+        pipeline_file: "/tmp/pipeline.yml".to_string(),
+        version: 1,
+        args: HashMap::new(),
+        current_phase: "p".to_string(),
+        completed_phases: vec!["p".to_string()],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        phase_start_times,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+
+    let view = build_status_view(&state, &metadata, &run_dir);
+    let produces = view
+        .phases
+        .iter()
+        .find(|p| p.id == "p")
+        .unwrap()
+        .produces
+        .as_ref()
+        .unwrap();
+    let doc = produces.iter().find(|x| x.name == "doc").unwrap();
+    assert_eq!(
+        doc.resolved_path.as_deref(),
+        Some(a.to_str().unwrap()),
+        "equal mtimes => alphabetical 'a.md' wins over 'b.md'"
+    );
+}
+
+/// Concrete (non-glob) path uses std::fs::metadata directly.
+#[test]
+fn concrete_path_skips_filter() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run_dir = temp.path().join("run");
+    std::fs::create_dir_all(&run_dir).expect("mkdir run_dir");
+
+    let concrete = temp.path().join("smoke-test-report.md");
+    std::fs::write(&concrete, "report").expect("write concrete");
+
+    // phase_start is AFTER file creation -- concrete paths bypass the mtime filter.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+
+    let metadata = vec![belt_core::view::PhaseMetadata {
+        id: "smoke".to_string(),
+        invoke: None,
+        produces: vec![belt_core::model::Artifact {
+            name: "report".to_string(),
+            path: concrete.to_str().unwrap().to_string(),
+            description: None,
+        }],
+        consumes: vec![],
+    }];
+
+    let mut phase_start_times = HashMap::new();
+    phase_start_times.insert("smoke".to_string(), phase_start);
+
+    let state = RunState {
+        run_id: "test-run".to_string(),
+        pipeline: "test".to_string(),
+        pipeline_file: "/tmp/pipeline.yml".to_string(),
+        version: 1,
+        args: HashMap::new(),
+        current_phase: "smoke".to_string(),
+        completed_phases: vec!["smoke".to_string()],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        phase_start_times,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+
+    let view = build_status_view(&state, &metadata, &run_dir);
+    let report = view
+        .phases
+        .iter()
+        .find(|p| p.id == "smoke")
+        .unwrap()
+        .produces
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|a| a.name == "report")
+        .unwrap();
+    assert!(
+        report.exists,
+        "concrete path must exist regardless of mtime"
+    );
+    assert_eq!(
+        report.resolved_path.as_deref(),
+        Some(concrete.to_str().unwrap())
+    );
 }

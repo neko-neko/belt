@@ -46,6 +46,8 @@ impl Engine {
         std::fs::create_dir_all(&run_dir)?;
 
         let now = now_iso8601();
+        let mut phase_start_times: HashMap<String, chrono::DateTime<chrono::Utc>> = HashMap::new();
+        phase_start_times.insert(active.id.clone(), chrono::Utc::now());
         let state = RunState {
             run_id,
             pipeline: pipeline.name,
@@ -62,6 +64,7 @@ impl Engine {
                 HashMap::new()
             },
             regate_passed: HashMap::new(),
+            phase_start_times,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -205,6 +208,11 @@ impl Engine {
                 let run_dir = self.belt_dir.join("runs").join(&state.run_id);
                 let output_dir = run_dir.join(next_id.replace('/', "_"));
                 std::fs::create_dir_all(&output_dir)?;
+                // Record phase entry time for glob resolution. DD-1: once per
+                // entry; retries and regate must not update this.
+                state
+                    .phase_start_times
+                    .insert(next_id.clone(), chrono::Utc::now());
                 // Auto-set verify for gate-less next phase
                 if next_gate_empty {
                     state.phase_verify_passed.insert(next_id.clone(), true);

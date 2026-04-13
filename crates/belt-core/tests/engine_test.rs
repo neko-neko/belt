@@ -1881,3 +1881,139 @@ phases:
     let next = engine.step(&mut state, &pipeline_path).expect("step");
     assert_eq!(next.as_deref(), Some("done"));
 }
+
+// ---------------------------------------------------------------------------
+// BELT-32 Plan B Task 2: phase_start_times lifecycle
+// ---------------------------------------------------------------------------
+
+/// phase_start_times is set when step() first enters a phase.
+/// It is not touched by retries within the same phase.
+/// regate does not modify any phase's phase_start_times.
+#[test]
+fn phase_start_times_is_set_on_entry_not_updated_on_retry() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: first
+    description: first
+    gate:
+      - cmd: "true"
+  - id: second
+    description: second
+    gate:
+      - cmd: "true"
+    max_retries: 3
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    // First phase entry time recorded via init.
+    let first_entry = state
+        .phase_start_times
+        .get("first")
+        .copied()
+        .expect("first phase should have a start time set on init");
+
+    // Simulate a verify PASS and step to next phase.
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify first");
+    engine
+        .step(&mut state, &pipeline_path)
+        .expect("step to second");
+
+    // second should now have a start time; first should be unchanged.
+    let second_entry = state
+        .phase_start_times
+        .get("second")
+        .copied()
+        .expect("second phase should have a start time after step()");
+    let first_after = state
+        .phase_start_times
+        .get("first")
+        .copied()
+        .expect("first phase time must remain");
+    assert_eq!(
+        first_entry, first_after,
+        "first phase start time must not change after leaving it"
+    );
+    assert!(
+        second_entry >= first_after,
+        "second phase start time must be at or after first's"
+    );
+
+    // Retry on second: verify FAIL, verify PASS, each should preserve second's start time.
+    engine
+        .verify_verdict(&mut state, false)
+        .expect("verify fail");
+    let second_after_fail = state
+        .phase_start_times
+        .get("second")
+        .copied()
+        .expect("second phase time retained on fail");
+    assert_eq!(
+        second_entry, second_after_fail,
+        "retry (verify FAIL) must not update phase_start_times"
+    );
+
+    engine
+        .verify_verdict(&mut state, true)
+        .expect("verify pass");
+    let second_after_pass = state
+        .phase_start_times
+        .get("second")
+        .copied()
+        .expect("second phase time retained on pass");
+    assert_eq!(
+        second_entry, second_after_pass,
+        "retry (verify PASS) must not update phase_start_times"
+    );
+}
+
+/// phase_start_times uses UTC and serialises round-trip via state.json.
+#[test]
+fn phase_start_times_round_trips_through_state_json() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: only
+    description: only phase
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    let written = state
+        .phase_start_times
+        .get("only")
+        .copied()
+        .expect("first phase must have start time");
+
+    // Reload from disk.
+    let reloaded = engine.load_state(&state.run_id).expect("load_state");
+    let read_back: chrono::DateTime<chrono::Utc> = reloaded
+        .phase_start_times
+        .get("only")
+        .copied()
+        .expect("phase_start_times must persist");
+    assert_eq!(written.to_rfc3339(), read_back.to_rfc3339());
+}

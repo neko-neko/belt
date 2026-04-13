@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -225,6 +226,12 @@ pub struct RunState {
     pub phase_verify_passed: HashMap<String, bool>,
     #[serde(default)]
     pub regate_passed: HashMap<String, bool>,
+    /// Wall-clock time (UTC) at which each phase was first entered.
+    /// Written once per phase on `init` and `step`; retries and regate do
+    /// not update it. Used by the view layer to scope glob-based artifact
+    /// resolution to files created during the phase's active window.
+    #[serde(default)]
+    pub phase_start_times: HashMap<String, DateTime<Utc>>,
     pub created_at: String,
     pub updated_at: String,
 }

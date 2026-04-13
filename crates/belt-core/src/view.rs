@@ -1,5 +1,6 @@
 use crate::gate::GateResult;
 use crate::model::{Artifact, ArtifactRef, Invoker, RunState};
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -68,14 +69,30 @@ pub struct PhaseView {
     /// compatibility with legacy pipelines that do not declare `invoke:`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invoke: Option<Invoker>,
-    /// Artifacts the phase is expected to produce (BELT-32).
-    /// Omitted from JSON output when empty.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub produces: Vec<Artifact>,
+    /// Artifacts the phase is expected to produce, with runtime-resolved
+    /// filesystem state (BELT-32 Plan B). `None` when the phase declares
+    /// no `produces:` entries; omitted from JSON output in that case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub produces: Option<Vec<ResolvedArtifact>>,
     /// References to artifacts produced by earlier phases (BELT-32).
     /// Omitted from JSON output when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consumes: Vec<ArtifactRef>,
+}
+
+/// An artifact produced by a phase, enriched with runtime-resolved
+/// filesystem state. `path` is the declared pattern (possibly a glob);
+/// `resolved_path` is the concrete filesystem path selected by
+/// [`resolve_artifact`], or `None` when nothing matches.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedArtifact {
+    pub name: String,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_path: Option<String>,
 }
 
 /// State of an individual phase within the pipeline run.
@@ -139,6 +156,101 @@ fn read_regate_checks(run_dir: &Path, phase_id: &str) -> Option<serde_json::Valu
     parsed.get("targets").cloned()
 }
 
+/// Resolve a single [`Artifact`] to its runtime filesystem state.
+///
+/// - Concrete paths use [`std::fs::metadata`] for existence.
+/// - Glob paths (containing `*`, `?`, or `[`) are enumerated via
+///   [`glob::glob`], filtered by `mtime >= phase_start` when `phase_start`
+///   is provided, and the newest match is picked (alphabetically smallest
+///   filename on mtime ties).
+/// - Returns `exists: false, resolved_path: None` on zero matches or
+///   invalid glob syntax.
+fn resolve_artifact(artifact: &Artifact, phase_start: Option<DateTime<Utc>>) -> ResolvedArtifact {
+    let is_glob =
+        artifact.path.contains('*') || artifact.path.contains('?') || artifact.path.contains('[');
+
+    let (exists, resolved_path) = if is_glob {
+        let Ok(entries) = glob::glob(&artifact.path) else {
+            return ResolvedArtifact {
+                name: artifact.name.clone(),
+                path: artifact.path.clone(),
+                description: artifact.description.clone(),
+                exists: false,
+                resolved_path: None,
+            };
+        };
+        let mut candidates: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+        for entry in entries.flatten() {
+            let Ok(meta) = std::fs::metadata(&entry) else {
+                continue;
+            };
+            let Ok(mtime) = meta.modified() else {
+                continue;
+            };
+            if let Some(start) = phase_start {
+                let mtime_dt = DateTime::<Utc>::from(mtime);
+                if mtime_dt < start {
+                    continue;
+                }
+            }
+            candidates.push((mtime, entry));
+        }
+        if candidates.is_empty() {
+            (false, None)
+        } else {
+            // Sort by (newest mtime first, ascending filename on ties).
+            candidates.sort_by(|a, b| match b.0.cmp(&a.0) {
+                std::cmp::Ordering::Equal => a.1.cmp(&b.1),
+                non_equal => non_equal,
+            });
+            // Safe: candidates is non-empty; sort does not change length.
+            let path = candidates
+                .into_iter()
+                .next()
+                .map(|(_, p)| p)
+                .unwrap_or_default();
+            (true, Some(path.to_string_lossy().to_string()))
+        }
+    } else {
+        let exists = std::fs::metadata(&artifact.path).is_ok();
+        let resolved = if exists {
+            Some(artifact.path.clone())
+        } else {
+            None
+        };
+        (exists, resolved)
+    };
+
+    ResolvedArtifact {
+        name: artifact.name.clone(),
+        path: artifact.path.clone(),
+        description: artifact.description.clone(),
+        exists,
+        resolved_path,
+    }
+}
+
+/// Resolve the `produces` list for a phase, or return `None` when the
+/// phase declares no artifacts. Keeping this `None`-vs-`Some(empty)`
+/// distinction mirrors the Plan A serialization shape (absent vs empty
+/// list both collapse to "omitted" via `skip_serializing_if`, but
+/// `Option` semantics are clearer for consumers).
+fn resolve_produces(
+    artifacts: &[Artifact],
+    phase_start: Option<DateTime<Utc>>,
+) -> Option<Vec<ResolvedArtifact>> {
+    if artifacts.is_empty() {
+        None
+    } else {
+        Some(
+            artifacts
+                .iter()
+                .map(|a| resolve_artifact(a, phase_start))
+                .collect(),
+        )
+    }
+}
+
 /// Build an enriched status view from `RunState` + phase metadata + run directory.
 #[must_use]
 pub fn build_status_view(
@@ -156,6 +268,7 @@ pub fn build_status_view(
             } else {
                 determine_phase_state(&meta.id, state)
             };
+            let phase_start = state.phase_start_times.get(&meta.id).copied();
             PhaseView {
                 id: meta.id.clone(),
                 status,
@@ -166,7 +279,7 @@ pub fn build_status_view(
                 verify_checks: read_verify_checks(run_dir, &meta.id),
                 regate_checks: read_regate_checks(run_dir, &meta.id),
                 invoke: meta.invoke.clone(),
-                produces: meta.produces.clone(),
+                produces: resolve_produces(&meta.produces, phase_start),
                 consumes: meta.consumes.clone(),
             }
         })
@@ -186,7 +299,7 @@ pub fn build_status_view(
                 verify_checks: read_verify_checks(run_dir, id),
                 regate_checks: read_regate_checks(run_dir, id),
                 invoke: None,
-                produces: Vec::new(),
+                produces: None,
                 consumes: Vec::new(),
             });
         }
@@ -203,7 +316,7 @@ pub fn build_status_view(
                 verify_checks: None,
                 regate_checks: None,
                 invoke: None,
-                produces: Vec::new(),
+                produces: None,
                 consumes: Vec::new(),
             });
         }
