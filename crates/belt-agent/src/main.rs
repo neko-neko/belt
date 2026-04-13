@@ -166,15 +166,11 @@ fn cmd_init(
         .next_phase_info(&state, pipeline_file)
         .map_err(|e| miette::miette!("{e}"))?;
 
+    let phase_obj = phase_json(&phase);
     let out = json!({
         "run_id": state.run_id,
         "pipeline": state.pipeline,
-        "phase": {
-            "id": phase.id,
-            "description": phase.description,
-            "config": phase.config,
-            "output_dir": phase.output_dir,
-        },
+        "phase": phase_obj,
         "gate": phase.gate,
         "validate": phase.validate,
         "confirm": phase.confirm,
@@ -187,6 +183,35 @@ fn cmd_init(
         serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
     );
     Ok(())
+}
+
+/// Build the per-phase JSON sub-object used by `init` and `next` responses.
+///
+/// Mirrors the shape surfaced by `status`: the typed `invoke`, `produces`, and
+/// `consumes` fields from BELT-32 are forwarded so orchestrators can read the
+/// invocation target directly from the command they already call, without
+/// issuing a separate `status` round-trip. `invoke` is omitted when absent
+/// (preserving backwards compatibility with legacy pipelines), and
+/// `produces` / `consumes` are always included as (possibly empty) arrays for
+/// consumer ergonomics.
+fn phase_json(phase: &belt_core::model::ExpandedPhase) -> serde_json::Value {
+    let mut phase_obj = json!({
+        "id": phase.id,
+        "description": phase.description,
+        "config": phase.config,
+        "output_dir": phase.output_dir,
+        "produces": phase.produces,
+        "consumes": phase.consumes,
+    });
+    if let Some(invoke) = &phase.invoke {
+        if let serde_json::Value::Object(map) = &mut phase_obj {
+            map.insert(
+                "invoke".to_string(),
+                serde_json::to_value(invoke).unwrap_or(serde_json::Value::Null),
+            );
+        }
+    }
+    phase_obj
 }
 
 fn cmd_next(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
@@ -213,15 +238,11 @@ fn cmd_next(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
         .next_phase_info(&state, pipeline_path)
         .map_err(|e| miette::miette!("{e}"))?;
     let attempt = state.phase_attempts.get(&phase.id).copied().unwrap_or(0);
+    let phase_obj = phase_json(&phase);
 
     let out = json!({
         "run_id": state.run_id,
-        "phase": {
-            "id": phase.id,
-            "description": phase.description,
-            "config": phase.config,
-            "output_dir": phase.output_dir,
-        },
+        "phase": phase_obj,
         "gate": phase.gate,
         "validate": phase.validate,
         "confirm": phase.confirm,

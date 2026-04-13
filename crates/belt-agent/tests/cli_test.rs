@@ -1647,3 +1647,74 @@ phases:
     // Restore permissions for cleanup
     std::fs::set_permissions(&runs_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
+
+/// End-to-end walk through the migrated feature-dev pipeline using the
+/// real examples/skills/feature-dev tree. This test is not meant to simulate
+/// LLM behavior; it only drives belt-agent through init → next to prove that
+/// the new-format pipeline boots and surfaces the first phase correctly.
+#[test]
+fn feature_dev_migrated_pipeline_boots() {
+    use std::path::PathBuf;
+
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let workspace = PathBuf::from(&manifest_dir).join("..").join("..");
+    let pipeline = workspace
+        .join("examples")
+        .join("skills")
+        .join("feature-dev")
+        .join("pipeline.yml");
+    assert!(pipeline.exists(), "feature-dev pipeline must exist");
+
+    // Use a scratch cwd so the default `.belt/` is created there and we don't
+    // touch the developer's state.
+    let scratch = tempfile::tempdir().expect("tempdir");
+
+    // init
+    let init_out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args([
+            "init",
+            pipeline.to_str().unwrap(),
+            "--arg",
+            "smoke=false",
+            "--arg",
+            "e2e=false",
+            "--arg",
+            "doc=false",
+        ])
+        .current_dir(scratch.path())
+        .output()
+        .expect("belt-agent init");
+    assert!(
+        init_out.status.success(),
+        "init failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&init_out.stdout),
+        String::from_utf8_lossy(&init_out.stderr)
+    );
+    let init_json: serde_json::Value =
+        serde_json::from_slice(&init_out.stdout).expect("init stdout is JSON");
+    assert!(init_json.get("run_id").is_some(), "init returns run_id");
+
+    // next — must return the first active phase.
+    let next_out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["next"])
+        .current_dir(scratch.path())
+        .output()
+        .expect("belt-agent next");
+    assert!(
+        next_out.status.success(),
+        "next failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&next_out.stdout),
+        String::from_utf8_lossy(&next_out.stderr)
+    );
+    let next_json: serde_json::Value =
+        serde_json::from_slice(&next_out.stdout).expect("next stdout is JSON");
+    assert_eq!(
+        next_json["phase"]["id"].as_str(),
+        Some("design"),
+        "first phase should be 'design'"
+    );
+    // The phase should carry the new invoke shape.
+    let invoke = &next_json["phase"]["invoke"];
+    assert!(invoke.is_object(), "invoke must be present");
+    assert_eq!(invoke["skill"].as_str(), Some("/brainstorming"));
+}
