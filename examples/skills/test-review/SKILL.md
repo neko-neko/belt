@@ -11,14 +11,9 @@ argument-hint: "[--codex] [--iterations N] [--swarm]"
 3-perspective test review with N-way voting, requirement mapping, and direct
 selection triage.
 
-## Dispatch Rules
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only test-review-specific concerns (voting, triage, fix strategy, verify).
 
-| config pattern | Action |
-|---|---|
-| `review` phase, `config.agents` present | Dispatch each agent via `Agent(subagent_type=<name>)` in parallel. Add Codex (`review` mode) if `config.codex`. If `config.swarm` → use TeamCreate. Collect → vote → build requirement map → triage → present |
-| `fix` phase | Dispatch `feature-implementer` with accepted findings. Fix strategy varies by category (see below) |
-
-### Design Spec Resolution
+## Design Spec Resolution
 
 The `test-review-design-alignment` agent requires a design spec path:
 1. Check output directory for `*-design.md`
@@ -26,7 +21,7 @@ The `test-review-design-alignment` agent requires a design spec path:
 3. Pass as `design_doc_path` context to the agent
 4. If no design spec found → dispatch agent without it (reduced coverage)
 
-### Requirement Map
+## Requirement Map
 
 The `design-alignment` agent returns a `requirement_map` in addition to findings:
 
@@ -43,7 +38,7 @@ Present it as a table in the review report. Gap entries inform coverage findings
 
 ## Voting Protocol
 
-Activated when `config.iterations` > 1. Each agent is dispatched N times independently.
+Activated when this phase's `invoke.iterations` > 1. Each agent is dispatched N times independently.
 
 **Semantic similarity** (file/line-based):
 - Match: same `file` + line within ±10 lines + similar `description`

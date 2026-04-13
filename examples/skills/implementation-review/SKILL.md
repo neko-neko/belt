@@ -11,14 +11,9 @@ argument-hint: "[--codex] [--iterations N] [--ui] [--swarm]"
 3-perspective implementation plan review with N-way voting and interactive
 dialogue resolution.
 
-## Dispatch Rules
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only implementation-review-specific concerns (voting, triage, fix strategy, verify).
 
-| config pattern | Action |
-|---|---|
-| `review` phase, `config.agents` present | Dispatch each agent via `Agent(subagent_type=<name>)` in parallel. Add `config.ui_agent` if `args.ui`. Add Codex (`adversarial-review` mode) if `config.codex`. If `config.swarm` → use TeamCreate. Collect → vote → triage → present |
-| `fix` phase | Dispatch `feature-implementer` with accepted findings. Modify plan bottom-up to prevent line-shift |
-
-### Related Design Doc Detection
+## Related Design Doc Detection
 
 Before dispatching agents, detect the related design spec:
 1. Extract date prefix from plan filename (e.g., `2026-04-07` from `2026-04-07-foo-plan.md`)
@@ -27,7 +22,7 @@ Before dispatching agents, detect the related design spec:
 
 ## Voting Protocol
 
-Activated when `config.iterations` > 1. Each agent is dispatched N times independently.
+Activated when this phase's `invoke.iterations` > 1. Each agent is dispatched N times independently.
 
 **Semantic similarity** (section-based):
 - Match: same `section` + similar `description` (>80% semantic overlap)

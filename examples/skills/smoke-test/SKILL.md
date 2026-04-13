@@ -10,13 +10,7 @@ Browser-based UI verification for code changes. Generates test scenarios from di
 and design docs, executes them via browser interaction, and produces an evidence-backed
 report.
 
-Invoke /belt-agent for protocol details.
-
-## Dispatch Rules
-
-| config pattern | Action |
-|---|---|
-| `config.reference` present | Dispatch Agent: "Read `{config.reference}` and execute. Return a status summary." |
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only smoke-test-specific concerns (output artifacts, scenario authorship, adversarial probes).
 
 ## Output
 

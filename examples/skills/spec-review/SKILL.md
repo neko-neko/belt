@@ -10,16 +10,11 @@ argument-hint: "[--codex] [--iterations N] [--ui] [--swarm]"
 
 4-perspective spec review with N-way voting and interactive dialogue resolution.
 
-## Dispatch Rules
-
-| config pattern | Action |
-|---|---|
-| `review` phase, `config.agents` present | Dispatch each agent via `Agent(subagent_type=<name>)` in parallel. Add `config.ui_agent` if `args.ui`. Add Codex (`adversarial-review` mode) if `config.codex`. If `config.swarm` → use TeamCreate. Collect → vote → triage → present |
-| `fix` phase | Dispatch `feature-implementer` with accepted findings. Modify spec bottom-up to prevent line-shift |
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only spec-review-specific concerns (voting, triage, fix strategy, verify).
 
 ## Voting Protocol
 
-Activated when `config.iterations` > 1. Each agent is dispatched N times independently.
+Activated when this phase's `invoke.iterations` > 1. Each agent is dispatched N times independently.
 
 **Semantic similarity** (section-based):
 - Match: same `section` + similar `description` (>80% semantic overlap)

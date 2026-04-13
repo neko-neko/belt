@@ -10,34 +10,11 @@ argument-hint: "[--codex] [--iterations N] [--swarm]"
 
 7-perspective code review with N-way voting and direct selection triage.
 
-## Dispatch Rules
-
-| config pattern | Action |
-|---|---|
-| `review` phase, `config.agents` present | Dispatch each agent via `Agent(subagent_type=<name>)` in parallel. Invoke each entry in `config.skills` via Skill tool. Add Codex (`review` mode) if `config.codex`. If `config.swarm` → use TeamCreate. Collect → vote → triage → present |
-| `fix` phase | `simplify` findings → re-invoke `/simplify` for application. Other findings → dispatch `feature-implementer`. Serial modification to avoid conflicts |
-
-### Scope Detection
-
-Determine diff scope before dispatching agents:
-1. If branch differs from main → `git diff main...HEAD`
-2. If staged changes → `git diff --staged`
-3. Pass diff summary as context to all agents
-
-### /simplify Handling
-
-`/simplify` is invoked via Skill tool (not Agent tool). Its output is free-text, not structured JSON.
-Parse simplify output into findings format (file, description, suggestion).
-Simplify findings are **not subject to N-way voting** — included directly after dedup.
-
-### code-review-impact Context
-
-If a design doc exists in the output directory (`*-design.md`), pass its Impact Analysis
-section as additional context to the `code-review-impact` agent.
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only code-review-specific concerns (voting, triage, fix strategy, verify).
 
 ## Voting Protocol
 
-Activated when `config.iterations` > 1. Each agent is dispatched N times independently.
+Activated when this phase's `invoke.iterations` > 1. Each agent is dispatched N times independently.
 
 **Semantic similarity** (file/line-based):
 - Match: same `file` + line within ±10 lines + similar `description`
