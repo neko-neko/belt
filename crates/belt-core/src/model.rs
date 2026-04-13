@@ -57,7 +57,7 @@ pub struct Phase {
     pub consumes: Vec<ArtifactRef>,
     #[serde(default)]
     pub gate: Vec<GateCheck>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "validate_de::deserialize")]
     pub validate: Vec<ValidationSource>,
     #[serde(default)]
     pub regate: Vec<String>,
@@ -107,6 +107,74 @@ pub enum GateCheck {
 pub enum ValidationSource {
     Inline(String),
     File { file: String },
+}
+
+mod validate_de {
+    use super::ValidationSource;
+    use serde::de::{Deserializer, SeqAccess, Visitor};
+    use std::fmt;
+
+    /// Custom deserializer for `Phase.validate`.
+    ///
+    /// Accepts either:
+    /// - A YAML scalar (string): if the scalar starts with `./` or `/`, it
+    ///   is wrapped as `vec![ValidationSource::File { file }]`; otherwise as
+    ///   `vec![ValidationSource::Inline(s)]`.
+    /// - A YAML sequence: delegates to the stock `Vec<ValidationSource>`
+    ///   deserializer which in turn uses the untagged enum discrimination.
+    ///
+    /// This is the "scalar shorthand" described in Plan B spec DD-2.
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<Vec<ValidationSource>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct V;
+
+        impl<'de> Visitor<'de> for V {
+            type Value = Vec<ValidationSource>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string or a sequence of validation sources")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(classify_scalar(value.to_string()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(classify_scalar(value))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut out = Vec::new();
+                while let Some(item) = seq.next_element::<ValidationSource>()? {
+                    out.push(item);
+                }
+                Ok(out)
+            }
+        }
+
+        deserializer.deserialize_any(V)
+    }
+
+    /// Scalar classification rule: `./` or `/` prefix → File; else Inline.
+    /// The prefix match is strict: only these two prefixes qualify.
+    fn classify_scalar(s: String) -> Vec<ValidationSource> {
+        if s.starts_with("./") || s.starts_with('/') {
+            vec![ValidationSource::File { file: s }]
+        } else {
+            vec![ValidationSource::Inline(s)]
+        }
+    }
 }
 
 /// A typed artifact produced by a phase. The `name` is a logical identifier
@@ -252,7 +320,7 @@ pub struct ExpandedPhase {
     pub consumes: Vec<ArtifactRef>,
     #[serde(default)]
     pub gate: Vec<GateCheck>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "validate_de::deserialize")]
     pub validate: Vec<ValidationSource>,
     #[serde(default)]
     pub regate: Vec<String>,

@@ -481,6 +481,120 @@ phases:
     ));
 }
 
+/// Top-level scalar starting with `./` is treated as a file reference.
+#[test]
+fn parse_validate_scalar_shorthand_relative_file() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate: ./criteria/p.md
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].validate.len(), 1);
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::File { file } => assert_eq!(file, "./criteria/p.md"),
+        other => panic!("expected File, got {other:?}"),
+    }
+}
+
+/// Top-level scalar starting with `/` is treated as a file reference.
+#[test]
+fn parse_validate_scalar_shorthand_absolute_file() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate: /abs/path/criteria.md
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::File { file } => assert_eq!(file, "/abs/path/criteria.md"),
+        other => panic!("expected File, got {other:?}"),
+    }
+}
+
+/// Top-level scalar without path prefix is treated as inline criterion.
+#[test]
+fn parse_validate_scalar_shorthand_inline() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate: "All checks pass"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::Inline(s) => assert_eq!(s, "All checks pass"),
+        other => panic!("expected Inline, got {other:?}"),
+    }
+}
+
+/// Top-level scalar with a dot-prefix that is NOT a relative path ("." alone, "..foo", etc)
+/// must NOT be promoted to File — the prefix match is strict: `./` or `/`.
+#[test]
+fn parse_validate_scalar_shorthand_non_path_dot_prefix() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate: ".hidden criterion text"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::Inline(s) => assert_eq!(s, ".hidden criterion text"),
+        other => panic!("expected Inline, got {other:?}"),
+    }
+}
+
+/// List form is unchanged: bare strings are Inline, even if they start with ./
+#[test]
+fn parse_validate_list_bare_string_stays_inline_even_with_dot_prefix() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate:
+      - "./should-be-inline-because-in-list"
+      - file: "./actual-file.md"
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].validate.len(), 2);
+    match &pipeline.phases[0].validate[0] {
+        ValidationSource::Inline(s) => assert_eq!(s, "./should-be-inline-because-in-list"),
+        other => panic!("expected Inline, got {other:?}"),
+    }
+    match &pipeline.phases[0].validate[1] {
+        ValidationSource::File { file } => assert_eq!(file, "./actual-file.md"),
+        other => panic!("expected File, got {other:?}"),
+    }
+}
+
+/// Empty list is accepted (existing behavior, no change).
+#[test]
+fn parse_validate_empty_list_still_parses() {
+    let yaml = r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate: []
+"#;
+    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
+    assert_eq!(pipeline.phases[0].validate.len(), 0);
+}
+
 /// Parse a phase with one produces artifact (all fields populated).
 #[test]
 fn parse_phase_produces_single_artifact() {
