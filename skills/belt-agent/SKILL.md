@@ -55,7 +55,9 @@ Every phase returned by `next` may carry an `invoke` field with one of four vari
 | `skill` | `{ skill: "/name", args: { ... } }` | Invoke the Claude Code slash-command skill named in `invoke.skill`, passing `invoke.args` as parameters. |
 | `agent` | `{ agent: "name", args: { ... } }` | Dispatch a single subagent via the `Agent` tool with `subagent_type: <name>`. Pass `invoke.args` as context. |
 | `agents` | `{ agents: ["a", "b", ...], iterations: N, args: { ... } }` | Dispatch each named subagent in parallel. If `iterations > 1`, run N rounds for voting. `invoke.args` carries run-time qualifiers (`ui_agent`, `codex`, `swarm`, etc.). |
-| `pipeline` | `{ pipeline: "./path.yml", with: { ... } }` | Initialise a nested `belt-agent` run on the referenced sub-pipeline. Pass `with` as args. Treat the nested run as a black-box until it reports `completed`. If a `with` entry value is a string of the form `"args.X"`, resolve it against the parent run's `args` before calling `belt-agent init --arg X=<value>`. Literal values (bool, number, non-template string) are passed through verbatim. If `args.X` is absent in the parent, omit the `--arg` instead of passing `null`; the sub-pipeline's declared default applies. |
+| `pipeline` | `{ pipeline: "./path.yml", with: { ... } }` | Initialise a nested `belt-agent` run on the referenced sub-pipeline. Pass `with` as args. Treat the nested run as a black-box until it reports `completed`. |
+
+**`pipeline` invoke — `with` template resolution.** When a `with` entry's value is a string of the form `"args.X"` (literal prefix `args.` followed by a single arg identifier — no nested dotted paths), resolve it against the parent run's `args` before calling `belt-agent init --arg X=<value>`. Literal values (bool, number, non-template string) are passed through verbatim. If `args.X` is absent in the parent, omit the `--arg` instead of passing `null`; the sub-pipeline's declared default applies.
 
 If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`, `validate:`, or `confirm:`. Proceed directly to the verify/step loop.
 
