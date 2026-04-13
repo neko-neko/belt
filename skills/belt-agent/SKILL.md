@@ -55,7 +55,7 @@ Every phase returned by `next` may carry an `invoke` field with one of four vari
 | `skill` | `{ skill: "/name", args: { ... } }` | Invoke the Claude Code slash-command skill named in `invoke.skill`, passing `invoke.args` as parameters. |
 | `agent` | `{ agent: "name", args: { ... } }` | Dispatch a single subagent via the `Agent` tool with `subagent_type: <name>`. Pass `invoke.args` as context. |
 | `agents` | `{ agents: ["a", "b", ...], iterations: N, args: { ... } }` | Dispatch each named subagent in parallel. If `iterations > 1`, run N rounds for voting. `invoke.args` carries run-time qualifiers (`ui_agent`, `codex`, `swarm`, etc.). |
-| `pipeline` | `{ pipeline: "./path.yml", with: { ... } }` | Initialise a nested `belt-agent` run on the referenced sub-pipeline. Pass `with` as args. Treat the nested run as a black-box until it reports `completed`. |
+| `pipeline` | `{ pipeline: "./path.yml", with: { ... } }` | Initialise a nested `belt-agent` run on the referenced sub-pipeline. Pass `with` as args. Treat the nested run as a black-box until it reports `completed`. If a `with` entry value is a string of the form `"args.X"`, resolve it against the parent run's `args` before calling `belt-agent init --arg X=<value>`. Literal values (bool, number, non-template string) are passed through verbatim. If `args.X` is absent in the parent, omit the `--arg` instead of passing `null`; the sub-pipeline's declared default applies. |
 
 If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`, `validate:`, or `confirm:`. Proceed directly to the verify/step loop.
 
@@ -75,7 +75,7 @@ If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`, `vali
 }
 ```
 
-`belt-core` resolves glob paths using the phase-start mtime filter: the matching file with the newest mtime (greater than or equal to the phase's entry timestamp) is chosen, ties broken lexicographically. For concrete paths, `exists` is a direct `std::fs::metadata` check. Use `exists: false` and `resolved_path: null` as a signal that the declared artifact is missing.
+`belt-core` resolves glob paths using the phase-start mtime filter: the matching file with the newest mtime (greater than or equal to the phase's entry timestamp) is chosen, ties broken lexicographically. For concrete paths, `exists` is a direct `std::fs::metadata` check. Use `exists: false` as the signal that the declared artifact is missing. The `resolved_path` field is omitted from JSON (not serialized as `null`) when unresolved.
 
 `consumes` is a list of artifact references. Each entry is either:
 
