@@ -40,8 +40,6 @@ pub struct Phase {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub uses: Option<String>,
-    #[serde(default)]
     pub with: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub when: Option<String>,
@@ -49,8 +47,6 @@ pub struct Phase {
     pub invoke: Option<Invoker>,
     #[serde(default)]
     pub config: HashMap<String, serde_json::Value>,
-    #[serde(default)]
-    pub artifacts: Vec<String>,
     #[serde(default)]
     pub produces: Vec<Artifact>,
     #[serde(default)]
@@ -329,16 +325,15 @@ pub struct RunState {
     pub updated_at: String,
 }
 
-/// A phase after `uses:` resolution and template expansion.
-/// All fields from the referenced sub-pipeline / gate are merged in.
+/// A phase after sub-pipeline resolution (via `invoke: { pipeline: ... }`)
+/// and template expansion. All fields from the referenced sub-pipeline / gate
+/// are merged in.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExpandedPhase {
     pub id: String,
     pub description: String,
     #[serde(default)]
     pub config: HashMap<String, serde_json::Value>,
-    #[serde(default)]
-    pub artifacts: Vec<String>,
     #[serde(default)]
     pub produces: Vec<Artifact>,
     #[serde(default)]

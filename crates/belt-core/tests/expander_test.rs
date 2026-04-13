@@ -12,12 +12,14 @@ fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
     path
 }
 
-/// `uses:` phases are expanded to namespaced IDs, and leaf phases are preserved.
+/// `invoke: { pipeline: ... }` phases are expanded to namespaced IDs, and
+/// leaf phases are preserved.
 #[test]
-fn expand_uses_phase_to_namespaced_ids() {
+fn expand_invoke_pipeline_phase_to_namespaced_ids() {
     let dir = TempDir::new().expect("failed to create tempdir");
 
-    // Sub-pipeline with 2 phases
+    // Sub-pipeline with 2 phases. Each sub-phase needs a description AND
+    // at least one of: invoke, gate, validate, confirm (spec DD-8).
     write_yaml(
         &dir,
         "spec-review.yml",
@@ -27,12 +29,16 @@ version: 1
 phases:
   - id: review
     description: "Review the spec"
+    gate:
+      - cmd: "true"
   - id: fix
     description: "Fix spec issues"
+    gate:
+      - cmd: "true"
 "#,
     );
 
-    // Main pipeline: one uses-phase + one leaf phase
+    // Main pipeline: one sub-pipeline phase + one leaf phase
     let pipeline_path = write_yaml(
         &dir,
         "pipeline.yml",
@@ -41,9 +47,12 @@ name: main
 version: 1
 phases:
   - id: spec-review
-    uses: spec-review.yml
+    invoke:
+      pipeline: spec-review.yml
   - id: build
     description: "Build the project"
+    gate:
+      - cmd: "true"
 "#,
     );
 
@@ -60,7 +69,8 @@ phases:
 fn parent_gate_appended_to_last_sub_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
 
-    // Sub-pipeline with 2 phases, no gates
+    // Sub-pipeline with 2 phases, no parent-provided gate (each sub-phase
+    // has its own `cmd: true` gate to satisfy the empty-phase lint rule).
     write_yaml(
         &dir,
         "sub.yml",
@@ -70,12 +80,17 @@ version: 1
 phases:
   - id: a
     description: "Phase A"
+    gate:
+      - cmd: "true"
   - id: b
     description: "Phase B"
+    gate:
+      - cmd: "true"
 "#,
     );
 
-    // Main pipeline with gate + regate on the uses-phase
+    // Main pipeline with gate + regate on the sub-pipeline phase.
+    // The "execute" phase referenced by regate must exist as a phase id.
     let pipeline_path = write_yaml(
         &dir,
         "pipeline.yml",
@@ -83,8 +98,13 @@ phases:
 name: main
 version: 1
 phases:
+  - id: execute
+    description: "Execute"
+    gate:
+      - cmd: "true"
   - id: parent
-    uses: sub.yml
+    invoke:
+      pipeline: sub.yml
     gate:
       - cmd: "cargo test"
     regate:
@@ -93,15 +113,20 @@ phases:
     );
 
     let expanded = expand_pipeline(&pipeline_path).expect("expand should succeed");
-    assert_eq!(expanded.len(), 2);
+    assert_eq!(expanded.len(), 3);
 
-    // First sub-phase (a): NO parent gate/regate
-    assert!(expanded[0].gate.is_empty());
-    assert!(expanded[0].regate.is_empty());
+    // expanded[0] is the leaf "execute" phase.
+    assert_eq!(expanded[0].id, "execute");
 
-    // Last sub-phase (b): parent gate and regate appended
+    // First sub-phase (parent/a): only its own gate, no parent gate/regate.
+    assert_eq!(expanded[1].id, "parent/a");
     assert_eq!(expanded[1].gate.len(), 1);
-    assert_eq!(expanded[1].regate, vec!["execute"]);
+    assert!(expanded[1].regate.is_empty());
+
+    // Last sub-phase (parent/b): parent gate and regate appended.
+    assert_eq!(expanded[2].id, "parent/b");
+    assert_eq!(expanded[2].gate.len(), 2);
+    assert_eq!(expanded[2].regate, vec!["execute"]);
 }
 
 /// Parent `when` propagates to all sub-phases that lack their own.
@@ -109,7 +134,8 @@ phases:
 fn when_propagated_to_sub_phases() {
     let dir = TempDir::new().expect("failed to create tempdir");
 
-    // Sub-pipeline: first phase has its own when, second has none
+    // Sub-pipeline: first phase has its own when, second has none. Each
+    // sub-phase has at least one gate to satisfy the empty-phase lint.
     write_yaml(
         &dir,
         "sub.yml",
@@ -119,8 +145,12 @@ version: 1
 phases:
   - id: alpha
     description: "Alpha"
+    gate:
+      - cmd: "true"
   - id: beta
     description: "Beta"
+    gate:
+      - cmd: "true"
 "#,
     );
 
@@ -132,7 +162,8 @@ name: main
 version: 1
 phases:
   - id: gated
-    uses: sub.yml
+    invoke:
+      pipeline: sub.yml
     when: "args.smoke"
 "#,
     );
@@ -172,8 +203,7 @@ phases:
 }
 
 /// A phase using `invoke: { pipeline: "./sub.yml" }` expands into the
-/// sub-pipeline's phases with namespaced IDs, identically to using
-/// `uses: "./sub.yml"` at the phase level.
+/// sub-pipeline's phases with namespaced IDs.
 #[test]
 fn expand_invoke_pipeline_variant() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -213,56 +243,4 @@ phases:
     assert_eq!(expanded.len(), 2);
     assert_eq!(expanded[0].id, "review/work");
     assert_eq!(expanded[1].id, "review/audit");
-}
-
-/// Both `uses:` and `invoke: { pipeline: ... }` produce identical expansion.
-#[test]
-fn expand_uses_and_invoke_pipeline_equivalent() {
-    let dir = TempDir::new().expect("failed to create tempdir");
-
-    write_yaml(
-        &dir,
-        "sub.yml",
-        r#"
-name: sub
-version: 1
-phases:
-  - id: run
-    description: "sub run"
-"#,
-    );
-
-    // Pipeline A: uses:
-    let a_path = write_yaml(
-        &dir,
-        "a.yml",
-        r"
-name: a
-version: 1
-phases:
-  - id: x
-    uses: ./sub.yml
-",
-    );
-
-    // Pipeline B: invoke: { pipeline: ... }
-    let b_path = write_yaml(
-        &dir,
-        "b.yml",
-        r"
-name: b
-version: 1
-phases:
-  - id: x
-    invoke:
-      pipeline: ./sub.yml
-",
-    );
-
-    let a_exp = expand_pipeline(&a_path).expect("expand a");
-    let b_exp = expand_pipeline(&b_path).expect("expand b");
-
-    assert_eq!(a_exp.len(), b_exp.len());
-    assert_eq!(a_exp[0].id, b_exp[0].id);
-    assert_eq!(a_exp[0].id, "x/run");
 }

@@ -84,13 +84,12 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     }
 
     // Check: leaf phase must have description.
-    // A phase is a leaf unless it delegates to a sub-pipeline via `uses:` or
+    // A phase is a leaf unless it delegates to a sub-pipeline via
     // `invoke: { pipeline: ... }`. Other `Invoker` variants (`Skill`, `Agent`,
     // `Agents`) execute at the current phase and still need a human-readable
     // description for `belt-agent status` / `belt-agent next` output.
     for phase in &pipeline.phases {
-        let delegates_to_sub_pipeline =
-            phase.uses.is_some() || matches!(phase.invoke, Some(Invoker::Pipeline { .. }));
+        let delegates_to_sub_pipeline = matches!(phase.invoke, Some(Invoker::Pipeline { .. }));
         if !delegates_to_sub_pipeline && phase.description.is_none() {
             diagnostics.push(LintDiagnostic {
                 severity: Severity::Error,
@@ -99,18 +98,11 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
         }
     }
 
-    // Check: uses: references exist
+    // Check: a phase must do at least one of: invoke, gate, validate, confirm.
+    // Completely empty phases are almost always authoring mistakes (spec DD-8).
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
     for phase in &pipeline.phases {
-        if let Some(uses) = &phase.uses {
-            let resolved = base_dir.join(uses);
-            if !resolved.exists() {
-                diagnostics.push(LintDiagnostic {
-                    severity: Severity::Error,
-                    message: format!("phase '{}': uses '{}' not found", phase.id, uses),
-                });
-            }
-        }
+        check_empty_phase(phase, &mut diagnostics);
     }
 
     // Check: gate uses: references exist
@@ -139,6 +131,25 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     }
 
     Ok(diagnostics)
+}
+
+/// Reject phases that have no action, no verification, and no interaction.
+/// A phase must do at least one of: invoke something, run a gate, declare
+/// a validate criterion, or require confirmation. Completely empty phases
+/// are almost always authoring mistakes (spec DD-8).
+fn check_empty_phase(phase: &crate::model::Phase, diagnostics: &mut Vec<LintDiagnostic>) {
+    let has_action = phase.invoke.is_some();
+    let has_verification = !phase.gate.is_empty() || !phase.validate.is_empty();
+    let has_interaction = phase.confirm;
+    if !has_action && !has_verification && !has_interaction {
+        diagnostics.push(LintDiagnostic {
+            severity: Severity::Error,
+            message: format!(
+                "phase '{}' has neither invoke, gate, validate, nor confirm — add at least one",
+                phase.id
+            ),
+        });
+    }
 }
 
 /// Verify that every `gate: uses:` reference points to an existing file on disk.

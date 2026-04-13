@@ -1,41 +1,32 @@
 use crate::error::{BeltError, BeltResult};
-use crate::model::{ExpandedPhase, Phase, SubPipeline};
+use crate::model::{ExpandedPhase, Invoker, Phase, SubPipeline};
 use crate::parser::{parse_pipeline, parse_sub_pipeline};
 use std::path::Path;
 
-/// Parse a pipeline and expand all `uses:` references into flat, namespaced phases.
+/// Parse a pipeline and expand all `invoke: { pipeline: ... }` references into
+/// flat, namespaced phases.
 ///
-/// Each phase with a `uses:` key references a sub-pipeline YAML file (resolved
-/// relative to `pipeline_path`'s directory). The sub-pipeline's phases are
-/// flattened with namespaced IDs (`{parent_id}/{sub_phase_id}`).
+/// Each phase whose `invoke` is an [`Invoker::Pipeline`] references a
+/// sub-pipeline YAML file (resolved relative to `pipeline_path`'s directory).
+/// The sub-pipeline's phases are flattened with namespaced IDs
+/// (`{parent_id}/{sub_phase_id}`).
 ///
-/// Inheritance rules for the **last** sub-phase of each `uses:` expansion:
+/// Inheritance rules for the **last** sub-phase of each expansion:
 /// - `gate`, `regate`, `validate`: parent entries are **appended**
 /// - `config`: merged with parent keys winning on conflict
 ///
 /// **All** sub-phases inherit the parent's `when` if they lack their own.
 ///
-/// A leaf phase (no `uses:`) **must** have a `description`; otherwise
-/// `BeltError::InvalidPipeline` is returned.
+/// A leaf phase (no `invoke: { pipeline: ... }`) **must** have a `description`;
+/// otherwise `BeltError::InvalidPipeline` is returned.
 pub fn expand_pipeline(pipeline_path: &Path) -> BeltResult<Vec<ExpandedPhase>> {
     let pipeline = parse_pipeline(pipeline_path)?;
     let base_dir = pipeline_path.parent().unwrap_or_else(|| Path::new("."));
 
     let mut expanded = Vec::new();
     for phase in &pipeline.phases {
-        // Resolve the sub-pipeline path from either `phase.uses` or
-        // `phase.invoke: { pipeline: ... }`. `uses:` takes precedence if both
-        // are present (legacy behavior during the BELT-32 transition).
-        let sub_path_opt: Option<&str> = if let Some(uses) = &phase.uses {
-            Some(uses.as_str())
-        } else if let Some(crate::model::Invoker::Pipeline { pipeline, .. }) = &phase.invoke {
-            Some(pipeline.as_str())
-        } else {
-            None
-        };
-
-        if let Some(sub_rel) = sub_path_opt {
-            let sub_path = base_dir.join(sub_rel);
+        if let Some(Invoker::Pipeline { pipeline, .. }) = &phase.invoke {
+            let sub_path = base_dir.join(pipeline);
             let sub = parse_sub_pipeline(&sub_path)?;
             let sub_phases = expand_sub_pipeline(&phase.id, phase, &sub);
             expanded.extend(sub_phases);
@@ -78,7 +69,6 @@ fn expand_sub_pipeline(parent_id: &str, parent: &Phase, sub: &SubPipeline) -> Ve
             id: namespaced_id,
             description: sub_phase.description.clone().unwrap_or_default(),
             config: merged_config,
-            artifacts: sub_phase.artifacts.clone(),
             produces: sub_phase.produces.clone(),
             consumes: sub_phase.consumes.clone(),
             gate,
@@ -99,7 +89,7 @@ fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
     // been handled by the sub-pipeline branch in `expand_pipeline`. Hitting
     // this case is a bug in the expander branching logic, not a user error.
     debug_assert!(
-        !matches!(phase.invoke, Some(crate::model::Invoker::Pipeline { .. })),
+        !matches!(phase.invoke, Some(Invoker::Pipeline { .. })),
         "leaf_phase called with Invoker::Pipeline — expander branch logic is wrong"
     );
 
@@ -113,7 +103,6 @@ fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
         id: phase.id.clone(),
         description,
         config: phase.config.clone(),
-        artifacts: phase.artifacts.clone(),
         produces: phase.produces.clone(),
         consumes: phase.consumes.clone(),
         gate: phase.gate.clone(),

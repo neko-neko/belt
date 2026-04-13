@@ -44,9 +44,10 @@ phases:
     gate:
       - cmd: "true"
   - id: code-review
-    uses: ./pipelines/review-cycle.yml
-    with:
-      skill: "/code-review"
+    invoke:
+      pipeline: ./pipelines/review-cycle.yml
+      with:
+        skill: "/code-review"
     regate:
       - build
 "#,

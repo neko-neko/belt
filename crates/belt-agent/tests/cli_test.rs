@@ -1586,7 +1586,8 @@ name: sub-test
 version: 1
 phases:
   - id: review
-    uses: ./pipelines/review.yml
+    invoke:
+      pipeline: ./pipelines/review.yml
 "#,
     );
 

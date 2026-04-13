@@ -119,6 +119,8 @@ phases:
   - id: test
     description: "Run tests"
     when: "args.smoke"
+    gate:
+      - cmd: "cargo test"
     regate:
       - build
 "#,
@@ -436,15 +438,21 @@ version: 1
 phases:
   - id: design
     description: "d"
+    gate:
+      - cmd: "true"
     produces:
       - name: design_doc
         path: "design.md"
   - id: plan
     description: "p"
+    gate:
+      - cmd: "true"
     consumes:
       - design_doc
   - id: review
     description: "r"
+    gate:
+      - cmd: "true"
     consumes:
       - name: design_doc
         from: design
@@ -549,6 +557,128 @@ phases:
         .filter(|d| d.severity == Severity::Error)
         .collect();
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
+}
+
+/// A completely empty phase (no invoke, gate, validate, or confirm) is an
+/// authoring mistake — belt-core lint rejects it per spec DD-8.
+#[test]
+fn lint_rejects_completely_empty_phase() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: empty
+    description: "has nothing"
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errors.iter().any(|d| d.message.contains("'empty'")
+            && d.message
+                .contains("neither invoke, gate, validate, nor confirm")),
+        "expected EmptyPhase diagnostic for 'empty', got {errors:?}"
+    );
+}
+
+/// Phase with only `gate:` passes the empty-phase rule.
+#[test]
+fn lint_accepts_phase_with_only_gate() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        !errors.iter().any(|d| d
+            .message
+            .contains("neither invoke, gate, validate, nor confirm")),
+        "phase with only gate must pass empty-phase lint: {errors:?}"
+    );
+}
+
+/// Phase with only `validate:` passes the empty-phase rule.
+#[test]
+fn lint_accepts_phase_with_only_validate() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    validate:
+      - "some criterion"
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        !errors.iter().any(|d| d
+            .message
+            .contains("neither invoke, gate, validate, nor confirm")),
+        "phase with only validate must pass empty-phase lint: {errors:?}"
+    );
+}
+
+/// Phase with only `confirm: true` passes the empty-phase rule.
+#[test]
+fn lint_accepts_phase_with_only_confirm() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: p
+    description: p
+    confirm: true
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&path).expect("lint should succeed");
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        !errors.iter().any(|d| d
+            .message
+            .contains("neither invoke, gate, validate, nor confirm")),
+        "phase with only confirm must pass empty-phase lint: {errors:?}"
+    );
 }
 
 #[test]

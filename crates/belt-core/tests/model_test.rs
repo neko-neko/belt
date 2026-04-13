@@ -32,7 +32,7 @@ phases:
 }
 
 /// Parse a phase with ALL fields populated: when, confirm, max_retries, config,
-/// artifacts, multiple gate variants, validate, regate.
+/// produces, multiple gate variants, validate, regate.
 #[test]
 fn parse_phase_all_fields() {
     let yaml = r#"
@@ -47,9 +47,11 @@ phases:
     config:
       timeout: 300
       verbose: true
-    artifacts:
-      - dist/app.tar.gz
-      - dist/checksum.sha256
+    produces:
+      - name: release_bundle
+        path: "dist/app.tar.gz"
+      - name: checksum
+        path: "dist/checksum.sha256"
     gate:
       - cmd: "make test"
       - file_exists: dist/app.tar.gz
@@ -76,9 +78,10 @@ phases:
     // config
     assert_eq!(phase.config.len(), 2);
 
-    // artifacts
-    assert_eq!(phase.artifacts.len(), 2);
-    assert_eq!(phase.artifacts[0], "dist/app.tar.gz");
+    // produces
+    assert_eq!(phase.produces.len(), 2);
+    assert_eq!(phase.produces[0].name, "release_bundle");
+    assert_eq!(phase.produces[0].path, "dist/app.tar.gz");
 
     // gate variants
     assert_eq!(phase.gate.len(), 5);
