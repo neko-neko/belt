@@ -49,6 +49,11 @@ phases:
     description: "Plan review via implementation-review sub-pipeline"
     invoke:
       pipeline: ../implementation-review/pipeline.yml
+      with:
+        iterations: "args.iterations"
+        codex: "args.codex"
+        ui: "args.ui"
+        swarm: "args.swarm"
     consumes:
       - fix_plan_doc
     validate: ./criteria/fix-plan-review.md
@@ -88,6 +93,10 @@ phases:
     description: "Multi-perspective code review via code-review sub-pipeline"
     invoke:
       pipeline: ../code-review/pipeline.yml
+      with:
+        iterations: "args.iterations"
+        codex: "args.codex"
+        swarm: "args.swarm"
     consumes:
       - fix_plan_doc
     validate: ../../criteria/code-review.md
@@ -101,6 +110,10 @@ phases:
     when: "args.e2e"
     invoke:
       pipeline: ../test-review/pipeline.yml
+      with:
+        iterations: "args.iterations"
+        codex: "args.codex"
+        swarm: "args.swarm"
     consumes:
       - fix_plan_doc
     validate: ../../criteria/test-review.md
