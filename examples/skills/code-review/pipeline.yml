@@ -4,10 +4,11 @@ args:
   iterations: { type: number, default: 3 }
   codex: { type: bool, default: false }
   swarm: { type: bool, default: false }
+
 phases:
   - id: review
     description: "7-perspective code review"
-    config:
+    invoke:
       agents:
         - code-review-quality
         - code-review-security
@@ -15,13 +16,21 @@ phases:
         - code-review-test
         - code-review-ai-antipattern
         - code-review-impact
-      skills:
-        - "/simplify"
-      codex: "args.codex"
       iterations: "args.iterations"
-      swarm: "args.swarm"
+      args:
+        skills:
+          - /simplify
+        codex: "args.codex"
+        swarm: "args.swarm"
+    produces:
+      - name: review_findings
+        path: ".belt/runs/*/review/findings.json"
+        description: "Deduplicated N-way voted findings across quality, security, performance, test, AI-antipattern, and impact perspectives"
     confirm: true
+
   - id: fix
-    description: "Fix accepted findings"
+    description: "Fix accepted findings from the review phase"
+    consumes:
+      - review_findings
     gate:
       - has_output: true
