@@ -14,116 +14,135 @@ phases:
   # ─── Design ───
   - id: design
     description: "Create design spec via brainstorming"
-    config:
-      skill: "/brainstorming"
-      swarm: "args.swarm"
+    invoke:
+      skill: /brainstorming
+      args:
+        swarm: "args.swarm"
+    produces:
+      - name: design_doc
+        path: "docs/plans/*-design.md"
+        description: "Brainstormed design with requirements, impact scope, test perspectives"
     gate:
       - file_exists: "docs/plans/*-design.md"
-
-  - id: design-audit
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "design"
+    validate: ./criteria/design.md
+    confirm: true
+    max_retries: 3
 
   # ─── Spec Review ───
   - id: spec-review
-    uses: ../spec-review/pipeline.yml
-
-  - id: spec-review-audit
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "spec-review"
+    description: "Multi-perspective spec review via spec-review sub-pipeline"
+    invoke:
+      pipeline: ../spec-review/pipeline.yml
+    consumes:
+      - design_doc
+    validate: ./criteria/spec-review.md
+    confirm: true
+    max_retries: 3
 
   # ─── Plan ───
   - id: plan
     description: "Create implementation plan and test cases"
-    config:
-      skill: "/writing-plans"
+    invoke:
+      skill: /writing-plans
+    consumes:
+      - design_doc
+    produces:
+      - name: plan_doc
+        path: "docs/plans/*-plan.md"
+        description: "Implementation plan with task breakdown and TDD steps"
+      - name: test_cases
+        path: "docs/plans/*-test-cases.md"
+        description: "Test case catalogue enumerated from the design"
     gate:
       - file_exists: "docs/plans/*-plan.md"
       - file_exists: "docs/plans/*-test-cases.md"
-
-  - id: plan-audit
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "plan"
+    validate: ./criteria/plan.md
+    confirm: true
+    max_retries: 3
 
   # ─── Plan Review ───
   - id: plan-review
-    uses: ../implementation-review/pipeline.yml
-
-  - id: plan-review-audit
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "plan-review"
+    description: "Plan review via implementation-review sub-pipeline"
+    invoke:
+      pipeline: ../implementation-review/pipeline.yml
+    consumes:
+      - plan_doc
+      - test_cases
+    validate: ./criteria/plan-review.md
+    confirm: true
+    max_retries: 3
 
   # ─── Execute ───
   - id: execute
     description: "TDD implementation following the plan"
-    config:
-      skill: "/subagent-driven-development"
+    invoke:
+      skill: /subagent-driven-development
+    consumes:
+      - design_doc
+      - plan_doc
+      - test_cases
+    validate: ../../criteria/execute.md
+    confirm: true
     max_retries: 3
-
-  - id: execute-audit
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "execute"
 
   # ─── Doc Audit (conditional) ───
   - id: doc-audit
     description: "4-layer document audit"
     when: "args.doc"
-    config:
-      skill: "/doc-audit"
-
-  - id: doc-audit-audit
-    when: "args.doc"
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "doc-audit"
+    invoke:
+      skill: /doc-audit
+    validate: ./criteria/doc-audit.md
+    confirm: true
+    max_retries: 3
 
   # ─── Smoke Test (conditional) ───
   - id: smoke-test
     description: "Local smoke test with browser verification"
     when: "args.smoke"
-    config:
-      skill: "/smoke-test"
+    invoke:
+      skill: /smoke-test
+    produces:
+      - name: smoke_test_report
+        path: "smoke-test-report.md"
+        description: "Ad-hoc smoke test report with adversarial probes"
     gate:
       - file_exists: "smoke-test-report.md"
-
-  - id: smoke-test-audit
-    when: "args.smoke"
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "smoke-test"
+    validate: ../../criteria/smoke-test.md
+    confirm: true
+    max_retries: 3
 
   # ─── Code Review ───
   - id: code-review
-    uses: ../code-review/pipeline.yml
-
-  - id: code-review-audit
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "code-review"
+    description: "Multi-perspective code review via code-review sub-pipeline"
+    invoke:
+      pipeline: ../code-review/pipeline.yml
+    consumes:
+      - design_doc
+      - plan_doc
+    validate: ../../criteria/code-review.md
     regate: [execute, smoke-test, doc-audit]
+    confirm: true
+    max_retries: 3
 
   # ─── Test Review (conditional) ───
   - id: test-review
+    description: "Multi-perspective test review via test-review sub-pipeline"
     when: "args.e2e"
-    uses: ../test-review/pipeline.yml
-
-  - id: test-review-audit
-    when: "args.e2e"
-    uses: ../audit-gate/pipeline.yml
-    config:
-      criteria: "test-review"
+    invoke:
+      pipeline: ../test-review/pipeline.yml
+    consumes:
+      - plan_doc
+      - test_cases
+    validate: ../../criteria/test-review.md
     regate: [execute]
+    confirm: true
+    max_retries: 3
 
   # ─── Integrate ───
   - id: integrate
     description: "Merge, PR, or branch management"
-    config:
-      skill: "/worktrunk"
+    invoke:
+      skill: /worktrunk
     validate:
       - "Integration method chosen and executed"
       - "All pre-merge checks pass"

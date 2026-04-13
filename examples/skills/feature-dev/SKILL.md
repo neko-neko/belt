@@ -18,12 +18,17 @@ The orchestrator dispatches skills per phase and auditor agents per audit.
 
 ## Dispatch Rules
 
-| config pattern | Action |
+| invoke variant | Orchestrator action |
 |---|---|
-| `config.skill` present | Invoke the skill. Pass `config.codex`, `config.iterations`, `config.swarm`, `config.ui` as options (resolved from `args`) |
-| Sub-pipeline phase (id contains `/`) | Load SKILL.md from the sub-pipeline's skill directory (resolved from `uses:` path in pipeline.yml). Follow that SKILL.md's dispatch rules for the current sub-phase. Runtime args (`codex`, `iterations`, `swarm`, `ui`) come from top-level pipeline args |
-| `config.audit: "required"` | Read `references/done-criteria/{config.criteria}.md`. Dispatch `phase-auditor` subagent per `../audit-gate/references/audit-protocol.md`. Write verdict to output_dir. PASS → `step --confirm`. FAIL → fix per `references/fix-dispatch-strategy.md`, re-audit |
-| `config.audit: "lite"` | Orchestrator directly evaluates `validate` criteria. `step --confirm` after user chooses integration method |
+| `skill:` | Invoke the Claude Code slash-command skill named in `invoke.skill`, passing `invoke.args` as arguments. |
+| `pipeline:` | Initialise a nested `belt-agent` run on the referenced sub-pipeline (`invoke.pipeline`) with `invoke.with` as args. |
+
+Phase validation is driven by `validate:` on each phase. When `validate` is
+a file reference (e.g., `./criteria/design.md`), read the file and judge
+each criterion defined inside it before calling `belt-agent step --confirm`.
+When `validate` is a list of inline strings, judge each string directly.
+Both forms use the same `phase-auditor` subagent by convention; see
+`../../references/audit-protocol.md`.
 
 ## Evidence Plan
 
