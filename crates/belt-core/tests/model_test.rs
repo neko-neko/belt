@@ -1,6 +1,6 @@
 use belt_core::model::{
     ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, IterationsSpec, Pipeline,
-    RunState, SubPipeline, ValidationSource,
+    RunState, RunStatus, SubPipeline, ValidationSource,
 };
 use belt_core::uri::BeltUri;
 
@@ -1021,4 +1021,26 @@ fn artifact_ref_qualified_still_works() {
 "#;
     let refs: Vec<ArtifactRef> = serde_saphyr::from_str(yaml).unwrap();
     matches!(refs[0], ArtifactRef::Qualified { .. });
+}
+
+#[test]
+fn run_status_serializes_as_lowercase_string() {
+    assert_eq!(
+        serde_json::to_string(&RunStatus::InProgress).unwrap(),
+        "\"in_progress\""
+    );
+    assert_eq!(
+        serde_json::to_string(&RunStatus::Completed).unwrap(),
+        "\"completed\""
+    );
+    assert_eq!(
+        serde_json::to_string(&RunStatus::Failed).unwrap(),
+        "\"failed\""
+    );
+}
+
+#[test]
+fn run_status_default_is_in_progress() {
+    let default: RunStatus = Default::default();
+    assert_eq!(default, RunStatus::InProgress);
 }

@@ -309,6 +309,20 @@ pub struct SubPipeline {
     pub phases: Vec<Phase>,
 }
 
+/// Terminal status of a run. Default `InProgress` applies during execution.
+/// `Completed` set when the last phase's `step` succeeds. `Failed` is
+/// reserved for future use (no command currently writes it in MVP).
+/// `Paused` is NOT added here to avoid a collision with BELT-28's
+/// `on_escalation: pause` proposal (separate boolean field planned there).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    #[default]
+    InProgress,
+    Completed,
+    Failed,
+}
+
 /// Persisted run state for a pipeline execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunState {
