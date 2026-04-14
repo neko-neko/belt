@@ -219,8 +219,20 @@ fn substitute_in_invoker(
     invoker: &mut crate::model::Invoker,
     with_map: &std::collections::HashMap<String, serde_json::Value>,
 ) {
-    if let crate::model::Invoker::Agents { iterations, .. } = invoker {
-        substitute_iterations_spec(iterations, with_map);
+    use crate::model::Invoker;
+    match invoker {
+        Invoker::Skill { args, .. } | Invoker::Agent { args, .. } => {
+            substitute_in_value_map(args, with_map);
+        }
+        Invoker::Agents {
+            iterations, args, ..
+        } => {
+            substitute_iterations_spec(iterations, with_map);
+            substitute_in_value_map(args, with_map);
+        }
+        Invoker::Pipeline { .. } => {
+            // Nested Pipeline.with handled in Task 7.
+        }
     }
 }
 
@@ -667,6 +679,69 @@ mod tests {
         match &out[0].invoke {
             Some(crate::model::Invoker::Agents { iterations, .. }) => {
                 assert_eq!(iterations, &IterationsSpec::Literal(9));
+            }
+            _ => panic!("expected Agents invoke"),
+        }
+    }
+
+    #[test]
+    fn invoker_skill_args_rewritten() {
+        use crate::model::Invoker;
+        let parent = mk_parent_phase();
+        let mut leaf = mk_leaf_phase("leaf", None);
+        leaf.invoke = Some(Invoker::Skill {
+            skill: "/s".into(),
+            args: [("k".to_string(), json!("args.n"))].into_iter().collect(),
+        });
+        let sub = mk_sub(vec![leaf]);
+        let w = mk_with(&[("n", json!(42))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        match &out[0].invoke {
+            Some(Invoker::Skill { args, .. }) => {
+                assert_eq!(args.get("k"), Some(&json!(42)));
+            }
+            _ => panic!("expected Skill invoke"),
+        }
+    }
+
+    #[test]
+    fn invoker_agent_args_rewritten() {
+        use crate::model::Invoker;
+        let parent = mk_parent_phase();
+        let mut leaf = mk_leaf_phase("leaf", None);
+        leaf.invoke = Some(Invoker::Agent {
+            agent: "ag".into(),
+            args: [("k".to_string(), json!("args.flag"))]
+                .into_iter()
+                .collect(),
+        });
+        let sub = mk_sub(vec![leaf]);
+        let w = mk_with(&[("flag", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        match &out[0].invoke {
+            Some(Invoker::Agent { args, .. }) => {
+                assert_eq!(args.get("k"), Some(&json!(true)));
+            }
+            _ => panic!("expected Agent invoke"),
+        }
+    }
+
+    #[test]
+    fn invoker_agents_args_rewritten() {
+        use crate::model::{Invoker, IterationsSpec};
+        let parent = mk_parent_phase();
+        let mut leaf = mk_leaf_phase("leaf", None);
+        leaf.invoke = Some(Invoker::Agents {
+            agents: vec!["a".into()],
+            iterations: IterationsSpec::default(),
+            args: [("k".to_string(), json!("args.x"))].into_iter().collect(),
+        });
+        let sub = mk_sub(vec![leaf]);
+        let w = mk_with(&[("x", json!("hello"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        match &out[0].invoke {
+            Some(Invoker::Agents { args, .. }) => {
+                assert_eq!(args.get("k"), Some(&json!("hello")));
             }
             _ => panic!("expected Agents invoke"),
         }
