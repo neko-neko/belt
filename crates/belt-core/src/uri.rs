@@ -57,6 +57,7 @@ impl BeltUri {
             if path.is_empty() {
                 return Err(UriParseError::EmptyPath { uri: s.to_string() });
             }
+            validate_path(path, s)?;
             return Ok(BeltUri::Latest {
                 pipeline: pipeline.to_string(),
                 path: path.to_string(),
@@ -86,6 +87,7 @@ impl BeltUri {
             if path.is_empty() {
                 return Err(UriParseError::EmptyPath { uri: s.to_string() });
             }
+            validate_path(path, s)?;
             return Ok(BeltUri::WorkspaceLatest {
                 branch: branch.to_string(),
                 pipeline: pipeline.to_string(),
@@ -102,6 +104,7 @@ impl BeltUri {
             if path.is_empty() {
                 return Err(UriParseError::EmptyPath { uri: s.to_string() });
             }
+            validate_path(path, s)?;
             return Ok(BeltUri::Run {
                 run_id: run_id.to_string(),
                 path: path.to_string(),
@@ -117,6 +120,24 @@ fn split_once_or_err<'a>(s: &'a str, original: &str) -> Result<(&'a str, &'a str
         uri: original.to_string(),
         detail: "missing path segment separator '/'".to_string(),
     })
+}
+
+/// Reject paths containing `..` segments or leading `/`.
+/// Called after the path has been split out of the URI.
+fn validate_path(path: &str, original: &str) -> Result<(), UriParseError> {
+    if path.starts_with('/') {
+        return Err(UriParseError::PathTraversal {
+            uri: original.to_string(),
+        });
+    }
+    for segment in path.split('/') {
+        if segment == ".." {
+            return Err(UriParseError::PathTraversal {
+                uri: original.to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -166,5 +187,81 @@ mod tests {
                 path: "notes/phase-review.md".into(),
             }
         );
+    }
+
+    #[test]
+    fn parse_missing_scheme() {
+        assert!(matches!(
+            BeltUri::parse("https://example.com/foo"),
+            Err(UriParseError::MissingScheme(_))
+        ));
+        assert!(matches!(
+            BeltUri::parse(""),
+            Err(UriParseError::MissingScheme(_))
+        ));
+    }
+
+    #[test]
+    fn parse_unknown_selector() {
+        assert!(matches!(
+            BeltUri::parse("belt://unknown/x/y.md"),
+            Err(UriParseError::UnknownSelector { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_empty_pipeline() {
+        assert!(matches!(
+            BeltUri::parse("belt://latest//notes/x.md"),
+            Err(UriParseError::EmptyPipeline { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_empty_run_id() {
+        assert!(matches!(
+            BeltUri::parse("belt://run//notes/x.md"),
+            Err(UriParseError::EmptyRunId { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_empty_path() {
+        // "belt://latest/feature-dev/" — rest = "latest/feature-dev/"
+        // strip "latest/" => "feature-dev/"; split_once('/') => ("feature-dev", "")
+        assert!(matches!(
+            BeltUri::parse("belt://latest/feature-dev/"),
+            Err(UriParseError::EmptyPath { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_path_traversal_rejected() {
+        assert!(matches!(
+            BeltUri::parse("belt://latest/feature-dev/../etc/passwd"),
+            Err(UriParseError::PathTraversal { .. })
+        ));
+        assert!(matches!(
+            BeltUri::parse("belt://latest/feature-dev/notes/../secret"),
+            Err(UriParseError::PathTraversal { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_absolute_path_rejected() {
+        // Path component starts with '/': "belt://latest/feature-dev//notes/x.md"
+        // After split_once, path would be "/notes/x.md" which is absolute-like.
+        assert!(matches!(
+            BeltUri::parse("belt://latest/feature-dev//notes/x.md"),
+            Err(UriParseError::PathTraversal { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_workspace_missing_latest() {
+        assert!(matches!(
+            BeltUri::parse("belt://workspace/develop/foo/feature-dev/x.md"),
+            Err(UriParseError::Malformed { .. })
+        ));
     }
 }
