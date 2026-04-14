@@ -48,15 +48,18 @@ fn expand_sub_pipeline(
         let namespaced_id = format!("{parent_id}/{}", sub_phase.id);
         let is_last = i == sub.phases.len() - 1;
 
-        // Merge config: parent config overrides sub-phase config (on last sub-phase only)
+        // Merge config: parent config overrides sub-phase config (on last sub-phase only).
+        // Substitute against sub_phase's OWN config first — parent config values are
+        // authored in the parent's arg scope and must not be rewritten against the
+        // sub-pipeline's `with` map. Mirrors the I1 `when` scope rule fix (6493cf2).
         let mut merged_config = sub_phase.config.clone();
+        if !with.is_empty() {
+            substitute_in_value_map(&mut merged_config, with);
+        }
         if is_last {
             for (k, v) in &parent.config {
                 merged_config.insert(k.clone(), v.clone());
             }
-        }
-        if !with.is_empty() {
-            substitute_in_value_map(&mut merged_config, with);
         }
 
         // Last sub-phase inherits parent's gate, regate, validate
@@ -469,5 +472,66 @@ mod tests {
         let w = mk_with(&[("k", json!("args.outer"))]);
         let out = expand_sub_pipeline("p", &parent, &sub, &w);
         assert_eq!(out[0].config.get("k"), Some(&json!([1, 2])));
+    }
+
+    #[test]
+    fn config_inherited_from_parent_is_not_rewritten_by_sub_with() {
+        let mut parent = mk_parent_phase();
+        parent
+            .config
+            .insert("custom_key".into(), json!("args.outer_flag"));
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", None)]);
+        // Sub's `with` happens to have a key named `outer_flag` — this must NOT
+        // rewrite the parent's inherited config value for `custom_key`.
+        let w = mk_with(&[("outer_flag", json!("args.renamed"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(
+            out[0].config.get("custom_key"),
+            Some(&json!("args.outer_flag"))
+        );
+    }
+
+    #[test]
+    fn config_bool_value_from_with_replaces_string_template() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_with_config(
+            "leaf",
+            vec![("k", json!("args.flag"))],
+        )]);
+        let w = mk_with(&[("flag", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].config.get("k"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn config_null_value_from_with_replaces_string_template() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_with_config(
+            "leaf",
+            vec![("k", json!("args.x"))],
+        )]);
+        let w = mk_with(&[("x", serde_json::Value::Null)]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].config.get("k"), Some(&serde_json::Value::Null));
+    }
+
+    #[test]
+    fn config_multi_key_mix_of_matching_and_non_matching_templates() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_with_config(
+            "leaf",
+            vec![
+                ("k1", json!("args.present")),
+                ("k2", json!("args.absent")),
+                ("k3", json!("literal")),
+                ("k4", json!(42)),
+            ],
+        )]);
+        let w = mk_with(&[("present", json!("replaced"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].config.get("k1"), Some(&json!("replaced")));
+        assert_eq!(out[0].config.get("k2"), Some(&json!("args.absent")));
+        assert_eq!(out[0].config.get("k3"), Some(&json!("literal")));
+        assert_eq!(out[0].config.get("k4"), Some(&json!(42)));
     }
 }
