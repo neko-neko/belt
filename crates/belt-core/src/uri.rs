@@ -120,6 +120,11 @@ fn split_once_or_err<'a>(s: &'a str, original: &str) -> Result<(&'a str, &'a str
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "unwrap/panic are conventional assertion failure modes in test-only code"
+)]
 mod tests {
     use super::*;
 
