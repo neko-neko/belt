@@ -11,7 +11,7 @@ argument-hint: "[--codex] [--iterations N] [--swarm]"
 3-perspective test review with N-way voting, requirement mapping, and direct
 selection triage.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only test-review-specific concerns (voting, triage, fix strategy, verify).
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only test-review-specific concerns (design spec resolution, requirement map, voting, triage, fix strategy, verify).
 
 ## Design Spec Resolution
 
