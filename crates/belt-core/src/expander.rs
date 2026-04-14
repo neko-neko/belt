@@ -55,6 +55,9 @@ fn expand_sub_pipeline(
                 merged_config.insert(k.clone(), v.clone());
             }
         }
+        if !with.is_empty() {
+            substitute_in_value_map(&mut merged_config, with);
+        }
 
         // Last sub-phase inherits parent's gate, regate, validate
         let mut gate = sub_phase.gate.clone();
@@ -156,6 +159,21 @@ fn value_to_when_string(v: &serde_json::Value) -> Option<String> {
         serde_json::Value::Bool(b) => Some(b.to_string()),
         serde_json::Value::String(s) => Some(s.clone()),
         _ => None,
+    }
+}
+
+/// Walk a string-keyed JSON map and replace any `String("args.<name>")` value
+/// whose `<name>` is in `with_map` with the corresponding `with_map` value.
+fn substitute_in_value_map(
+    map: &mut std::collections::HashMap<String, serde_json::Value>,
+    with_map: &std::collections::HashMap<String, serde_json::Value>,
+) {
+    for v in map.values_mut() {
+        if let serde_json::Value::String(s) = v {
+            if let Some(replacement) = substitute_arg_in_value(s, with_map) {
+                *v = replacement;
+            }
+        }
     }
 }
 
@@ -403,5 +421,53 @@ mod tests {
         // The rewritten when is "true"; with the engine's literal handling,
         // this must evaluate to true even without any runtime args.
         assert!(eval_when_for_test(out[0].when.as_ref(), &empty_args));
+    }
+
+    fn mk_leaf_with_config(
+        id: &str,
+        config: Vec<(&str, serde_json::Value)>,
+    ) -> crate::model::Phase {
+        let mut p = mk_leaf_phase(id, None);
+        p.config = config
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        p
+    }
+
+    #[test]
+    fn config_string_value_rewritten_to_literal() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_with_config(
+            "leaf",
+            vec![("k", json!("args.n"))],
+        )]);
+        let w = mk_with(&[("n", json!(7))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].config.get("k"), Some(&json!(7)));
+    }
+
+    #[test]
+    fn config_string_value_rewritten_to_template() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_with_config(
+            "leaf",
+            vec![("k", json!("args.n"))],
+        )]);
+        let w = mk_with(&[("n", json!("args.outer"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].config.get("k"), Some(&json!("args.outer")));
+    }
+
+    #[test]
+    fn config_non_string_values_untouched() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_with_config(
+            "leaf",
+            vec![("k", json!([1, 2]))],
+        )]);
+        let w = mk_with(&[("k", json!("args.outer"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].config.get("k"), Some(&json!([1, 2])));
     }
 }
