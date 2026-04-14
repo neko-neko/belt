@@ -25,10 +25,10 @@ pub fn expand_pipeline(pipeline_path: &Path) -> BeltResult<Vec<ExpandedPhase>> {
 
     let mut expanded = Vec::new();
     for phase in &pipeline.phases {
-        if let Some(Invoker::Pipeline { pipeline, .. }) = &phase.invoke {
+        if let Some(Invoker::Pipeline { pipeline, with }) = &phase.invoke {
             let sub_path = base_dir.join(pipeline);
             let sub = parse_sub_pipeline(&sub_path)?;
-            let sub_phases = expand_sub_pipeline(&phase.id, phase, &sub);
+            let sub_phases = expand_sub_pipeline(&phase.id, phase, &sub, with);
             expanded.extend(sub_phases);
         } else {
             expanded.push(leaf_phase(phase)?);
@@ -37,7 +37,14 @@ pub fn expand_pipeline(pipeline_path: &Path) -> BeltResult<Vec<ExpandedPhase>> {
     Ok(expanded)
 }
 
-fn expand_sub_pipeline(parent_id: &str, parent: &Phase, sub: &SubPipeline) -> Vec<ExpandedPhase> {
+fn expand_sub_pipeline(
+    parent_id: &str,
+    parent: &Phase,
+    sub: &SubPipeline,
+    with: &std::collections::HashMap<String, serde_json::Value>,
+) -> Vec<ExpandedPhase> {
+    // Substitution is a no-op when `with` is empty — avoid walking fields.
+    let _ = with;
     let mut phases = Vec::new();
     for (i, sub_phase) in sub.phases.iter().enumerate() {
         let namespaced_id = format!("{parent_id}/{}", sub_phase.id);
@@ -195,5 +202,53 @@ mod tests {
     fn substitute_rewrites_to_null() {
         let w = mk_with(&[("x", Value::Null)]);
         assert_eq!(substitute_arg_in_value("args.x", &w), Some(Value::Null));
+    }
+
+    #[test]
+    fn expand_sub_pipeline_with_empty_with_is_byte_identical_to_legacy() {
+        use crate::model::{Phase, SubPipeline};
+
+        let parent = Phase {
+            id: "p".into(),
+            description: None,
+            with: HashMap::new(),
+            when: None,
+            invoke: None,
+            config: HashMap::new(),
+            produces: Vec::new(),
+            consumes: Vec::new(),
+            gate: Vec::new(),
+            validate: Vec::new(),
+            regate: Vec::new(),
+            confirm: false,
+            max_retries: 0,
+        };
+        let sub = SubPipeline {
+            name: "s".into(),
+            description: None,
+            version: 1,
+            inputs: HashMap::new(),
+            phases: vec![Phase {
+                id: "leaf".into(),
+                description: Some("d".into()),
+                with: HashMap::new(),
+                when: Some("args.x".into()),
+                invoke: None,
+                config: HashMap::new(),
+                produces: Vec::new(),
+                consumes: Vec::new(),
+                gate: Vec::new(),
+                validate: Vec::new(),
+                regate: Vec::new(),
+                confirm: false,
+                max_retries: 0,
+            }],
+        };
+        let empty: HashMap<String, serde_json::Value> = HashMap::new();
+        let out = expand_sub_pipeline("p", &parent, &sub, &empty);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "p/leaf");
+        // Empty with must not rewrite anything — when stays as-is.
+        assert_eq!(out[0].when.as_deref(), Some("args.x"));
     }
 }
