@@ -115,3 +115,85 @@ fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
         output_dir: None,
     })
 }
+
+/// If `template` has the exact shape `"args.<name>"` and `<name>` is a key in
+/// `with_map`, returns `Some(with_map["<name>"].clone())`. Otherwise returns
+/// `None`. The check is a full-string equality; substring or interpolated
+/// forms (e.g. `"${args.port}"`) are intentionally excluded.
+// Wired up by subsequent tasks in the expander with-merge plan; tests in the
+// `#[cfg(test)] mod tests` block below exercise it in isolation for now.
+#[cfg_attr(not(test), allow(dead_code))]
+fn substitute_arg_in_value(
+    template: &str,
+    with_map: &std::collections::HashMap<String, serde_json::Value>,
+) -> Option<serde_json::Value> {
+    let name = template.strip_prefix("args.")?;
+    if name.is_empty() || name.contains('.') {
+        return None;
+    }
+    with_map.get(name).cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
+
+    fn mk_with(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), v.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn substitute_returns_none_when_template_is_not_args_dot_form() {
+        let w = mk_with(&[("x", json!(5))]);
+        assert!(substitute_arg_in_value("hello", &w).is_none());
+        assert!(substitute_arg_in_value("args.", &w).is_none());
+        assert!(substitute_arg_in_value("args.x.y", &w).is_none());
+    }
+
+    #[test]
+    fn substitute_returns_none_when_name_not_in_with() {
+        let w = mk_with(&[("x", json!(5))]);
+        assert!(substitute_arg_in_value("args.y", &w).is_none());
+    }
+
+    #[test]
+    fn substitute_rewrites_identity_template_to_template() {
+        let w = mk_with(&[("count", json!("args.iterations"))]);
+        assert_eq!(
+            substitute_arg_in_value("args.count", &w),
+            Some(json!("args.iterations"))
+        );
+    }
+
+    #[test]
+    fn substitute_rewrites_to_number_literal() {
+        let w = mk_with(&[("count", json!(5))]);
+        assert_eq!(substitute_arg_in_value("args.count", &w), Some(json!(5)));
+    }
+
+    #[test]
+    fn substitute_rewrites_to_bool_literal() {
+        let w = mk_with(&[("enabled", json!(true))]);
+        assert_eq!(
+            substitute_arg_in_value("args.enabled", &w),
+            Some(json!(true))
+        );
+    }
+
+    #[test]
+    fn substitute_rewrites_to_non_template_string() {
+        let w = mk_with(&[("name", json!("foo"))]);
+        assert_eq!(substitute_arg_in_value("args.name", &w), Some(json!("foo")));
+    }
+
+    #[test]
+    fn substitute_rewrites_to_null() {
+        let w = mk_with(&[("x", Value::Null)]);
+        assert_eq!(substitute_arg_in_value("args.x", &w), Some(Value::Null));
+    }
+}
