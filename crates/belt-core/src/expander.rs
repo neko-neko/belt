@@ -230,8 +230,10 @@ fn substitute_in_invoker(
             substitute_iterations_spec(iterations, with_map);
             substitute_in_value_map(args, with_map);
         }
-        Invoker::Pipeline { .. } => {
-            // Nested Pipeline.with handled in Task 7.
+        Invoker::Pipeline {
+            with: inner_with, ..
+        } => {
+            substitute_in_value_map(inner_with, with_map);
         }
     }
 }
@@ -744,6 +746,30 @@ mod tests {
                 assert_eq!(args.get("k"), Some(&json!("hello")));
             }
             _ => panic!("expected Agents invoke"),
+        }
+    }
+
+    #[test]
+    fn invoker_pipeline_nested_with_rewritten() {
+        use crate::model::Invoker;
+        let parent = mk_parent_phase();
+        let mut leaf = mk_leaf_phase("leaf", None);
+        leaf.invoke = Some(Invoker::Pipeline {
+            pipeline: "nested.yml".into(),
+            with: [("inner".to_string(), json!("args.outer"))]
+                .into_iter()
+                .collect(),
+        });
+        let sub = mk_sub(vec![leaf]);
+        let w = mk_with(&[("outer", json!("args.iterations"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        match &out[0].invoke {
+            Some(Invoker::Pipeline {
+                with: inner_with, ..
+            }) => {
+                assert_eq!(inner_with.get("inner"), Some(&json!("args.iterations")));
+            }
+            _ => panic!("expected Pipeline invoke"),
         }
     }
 }
