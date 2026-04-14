@@ -2,6 +2,7 @@ use belt_core::model::{
     ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, IterationsSpec, Pipeline,
     RunState, SubPipeline, ValidationSource,
 };
+use belt_core::uri::BeltUri;
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
 #[test]
@@ -987,4 +988,37 @@ fn iterations_spec_json_roundtrip() {
         back,
         IterationsSpec::Template("args.iterations".to_string())
     );
+}
+
+#[test]
+fn artifact_ref_external_deserializes_from_yaml() {
+    let yaml = r#"
+- name: prior_review
+  uri: "belt://latest/feature-dev/notes/phase-review.md"
+"#;
+    let refs: Vec<ArtifactRef> = serde_saphyr::from_str(yaml).unwrap();
+    assert_eq!(refs.len(), 1);
+    match &refs[0] {
+        ArtifactRef::External { name, uri } => {
+            assert_eq!(name, "prior_review");
+            assert!(matches!(uri, BeltUri::Latest { .. }));
+        }
+        other => panic!("expected External, got {other:?}"),
+    }
+}
+
+#[test]
+fn artifact_ref_named_still_works() {
+    let refs: Vec<ArtifactRef> = serde_saphyr::from_str("- notes\n").unwrap();
+    matches!(refs[0], ArtifactRef::Named(_));
+}
+
+#[test]
+fn artifact_ref_qualified_still_works() {
+    let yaml = r#"
+- name: notes
+  from: review
+"#;
+    let refs: Vec<ArtifactRef> = serde_saphyr::from_str(yaml).unwrap();
+    matches!(refs[0], ArtifactRef::Qualified { .. });
 }

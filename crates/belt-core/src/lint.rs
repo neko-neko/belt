@@ -313,6 +313,12 @@ fn check_artifact_flow(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic
                         });
                     }
                 }
+                ArtifactRef::External { .. } => {
+                    // External refs are resolved at init time by belt-agent
+                    // against a different run's state.json, so there is no
+                    // earlier-phase produces to check here. URI grammar
+                    // validation is owned by a dedicated lint rule.
+                }
             }
         }
     }

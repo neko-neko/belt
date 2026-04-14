@@ -3,10 +3,8 @@
 //! Pure module: no filesystem or git access. All resolution is performed
 //! by belt-agent against a persisted `.belt/runs/*/state.json` index.
 
-use serde::{Deserialize, Serialize};
-
 /// Parsed belt:// URI used in `ArtifactRef::External { uri, ... }`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BeltUri {
     /// `belt://latest/{pipeline}/<path>` — COMPLETED latest run of `pipeline`
     /// on the *current* branch. `path` is relative to the resolved run dir.
@@ -157,6 +155,19 @@ impl std::fmt::Display for BeltUri {
                 write!(f, "belt://run/{run_id}/{path}")
             }
         }
+    }
+}
+
+impl serde::Serialize for BeltUri {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for BeltUri {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        BeltUri::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 

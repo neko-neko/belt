@@ -188,18 +188,29 @@ pub struct Artifact {
     pub description: Option<String>,
 }
 
-/// A reference to an artifact produced by an earlier phase. `Named` is the
-/// short form — lint resolves it to the most recent earlier phase that
-/// produced that name. `Qualified` disambiguates when multiple earlier phases
-/// produce the same name.
+/// A reference to an artifact. `Named` is same-phase short-form. `Qualified`
+/// targets an earlier phase in the same pipeline. `External` targets an
+/// artifact produced by a previous run (possibly a different pipeline) and
+/// is addressed through a `belt://` URI. `External` is resolved at init time
+/// by belt-agent and the resolved absolute path is persisted in
+/// `RunState.resolved_consumes`.
 ///
-/// Ordering: `Named` (scalar string) is checked before `Qualified` (struct
-/// mapping) for serde-saphyr untagged enum disambiguation.
+/// serde-saphyr untagged enum ordering:
+/// `Named` (scalar) → `External` (has `uri:` key) → `Qualified` (has `from:` key).
+/// Each struct-like variant has a unique discriminating field name, so
+/// disambiguation is based on field presence and is deterministic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ArtifactRef {
     Named(String),
-    Qualified { name: String, from: String },
+    External {
+        name: String,
+        uri: crate::uri::BeltUri,
+    },
+    Qualified {
+        name: String,
+        from: String,
+    },
 }
 
 /// Number of iterations for an `Invoker::Agents` invocation.
