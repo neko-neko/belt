@@ -328,10 +328,21 @@ impl Engine {
 ///
 /// Supported forms:
 /// - `None` -> always true (no condition)
+/// - `"true"` / `"false"` / `"!true"` / `"!false"` -> literal constants
 /// - `"args.foo"` -> true if `args["foo"]` is truthy (bool `true`, or present and non-null)
 /// - `"!args.foo"` -> negated
 fn eval_when(when: Option<&String>, args: &HashMap<String, serde_json::Value>) -> bool {
     let Some(expr) = when else { return true };
+
+    // Bare bool literals emitted by expander's with-merge rewrite of
+    // `when: "args.X"` when `X` resolves to a JSON bool in the parent's
+    // `with` map (see value_to_when_string).
+    match expr.as_str() {
+        "true" | "!false" => return true,
+        "false" | "!true" => return false,
+        _ => {}
+    }
+
     let (negated, arg_name) = if let Some(stripped) = expr.strip_prefix('!') {
         (true, stripped.trim_start_matches("args."))
     } else {
@@ -457,6 +468,34 @@ mod tests {
     }
 
     #[test]
+    fn eval_when_literal_true() {
+        let args = HashMap::new();
+        let expr = "true".to_string();
+        assert!(eval_when(Some(&expr), &args));
+    }
+
+    #[test]
+    fn eval_when_literal_false() {
+        let args = HashMap::new();
+        let expr = "false".to_string();
+        assert!(!eval_when(Some(&expr), &args));
+    }
+
+    #[test]
+    fn eval_when_negated_literal_true() {
+        let args = HashMap::new();
+        let expr = "!true".to_string();
+        assert!(!eval_when(Some(&expr), &args));
+    }
+
+    #[test]
+    fn eval_when_negated_literal_false() {
+        let args = HashMap::new();
+        let expr = "!false".to_string();
+        assert!(eval_when(Some(&expr), &args));
+    }
+
+    #[test]
     fn epoch_to_iso8601_unix_epoch() {
         assert_eq!(epoch_to_iso8601(0), "1970-01-01T00:00:00Z");
     }
@@ -492,4 +531,14 @@ mod tests {
         assert_eq!(&ts[16..17], ":");
         assert_eq!(&ts[19..], "Z");
     }
+}
+
+/// Test-only wrapper around `eval_when` for cross-module integration tests.
+/// Kept `pub(crate)` to avoid promoting `eval_when` to a public API.
+#[cfg(test)]
+pub(crate) fn eval_when_for_test(
+    when: Option<&String>,
+    args: &HashMap<String, serde_json::Value>,
+) -> bool {
+    eval_when(when, args)
 }

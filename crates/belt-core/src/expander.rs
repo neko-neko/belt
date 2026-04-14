@@ -67,17 +67,20 @@ fn expand_sub_pipeline(
             validate.extend(parent.validate.clone());
         }
 
-        // when: sub-phase inherits parent's when if it doesn't have its own
-        let mut when = sub_phase.when.clone().or_else(|| parent.when.clone());
+        // Substitute against sub_phase's OWN when first. Parent's when is evaluated
+        // in the parent run's arg scope and must not be rewritten against the
+        // sub-pipeline's `with` map.
+        let mut sub_when = sub_phase.when.clone();
         if !with.is_empty() {
-            if let Some(w_str) = when.as_deref() {
+            if let Some(w_str) = sub_when.as_deref() {
                 if let Some(replacement) = substitute_arg_in_value(w_str, with) {
-                    when = Some(
-                        value_to_when_string(&replacement).unwrap_or_else(|| w_str.to_string()),
-                    );
+                    if let Some(rewritten) = value_to_when_string(&replacement) {
+                        sub_when = Some(rewritten);
+                    }
                 }
             }
         }
+        let when = sub_when.or_else(|| parent.when.clone());
 
         phases.push(ExpandedPhase {
             id: namespaced_id,
@@ -357,5 +360,48 @@ mod tests {
         let w = mk_with(&[("other", json!(true))]);
         let out = expand_sub_pipeline("p", &parent, &sub, &w);
         assert_eq!(out[0].when.as_deref(), Some("args.missing"));
+    }
+
+    #[test]
+    fn when_inherited_from_parent_is_not_rewritten_by_sub_with() {
+        let mut parent = mk_parent_phase();
+        parent.when = Some("args.flag".into());
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", None)]); // sub.when is None
+        // Sub-pipeline's with happens to have a key named "flag" — this must
+        // NOT rewrite the parent's inherited when.
+        let w = mk_with(&[("flag", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("args.flag"));
+    }
+
+    #[test]
+    fn when_left_untouched_when_with_value_is_number() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.count"))]);
+        let w = mk_with(&[("count", json!(5))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("args.count"));
+    }
+
+    #[test]
+    fn when_left_untouched_when_with_value_is_null() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.x"))]);
+        let w = mk_with(&[("x", serde_json::Value::Null)]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("args.x"));
+    }
+
+    #[test]
+    fn when_bool_rewrite_evaluates_correctly_in_eval_when() {
+        use crate::engine::eval_when_for_test;
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.enabled"))]);
+        let w = mk_with(&[("enabled", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        let empty_args: HashMap<String, serde_json::Value> = HashMap::new();
+        // The rewritten when is "true"; with the engine's literal handling,
+        // this must evaluate to true even without any runtime args.
+        assert!(eval_when_for_test(out[0].when.as_ref(), &empty_args));
     }
 }
