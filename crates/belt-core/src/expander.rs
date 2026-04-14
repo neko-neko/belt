@@ -43,8 +43,6 @@ fn expand_sub_pipeline(
     sub: &SubPipeline,
     with: &std::collections::HashMap<String, serde_json::Value>,
 ) -> Vec<ExpandedPhase> {
-    // Substitution is a no-op when `with` is empty — avoid walking fields.
-    let _ = with;
     let mut phases = Vec::new();
     for (i, sub_phase) in sub.phases.iter().enumerate() {
         let namespaced_id = format!("{parent_id}/{}", sub_phase.id);
@@ -70,7 +68,16 @@ fn expand_sub_pipeline(
         }
 
         // when: sub-phase inherits parent's when if it doesn't have its own
-        let when = sub_phase.when.clone().or_else(|| parent.when.clone());
+        let mut when = sub_phase.when.clone().or_else(|| parent.when.clone());
+        if !with.is_empty() {
+            if let Some(w_str) = when.as_deref() {
+                if let Some(replacement) = substitute_arg_in_value(w_str, with) {
+                    when = Some(
+                        value_to_when_string(&replacement).unwrap_or_else(|| w_str.to_string()),
+                    );
+                }
+            }
+        }
 
         phases.push(ExpandedPhase {
             id: namespaced_id,
@@ -127,9 +134,6 @@ fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
 /// `with_map`, returns `Some(with_map["<name>"].clone())`. Otherwise returns
 /// `None`. The check is a full-string equality; substring or interpolated
 /// forms (e.g. `"${args.port}"`) are intentionally excluded.
-// Wired up by subsequent tasks in the expander with-merge plan; tests in the
-// `#[cfg(test)] mod tests` block below exercise it in isolation for now.
-#[cfg_attr(not(test), allow(dead_code))]
 fn substitute_arg_in_value(
     template: &str,
     with_map: &std::collections::HashMap<String, serde_json::Value>,
@@ -139,6 +143,17 @@ fn substitute_arg_in_value(
         return None;
     }
     with_map.get(name).cloned()
+}
+
+/// Render a substituted `with` value back into the `Phase.when` scalar string.
+/// Returns `None` for values that are not safely representable as a `when`
+/// token, leaving the original template intact at the caller.
+fn value_to_when_string(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        serde_json::Value::String(s) => Some(s.clone()),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -250,5 +265,97 @@ mod tests {
         assert_eq!(out[0].id, "p/leaf");
         // Empty with must not rewrite anything — when stays as-is.
         assert_eq!(out[0].when.as_deref(), Some("args.x"));
+    }
+
+    fn mk_leaf_phase(id: &str, when: Option<&str>) -> crate::model::Phase {
+        crate::model::Phase {
+            id: id.into(),
+            description: Some("d".into()),
+            with: HashMap::new(),
+            when: when.map(str::to_string),
+            invoke: None,
+            config: HashMap::new(),
+            produces: Vec::new(),
+            consumes: Vec::new(),
+            gate: Vec::new(),
+            validate: Vec::new(),
+            regate: Vec::new(),
+            confirm: false,
+            max_retries: 0,
+        }
+    }
+
+    fn mk_parent_phase() -> crate::model::Phase {
+        crate::model::Phase {
+            id: "p".into(),
+            description: None,
+            with: HashMap::new(),
+            when: None,
+            invoke: None,
+            config: HashMap::new(),
+            produces: Vec::new(),
+            consumes: Vec::new(),
+            gate: Vec::new(),
+            validate: Vec::new(),
+            regate: Vec::new(),
+            confirm: false,
+            max_retries: 0,
+        }
+    }
+
+    fn mk_sub(phases: Vec<crate::model::Phase>) -> crate::model::SubPipeline {
+        crate::model::SubPipeline {
+            name: "s".into(),
+            description: None,
+            version: 1,
+            inputs: HashMap::new(),
+            phases,
+        }
+    }
+
+    #[test]
+    fn when_rename_string_to_string() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.inner"))]);
+        let w = mk_with(&[("inner", json!("args.outer"))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("args.outer"));
+    }
+
+    #[test]
+    fn when_rewrites_bool_true_to_string_literal_true() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.enabled"))]);
+        let w = mk_with(&[("enabled", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn when_rewrites_bool_false_to_string_literal_false() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.enabled"))]);
+        let w = mk_with(&[("enabled", json!(false))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("false"));
+    }
+
+    #[test]
+    fn when_left_untouched_when_compound_expression() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.x && args.y"))]);
+        let w = mk_with(&[("x", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        // Compound expression — not a full-string match.
+        assert_eq!(out[0].when.as_deref(), Some("args.x && args.y"));
+    }
+
+    #[test]
+    fn when_left_untouched_when_key_missing() {
+        let parent = mk_parent_phase();
+        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.missing"))]);
+        let w = mk_with(&[("other", json!(true))]);
+        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        assert_eq!(out[0].when.as_deref(), Some("args.missing"));
     }
 }
