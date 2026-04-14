@@ -101,12 +101,13 @@ belt-core に **narrative を Artifact として first-class 化** し、phase �
 ```rust
 pub struct RunState {
     pub run_id: String,
-    pub pipeline_file: PathBuf,
-    pub pipeline_name: String,                         // 追加: URI latest/{pipeline} 解決の比較対象
+    pub pipeline: String,                              // 既存: pipeline 名 (URI latest/{pipeline} 解決の比較対象、再利用)
+    pub pipeline_file: String,                         // 既存: canonical absolute path
+    pub version: u32,                                  // 既存
     pub branch: Option<String>,                        // 追加
-    pub resolved_consumes: HashMap<String, PathBuf>,   // 追加: URI string → 解決 path
+    pub resolved_consumes: HashMap<String, String>,    // 追加: URI string → 解決 absolute path
     pub args: HashMap<String, serde_json::Value>,
-    pub current_phase: Option<String>,
+    pub current_phase: String,                         // 既存: 完了時は最後の phase id のまま
     pub completed_phases: Vec<String>,
     pub skipped_phases: Vec<String>,
     pub phase_attempts: HashMap<String, u32>,
@@ -114,10 +115,12 @@ pub struct RunState {
     pub regate_passed: HashMap<String, bool>,
     pub phase_start_times: HashMap<String, DateTime<Utc>>,
     pub status: RunStatus,                             // 追加: InProgress | Completed | Failed
+    pub created_at: String,                            // 既存
+    pub updated_at: String,                            // 既存
 }
 ```
 
-`pipeline_name` は init 時に `pipeline_file` を open して `Pipeline::name` を読み取り記録する。URI resolution 時は state.json 各ファイルから直接 `pipeline_name` を取れるため、resolution loop で pipeline YAML を再 open する必要なし（性能最適化）。
+URI resolution 時は各 state.json から直接 `pipeline` field を読んで比較するため、resolution loop で pipeline YAML を再 open する必要なし（性能最適化）。既存 `pipeline: String` field が既に存在するため、新規 field としては追加しない（spec 初稿で `pipeline_name` を提案したが、既存 field をそのまま流用するほうが整合的）。
 
 `RunStatus` variant は MVP では `InProgress | Completed | Failed` の 3 種。BELT-28 の `paused: true` は boolean として別途追加される提案であり、本 spec では scope 外（衝突回避のため `Paused` variant は導入しない）。
 
@@ -248,7 +251,7 @@ LLM は `resolved_path` を read するのみ。belt は mount も symlink も�
 
 ### Phase 完了強制（既存 gate 再利用）
 
-新規 gate kind / phase field を **追加しない**。既存の `has_output` gate で宣言する。
+新規 gate kind / phase field を **追加しない**。既存の `file_exists` gate（glob pattern）で宣言する。パスは run-scoped にするため `{run_id}` テンプレート展開機構を belt-agent 側で追加する（`ExpandedPhase` 構築時に展開）。
 
 ```yaml
 phases:
@@ -256,16 +259,21 @@ phases:
     description: "Code review"
     produces:
       - name: notes
-        path: "notes/phase-review.md"
+        path: ".belt/runs/{run_id}/notes/phase-review.md"
         description: "Phase review narrative: decisions, concerns, directives"
     gate:
-      - has_output: "notes/phase-review.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-review.md"
       - cmd: "cargo test"
 ```
 
-LLM が `notes/phase-review.md` を書かない限り `has_output` gate が fail し、step が通らない。これが **決定論的な note 提出強制** の実装。
+belt-agent は ExpandedPhase 構築時に `{run_id}` を実際の run_id に置換してから gate/parser/engine に渡す。LLM が指定 path に markdown を書かない限り `file_exists` gate が fail し、step が通らない。これが **決定論的な note 提出強制** の実装。
 
-新規コードゼロ（既存 `has_output` gate を活用）。
+- 既存 `file_exists` gate ロジック（`gate.rs:225-252`、glob pattern match）をそのまま流用
+- `{run_id}` expansion は belt-agent 内部で行う thin 機構（belt-core には無関係）
+- Notes は `<cwd>/.belt/runs/<run_id>/notes/` 配下の run-scoped directory に live する（既存 output_dir とは別経路）
+- Engine が init 時に `<run_dir>/notes/` ディレクトリを事前作成する
+
+注: 既存 `has_output: bool` gate は output_dir に任意のファイルがあるかの存在 check のみで、特定ファイル名の check には使えない。本 spec では `file_exists` を採用する。
 
 ### Note Body 規約（belt は parse しない）
 
@@ -300,10 +308,10 @@ phases:
   - id: review
     produces:
       - name: notes
-        path: "notes/phase-review.md"
+        path: ".belt/runs/{run_id}/notes/phase-review.md"
         description: "Review phase narrative"
     gate:
-      - has_output: "notes/phase-review.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-review.md"
       - cmd: "cargo test"
   - id: done
     confirm: true
@@ -319,10 +327,10 @@ phases:
         uri: "belt://latest/feature-dev/notes/phase-review.md"
     produces:
       - name: notes
-        path: "notes/phase-rca.md"
+        path: ".belt/runs/{run_id}/notes/phase-rca.md"
         description: "RCA phase narrative"
     gate:
-      - has_output: "notes/phase-rca.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-rca.md"
 ```
 
 **実行フロー**:
@@ -401,18 +409,15 @@ phases:
 ### 既存 state.json
 
 serde default で新 field を既定化:
-- `pipeline_name: ""` (empty string)
 - `branch: None`
 - `resolved_consumes: HashMap::new()`
 - `status: RunStatus::InProgress`
 
-既存 run の扱い:
-- `pipeline_name` が空文字列の state.json を resolution 時に検出した場合: `pipeline_file` を open して name を読み取り state.json を rewrite（lazy migration）
-- status は completed_phases / current_phase の状態から init 時に導出:
-  - 全 phases が completed_phases にあり `current_phase == None` → `Completed`
-  - それ以外 → `InProgress`
+既存 run の status 推定:
+- Load 時に status field が欠落（legacy）: completed_phases の状態から導出。全 pipeline phases が completed_phases に含まれていれば `Completed`、それ以外は `InProgress`
+- 導出は load 時 only（write back はしない、非破壊）
 
-init 時に migrate logic を実行。
+`pipeline` field は既存で必須のため migration 不要。
 
 ### 既存 `/handover` `/continue` skill
 
