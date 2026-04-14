@@ -407,6 +407,16 @@ fn epoch_to_iso8601(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
+/// Test-only wrapper around `eval_when` for cross-module integration tests.
+/// Kept `pub(crate)` to avoid promoting `eval_when` to a public API.
+#[cfg(test)]
+pub(crate) fn eval_when_for_test(
+    when: Option<&String>,
+    args: &HashMap<String, serde_json::Value>,
+) -> bool {
+    eval_when(when, args)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,14 +541,4 @@ mod tests {
         assert_eq!(&ts[16..17], ":");
         assert_eq!(&ts[19..], "Z");
     }
-}
-
-/// Test-only wrapper around `eval_when` for cross-module integration tests.
-/// Kept `pub(crate)` to avoid promoting `eval_when` to a public API.
-#[cfg(test)]
-pub(crate) fn eval_when_for_test(
-    when: Option<&String>,
-    args: &HashMap<String, serde_json::Value>,
-) -> bool {
-    eval_when(when, args)
 }
