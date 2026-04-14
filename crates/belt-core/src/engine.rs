@@ -1,6 +1,6 @@
 use crate::error::{BeltError, BeltResult};
 use crate::expander::expand_pipeline;
-use crate::model::{ExpandedPhase, RunState};
+use crate::model::{ExpandedPhase, RunState, RunStatus};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -53,6 +53,8 @@ impl Engine {
             pipeline: pipeline.name,
             pipeline_file: std::fs::canonicalize(pipeline_path)?.display().to_string(),
             version: pipeline.version,
+            branch: None,
+            resolved_consumes: HashMap::new(),
             args: args.clone(),
             current_phase: active.id.clone(),
             completed_phases: Vec::new(),
@@ -65,6 +67,7 @@ impl Engine {
             },
             regate_passed: HashMap::new(),
             phase_start_times,
+            status: RunStatus::default(),
             created_at: now.clone(),
             updated_at: now,
         };

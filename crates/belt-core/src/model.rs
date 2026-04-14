@@ -330,6 +330,17 @@ pub struct RunState {
     pub pipeline: String,
     pub pipeline_file: String,
     pub version: u32,
+    /// Git branch captured at `init` time for workspace-scoped artifact
+    /// resolution. `None` for legacy state.json files (backward compat)
+    /// or when the engine is invoked outside a git working tree.
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// Resolved `belt://` URI -> absolute filesystem path mapping, populated
+    /// at `init` time from each phase's `consumes` list. Empty for legacy
+    /// state.json files (backward compat) and for pipelines that declare no
+    /// External artifact references.
+    #[serde(default)]
+    pub resolved_consumes: HashMap<String, String>,
     pub args: HashMap<String, serde_json::Value>,
     pub current_phase: String,
     pub completed_phases: Vec<String>,
@@ -346,6 +357,12 @@ pub struct RunState {
     /// resolution to files created during the phase's active window.
     #[serde(default)]
     pub phase_start_times: HashMap<String, DateTime<Utc>>,
+    /// Terminal lifecycle status. Defaults to `InProgress` on init / when
+    /// absent from legacy state.json files. Transitions to `Completed` are
+    /// driven by the engine (Task 9); the field is plumbed here so the
+    /// `RunStatus` enum can be serialised as part of the persisted state.
+    #[serde(default)]
+    pub status: RunStatus,
     pub created_at: String,
     pub updated_at: String,
 }

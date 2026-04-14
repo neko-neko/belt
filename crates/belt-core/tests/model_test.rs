@@ -396,6 +396,8 @@ fn run_state_regate_passed_round_trip() {
         pipeline: "test".to_string(),
         pipeline_file: "pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "build".to_string(),
         completed_phases: vec![],
@@ -404,6 +406,7 @@ fn run_state_regate_passed_round_trip() {
         phase_verify_passed: HashMap::new(),
         regate_passed,
         phase_start_times: HashMap::new(),
+        status: RunStatus::default(),
         created_at: "2026-01-01T00:00:00Z".to_string(),
         updated_at: "2026-01-01T00:00:00Z".to_string(),
     };
@@ -1043,4 +1046,41 @@ fn run_status_serializes_as_lowercase_string() {
 fn run_status_default_is_in_progress() {
     let default: RunStatus = Default::default();
     assert_eq!(default, RunStatus::InProgress);
+}
+
+#[test]
+fn run_state_new_fields_roundtrip() {
+    use std::collections::HashMap;
+
+    let state = RunState {
+        run_id: "01947abc".into(),
+        pipeline: "feature-dev".into(),
+        pipeline_file: "/tmp/feature-dev.yml".into(),
+        version: 1,
+        branch: Some("main".into()),
+        resolved_consumes: {
+            let mut m = HashMap::new();
+            m.insert(
+                "belt://latest/feature-dev/notes/phase-review.md".into(),
+                "/abs/.belt/runs/01947/notes/phase-review.md".into(),
+            );
+            m
+        },
+        args: HashMap::new(),
+        current_phase: "review".into(),
+        completed_phases: vec![],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        phase_start_times: HashMap::new(),
+        status: RunStatus::InProgress,
+        created_at: "2026-04-14T00:00:00Z".into(),
+        updated_at: "2026-04-14T00:00:00Z".into(),
+    };
+    let json = serde_json::to_string(&state).unwrap();
+    let decoded: RunState = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.branch, Some("main".into()));
+    assert_eq!(decoded.resolved_consumes.len(), 1);
+    assert_eq!(decoded.status, RunStatus::InProgress);
 }
