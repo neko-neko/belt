@@ -140,6 +140,26 @@ fn validate_path(path: &str, original: &str) -> Result<(), UriParseError> {
     Ok(())
 }
 
+impl std::fmt::Display for BeltUri {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BeltUri::Latest { pipeline, path } => {
+                write!(f, "belt://latest/{pipeline}/{path}")
+            }
+            BeltUri::WorkspaceLatest {
+                branch,
+                pipeline,
+                path,
+            } => {
+                write!(f, "belt://workspace/{branch}/latest/{pipeline}/{path}")
+            }
+            BeltUri::Run { run_id, path } => {
+                write!(f, "belt://run/{run_id}/{path}")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -263,5 +283,17 @@ mod tests {
             BeltUri::parse("belt://workspace/develop/foo/feature-dev/x.md"),
             Err(UriParseError::Malformed { .. })
         ));
+    }
+
+    #[test]
+    fn to_string_roundtrip_all_variants() {
+        for s in [
+            "belt://latest/feature-dev/notes/phase-review.md",
+            "belt://workspace/develop/latest/feature-dev/notes/phase-review.md",
+            "belt://run/01947abc-0000-7000-8000-000000000000/notes/phase-review.md",
+        ] {
+            let u = BeltUri::parse(s).unwrap();
+            assert_eq!(u.to_string(), s);
+        }
     }
 }
