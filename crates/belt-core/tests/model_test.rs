@@ -1084,3 +1084,23 @@ fn run_state_new_fields_roundtrip() {
     assert_eq!(decoded.resolved_consumes.len(), 1);
     assert_eq!(decoded.status, RunStatus::InProgress);
 }
+
+#[test]
+fn run_state_deserializes_legacy_without_new_fields() {
+    let legacy = r#"{
+        "run_id": "01947abc",
+        "pipeline": "feature-dev",
+        "pipeline_file": "/tmp/x.yml",
+        "version": 1,
+        "args": {},
+        "current_phase": "review",
+        "completed_phases": [],
+        "skipped_phases": [],
+        "created_at": "2026-04-14T00:00:00Z",
+        "updated_at": "2026-04-14T00:00:00Z"
+    }"#;
+    let decoded: RunState = serde_json::from_str(legacy).unwrap();
+    assert_eq!(decoded.branch, None);
+    assert!(decoded.resolved_consumes.is_empty());
+    assert_eq!(decoded.status, RunStatus::InProgress);
+}
