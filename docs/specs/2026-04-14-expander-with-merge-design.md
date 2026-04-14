@@ -53,8 +53,8 @@ Fields explicitly **not** rewritten: `Phase.id`, `Phase.description`, `Phase.pro
 
 ### Typed field conversions
 
-- **`IterationsSpec::Template("args.N") ← W["N"] = Number(v)`**: convert via `v.as_u64()`. If the value is a non-integer or does not fit in `u32`, leave the template unchanged (defensive). If `v.as_u64()` succeeds, produce `IterationsSpec::Literal(v as u32)` (saturating on overflow — but `u32::MAX` iterations is a pathological config and not a realistic case).
-- **`Phase.when = "args.X" ← W["X"] = Bool(b)`**: rewrite as the literal string `"true"` / `"false"`. The orchestrator's existing `when` evaluator treats bare `"true"` / `"false"` as literals (see `engine.rs` eval_when). This keeps the rewrite round-trippable without introducing a new `Phase.when` type.
+- **`IterationsSpec::Template("args.N") ← W["N"] = Number(v)`**: convert via `serde_json::Value::as_u64()` followed by `u32::try_from`. If the value is a non-integer (e.g., `5.0` or `1.5`), negative, or out of `u32` range, leave the original `Template` unchanged (defensive — the rewrite is lossy-safe, never saturating). If both steps succeed, produce `IterationsSpec::Literal(v as u32)`.
+- **`Phase.when = "args.X" ← W["X"] = Bool(b)`**: rewrite as the literal string `"true"` / `"false"`. The `engine.rs` `eval_when` evaluator handles these bare literals (added alongside this feature — see the `eval_when_literal_{true,false}` and `eval_when_negated_literal_{true,false}` tests). This keeps the rewrite round-trippable without introducing a new `Phase.when` type.
 - All other numeric / bool / null overrides flowing into `HashMap<String, serde_json::Value>` preserve their JSON type verbatim.
 
 ### Recursion rule for nested sub-pipelines
