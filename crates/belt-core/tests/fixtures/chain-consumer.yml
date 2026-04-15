@@ -1,0 +1,14 @@
+# crates/belt-core/tests/fixtures/chain-consumer.yml
+name: chain-consumer
+version: 1
+phases:
+  - id: rca
+    description: "Root cause analysis consuming prior narrative"
+    consumes:
+      - name: prior_review
+        uri: "belt://latest/chain-producer/notes/phase-review.md"
+    produces:
+      - name: notes
+        path: ".belt/runs/{run_id}/notes/phase-rca.md"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-rca.md"

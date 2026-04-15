@@ -1,0 +1,15 @@
+# crates/belt-core/tests/fixtures/chain-producer.yml
+name: chain-producer
+version: 1
+phases:
+  - id: review
+    description: "Review phase producing narrative"
+    produces:
+      - name: notes
+        path: ".belt/runs/{run_id}/notes/phase-review.md"
+        description: "Review phase narrative"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-review.md"
+  - id: done
+    description: "Done"
+    confirm: true
