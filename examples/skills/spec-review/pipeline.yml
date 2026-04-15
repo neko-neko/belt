@@ -1,29 +1,20 @@
 name: spec-review
 version: 1
 args:
-  iterations: { type: number, default: 3 }
   codex: { type: bool, default: false }
-  ui: { type: bool, default: false }
-  swarm: { type: bool, default: false }
 
 phases:
   - id: review
-    description: "4-perspective spec review"
+    description: "Multi-perspective spec review (5 observations) + grill-me dialogue"
     invoke:
       agents:
-        - spec-review-requirements
-        - spec-review-design-judgment
-        - spec-review-feasibility
-        - spec-review-consistency
-      iterations: "args.iterations"
+        - spec-reviewer
       args:
-        ui_agent: spec-review-ui-design
         codex: "args.codex"
-        swarm: "args.swarm"
     produces:
       - name: review_findings
         path: ".belt/runs/*/review/findings.json"
-        description: "Deduplicated N-way voted findings across requirements, design, feasibility, and consistency perspectives"
+        description: "Deduplicated findings across 5 observations (requirements, design-judgment, feasibility, consistency, ui-design)"
     confirm: true
 
   - id: fix

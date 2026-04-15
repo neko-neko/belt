@@ -1,45 +1,61 @@
 ---
 name: spec-review
 description: >-
-  4-perspective spec review pipeline. Dispatches requirements, design-judgment,
-  feasibility, and consistency agents in parallel with N-way voting.
-argument-hint: "[--codex] [--iterations N] [--ui] [--swarm]"
+  Multi-perspective spec review via a single consolidated reviewer subagent.
+  5 observations: requirements, design-judgment, feasibility, consistency,
+  ui-design. Review → grill-me dialogue → selection → fix.
+argument-hint: "[--codex]"
 ---
 
 # Spec Review
 
-4-perspective spec review with N-way voting and interactive dialogue resolution.
+Multi-perspective spec review with grill-me dialogue on design-critical findings and direct selection on the rest.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only spec-review-specific concerns (voting, triage, dialogue resolution, verify).
-
-## Voting Protocol
-
-Activated when this phase's `invoke.iterations` > 1. Each agent is dispatched N times independently.
-
-**Semantic similarity** (section-based):
-- Match: same `section` + similar `description` (>80% semantic overlap)
-- Threshold: majority (>50% of iterations must agree)
-- Codex findings: not voted, included if unique after dedup
-
-**Base selection**: iteration with most findings becomes the base set.
-Subsequent iterations vote to confirm/deny each base finding.
-Complementary findings (present in minority but absent from base) are added if unique.
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only spec-review-specific concerns (triage, grill-me dialogue, selection, verify).
 
 ## Triage
 
-Categories: `requirements`, `design-judgment`, `feasibility`, `consistency`, `codex-adversarial`, `ui-design`
+After the reviewer agent returns findings, the orchestrator partitions them:
 
-**Dialogue group** (interactive, max 3 rounds per finding):
-- `requirements` findings with severity high or medium
-- `design-judgment` findings with severity high or medium
+- **Grill-me group**: findings where `observation` ∈ {`requirements`, `design-judgment`} AND `severity` ∈ {`high`, `medium`}
+- **Selection group**: everything else (feasibility, consistency, ui-design, low-severity, codex)
 
-Present each finding. Ask user for intent/context. Revise suggestion based on response.
-After dialogue, user confirms revised suggestion or rejects.
+Process grill-me group first, then selection group.
 
-**Selection group** (direct accept/reject):
-- All other findings (feasibility, consistency, low-severity, codex, ui)
+## Grill-me Dialogue (Grill-me group)
 
-Present as numbered list sorted by severity descending. User selects which to fix.
+Principles (borrowed from `/grill-me`):
+- **One question at a time** — present a single finding; do not batch
+- **Orchestrator provides a recommended answer** for every question
+- **Codebase-answerable questions are not asked** — use Read/Grep to resolve them, update the suggestion, and move on
+- **Rounds are unlimited** — iterate until the user explicitly accepts, rejects, or says "enough / move on"
+- **Decision-tree order** — if finding A's decision affects finding B's proposal, resolve A first
+
+Loop (pseudo):
+```
+order = topologically_sort(grill_group, by decision dependency)
+for finding in order:
+    while not resolved:
+        if finding is answerable by codebase inspection:
+            explore with Read/Grep
+            revise finding.suggestion
+            continue
+        present finding + recommended_answer to user
+        response = await user
+        if response in {"accept", "OK", "approved"}:
+            finding.resolution = "accept"; break
+        if response in {"reject", "skip"}:
+            finding.resolution = "reject"; break
+        if response in {"enough", "move on"}:
+            finding.resolution = "accept_current"; break  # accept revised state
+        revise finding.suggestion based on response
+```
+
+After the loop, every grill-group finding has `resolution ∈ {accept, reject, accept_current}`.
+
+## Selection Group
+
+Present the selection-group findings as a numbered list sorted by severity descending. User picks by number which to fix.
 
 ## Verify (after fix)
 
@@ -53,10 +69,13 @@ Present as numbered list sorted by severity descending. User selects which to fi
 - Modify spec without user approval of findings
 - Change files outside the review target
 - Omit or filter findings before presenting to user
-- Ignore consensus vote results
+- Ask a user question that could be answered by inspecting the codebase
+- Present multiple grill-group findings simultaneously
 
 **Always:**
-- Announce which agents are being dispatched and how many iterations
-- Wait for all parallel agents to complete before voting
+- Announce the reviewer agent being dispatched (and Codex, if `--codex`)
+- Provide a recommended answer with every grill-me question
+- Explore the codebase before asking user questions
+- Honor the user's "enough / move on" signal without pushback
 - Get explicit user approval before applying any fixes
 - Run verification checks after fixes are applied

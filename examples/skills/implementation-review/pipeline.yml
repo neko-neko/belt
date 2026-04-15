@@ -1,28 +1,20 @@
 name: implementation-review
 version: 1
 args:
-  iterations: { type: number, default: 3 }
   codex: { type: bool, default: false }
-  ui: { type: bool, default: false }
-  swarm: { type: bool, default: false }
 
 phases:
   - id: review
-    description: "3-perspective plan review"
+    description: "Multi-perspective plan review (4 observations)"
     invoke:
       agents:
-        - implementation-review-clarity
-        - implementation-review-feasibility
-        - implementation-review-consistency
-      iterations: "args.iterations"
+        - implementation-reviewer
       args:
-        ui_agent: implementation-review-ui-spec
         codex: "args.codex"
-        swarm: "args.swarm"
     produces:
       - name: review_findings
         path: ".belt/runs/*/review/findings.json"
-        description: "Deduplicated N-way voted findings across clarity, feasibility, and consistency perspectives"
+        description: "Deduplicated findings across 4 observations (clarity, feasibility, consistency, ui-spec)"
     confirm: true
 
   - id: fix

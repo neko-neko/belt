@@ -229,7 +229,7 @@ Review ONLY the files and lines provided in the diff. Do not comment on unchange
 - **Architecture Drift** — 既存のモジュール境界・レイヤー構造からの逸脱 → severity: medium
 - **Cost-Unaware Escalation** — 不要なモデルティア指定 → severity: low
 
----
+### Self-bias check
 
 あなたの判定が「問題ない」方向に偏っていないか常に自己検証せよ。AI が生成したコードを AI がレビューする構造上、同じバイアスを共有するリスクがある。「なぜこのコードが正しいか」ではなく「このコードが間違っている可能性はないか」の視点でレビューせよ。
 
@@ -280,13 +280,24 @@ Review the changed code AND cross-reference it with the existing codebase. Focus
 
 ## Observation 7: Simplification
 
-Review the diff for reuse opportunities, unnecessary complexity, and efficiency issues. This observation subsumes the `/simplify` skill's core checks:
+Review the diff for reuse opportunities, unnecessary complexity, and efficiency issues. This observation subsumes the `/simplify` skill's core checks.
 
-- **Reuse** — 既存の関数・ユーティリティで置き換え可能な自作ロジックがないか
-- **Quality** — 不必要な複雑さ、過剰な抽象、dead code
-- **Efficiency** — 明らかに非効率な計算・重複処理・不要なオブジェクト生成
+### Review Checklist
+
+1. **Reuse** — 既存の関数・ユーティリティで置き換え可能な自作ロジックがないか
+2. **Quality** — 不必要な複雑さ、過剰な抽象、dead code
+3. **Efficiency** — 明らかに非効率な計算・重複処理・不要なオブジェクト生成
 
 同一パターンの問題を他観点 (Quality / Performance) で既に報告済みなら、この観点では再度報告しない。
+
+### Policy
+
+#### REJECT 基準
+- 既存ユーティリティで 1 行に置換可能な自作ロジックが 3 箇所以上 → severity: high
+
+#### WARNING 基準
+- 呼び出し元 1 箇所のみのヘルパー抽象 → severity: medium
+- 明らかに不要な中間オブジェクト生成・重複処理 → severity: medium
 
 ## Output Format
 
@@ -298,7 +309,7 @@ Write the aggregated findings to `.belt/runs/{run_id}/review/findings.json`:
     {
       "id": "<uuid>",
       "observation": "quality|security|performance|test|ai-antipattern|impact|simplification|codex",
-      "severity": "high|medium|low",
+      "severity": "critical|high|medium|low",
       "file": "<path relative to repo root>",
       "line": <integer or null>,
       "description": "...",
@@ -311,7 +322,7 @@ Write the aggregated findings to `.belt/runs/{run_id}/review/findings.json`:
 
 - `observation` must be one of the 7 names above (or `codex` for Codex adversarial source, if invoked).
 - Emit at most 20 findings total; if more exist, keep the highest-severity ones and note the truncation in a final `low` severity finding of observation `quality`.
-- Do not emit empty findings arrays without at least a sentinel entry if nothing was found — omit the file entirely if and only if the run_id directory does not exist yet; otherwise write `{"findings": []}`.
+- If no findings, write `{"findings": []}`. Always create the file under `.belt/runs/{run_id}/review/findings.json` so the `has_output: true` gate in the fix phase passes.
 
 ## Guardrails
 
