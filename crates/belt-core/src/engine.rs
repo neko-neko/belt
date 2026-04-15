@@ -109,6 +109,14 @@ impl Engine {
     }
 
     /// Return the current `ExpandedPhase` with `output_dir` set.
+    ///
+    /// Also rewrites the `{run_id}` template token in `produces[*].path` and
+    /// in `gate` string fields (`file_exists`, `cmd`) so that the LLM-facing
+    /// JSON emitted by `belt-agent next` carries run-scoped paths rather than
+    /// raw templates. This is a presentation-layer transformation: the raw
+    /// pipeline YAML on disk is unchanged and `RunState` never persists the
+    /// expanded form. `consumes` URIs are intentionally NOT rewritten here —
+    /// they go through the dedicated `belt://` resolver.
     pub fn next_phase_info(
         &self,
         state: &RunState,
@@ -130,6 +138,30 @@ impl Engine {
         let output_dir = run_dir.join(phase.id.replace('/', "_"));
         std::fs::create_dir_all(&output_dir)?;
         phase.output_dir = Some(output_dir.display().to_string());
+
+        // Expand `{run_id}` template in fields the LLM sees at step time.
+        // Idempotent: a second call on already-expanded text is a no-op
+        // because the token is gone after the first substitution.
+        for artifact in &mut phase.produces {
+            artifact.path = expand_run_id(&artifact.path, &state.run_id);
+        }
+        for check in &mut phase.gate {
+            match check {
+                crate::model::GateCheck::FileExists { file_exists } => {
+                    *file_exists = expand_run_id(file_exists, &state.run_id);
+                }
+                crate::model::GateCheck::Cmd { cmd, .. } => {
+                    *cmd = expand_run_id(cmd, &state.run_id);
+                }
+                // `GitClean` / `HasOutput` carry only booleans (no string to
+                // rewrite). `Uses` names a pipeline reference, not a runtime
+                // path: the resolver (future work) owns its rewriting, not
+                // this layer.
+                crate::model::GateCheck::GitClean { .. }
+                | crate::model::GateCheck::HasOutput { .. }
+                | crate::model::GateCheck::Uses { .. } => {}
+            }
+        }
 
         Ok(phase)
     }
@@ -336,6 +368,16 @@ impl Engine {
                 message: "no runs found".to_string(),
             })
     }
+}
+
+/// Expand `{run_id}` placeholders in a string.
+///
+/// Pure and deterministic. Used by [`Engine::next_phase_info`] to rewrite
+/// template tokens in phase `produces[*].path` and string gate fields so
+/// that LLM-facing output carries run-scoped paths. Idempotent: a second
+/// pass over the returned string is a no-op because the token is gone.
+fn expand_run_id(s: &str, run_id: &str) -> String {
+    s.replace("{run_id}", run_id)
 }
 
 /// Evaluate a `when:` expression against the provided args.
