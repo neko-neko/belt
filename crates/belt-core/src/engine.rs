@@ -25,13 +25,37 @@ impl Engine {
 
     /// Initialize a new pipeline run.
     ///
-    /// Parses and expands the pipeline, finds the first active phase
-    /// (evaluating `when:` conditions against `args`), creates a `RunState`,
-    /// persists it, and creates the output directory for the first phase.
+    /// Thin backward-compatibility wrapper around
+    /// [`Engine::init_with_branch`] that records `branch: None` in the
+    /// resulting [`RunState`]. Belt-core stays pure: it does not shell out
+    /// to `git`. Callers that want to record the current branch should use
+    /// [`Engine::init_with_branch`] instead (belt-agent wires this via the
+    /// `git::current_branch` wrapper).
     pub fn init(
         &self,
         pipeline_path: &Path,
         args: &HashMap<String, serde_json::Value>,
+    ) -> BeltResult<RunState> {
+        self.init_with_branch(pipeline_path, args, None)
+    }
+
+    /// Initialize a new pipeline run, recording the caller-supplied git
+    /// branch in [`RunState::branch`].
+    ///
+    /// Parses and expands the pipeline, finds the first active phase
+    /// (evaluating `when:` conditions against `args`), creates a `RunState`,
+    /// persists it, and creates the output directory for the first phase.
+    ///
+    /// `branch` is trusted verbatim: belt-core never executes processes, so
+    /// the boundary layer (belt-agent) is responsible for detecting the
+    /// current branch (typically via `git rev-parse --abbrev-ref HEAD`) and
+    /// passing the result through unchanged. `None` is valid and preserves
+    /// the pre-Task-12 behaviour.
+    pub fn init_with_branch(
+        &self,
+        pipeline_path: &Path,
+        args: &HashMap<String, serde_json::Value>,
+        branch: Option<String>,
     ) -> BeltResult<RunState> {
         let pipeline = crate::parser::parse_pipeline(pipeline_path)?;
         let phases = expand_pipeline(pipeline_path)?;
@@ -57,7 +81,7 @@ impl Engine {
             pipeline: pipeline.name,
             pipeline_file: std::fs::canonicalize(pipeline_path)?.display().to_string(),
             version: pipeline.version,
-            branch: None,
+            branch,
             resolved_consumes: HashMap::new(),
             args: args.clone(),
             current_phase: active.id.clone(),

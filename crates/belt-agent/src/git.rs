@@ -8,10 +8,6 @@ use std::process::Command;
 /// - HEAD is detached (rev-parse returns literal "HEAD")
 /// - the repo has no commits yet (rev-parse fails with "ambiguous argument")
 #[must_use]
-#[allow(
-    dead_code,
-    reason = "consumer wired in Task 12 (Engine::init_with_branch); exercised by unit tests meanwhile"
-)]
 pub(crate) fn current_branch(work_dir: &Path) -> Option<String> {
     let output = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])

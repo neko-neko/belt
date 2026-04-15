@@ -2209,3 +2209,76 @@ phases:
         "no raw template tokens should remain after expansion"
     );
 }
+
+// ---------------------------------------------------------------------------
+// init_records_branch_when_provided
+//
+// `Engine::init_with_branch` accepts a caller-supplied branch name and stores
+// it verbatim in `RunState.branch`. Belt-core remains pure: the caller
+// (belt-agent) is responsible for detecting the branch via git; core trusts
+// whatever `Option<String>` it receives. This test pins the happy path.
+// ---------------------------------------------------------------------------
+#[test]
+fn init_records_branch_when_provided() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: only
+    description: "only phase"
+"#,
+    );
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+
+    let state = engine
+        .init_with_branch(&pipeline_path, &HashMap::new(), Some("develop".to_string()))
+        .expect("init_with_branch should succeed");
+
+    assert_eq!(
+        state.branch,
+        Some("develop".to_string()),
+        "branch parameter must be recorded verbatim in RunState"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// init_legacy_records_no_branch
+//
+// The legacy 2-arg `Engine::init` is preserved for backward compatibility and
+// delegates to `init_with_branch(.., None)`. Existing callers (and this test)
+// observe `branch: None` in the resulting state, matching the pre-Task-12
+// behaviour guarded by Tasks 8/9/10.
+// ---------------------------------------------------------------------------
+#[test]
+fn init_legacy_records_no_branch() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: only
+    description: "only phase"
+"#,
+    );
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    assert_eq!(
+        state.branch, None,
+        "legacy init must leave branch unset for backward compatibility"
+    );
+}

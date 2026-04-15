@@ -160,8 +160,13 @@ fn cmd_init(
     args: Vec<(String, serde_json::Value)>,
 ) -> miette::Result<()> {
     let args_map: HashMap<String, serde_json::Value> = args.into_iter().collect();
+    // Detect the current git branch from the user's shell CWD so
+    // workspace-scoped URI resolvers (Task 15) can filter runs by branch.
+    // `current_branch` returns `None` outside a git repo, in detached HEAD,
+    // or before the first commit — belt-core trusts the value verbatim.
+    let branch = crate::git::current_branch(std::path::Path::new("."));
     let state = engine
-        .init(pipeline_path, &args_map)
+        .init_with_branch(pipeline_path, &args_map, branch)
         .map_err(|e| miette::miette!("{e}"))?;
     let pipeline_file = Path::new(&state.pipeline_file);
     let phase = engine
