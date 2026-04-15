@@ -31,6 +31,11 @@ enum Command {
         /// Pipeline arguments (KEY=VALUE)
         #[arg(long = "arg", value_parser = parse_arg)]
         args: Vec<(String, serde_json::Value)>,
+        /// Optional `run_id` to inherit narrative from (context-neutral
+        /// narrative artifact). Equivalent to adding a hidden
+        /// `belt://run/<run_id>/...` reference for lookup.
+        #[arg(long = "inherits-from")]
+        inherits_from: Option<String>,
     },
     /// Get current phase info
     Next {
@@ -142,9 +147,13 @@ fn main() -> miette::Result<()> {
     let engine = Engine::new(&belt_dir());
 
     match cli.command {
-        Command::Init { file, args } => {
+        Command::Init {
+            file,
+            args,
+            inherits_from,
+        } => {
             let pipeline_path = resolve_pipeline(cli.config.as_ref(), file.as_ref())?;
-            cmd_init(&engine, &pipeline_path, args)?;
+            cmd_init(&engine, &pipeline_path, args, inherits_from.as_deref())?;
         }
         Command::Next { run } => cmd_next(&engine, run.as_ref())?,
         Command::Verify { run } => cmd_verify(&engine, run.as_ref())?,
@@ -159,7 +168,18 @@ fn cmd_init(
     engine: &Engine,
     pipeline_path: &Path,
     args: Vec<(String, serde_json::Value)>,
+    inherits_from: Option<&str>,
 ) -> miette::Result<()> {
+    // Validate that --inherits-from points to an existing run directory.
+    // Actual synthetic resolved_consumes entry wiring is deferred to Task 17;
+    // Task 16 only adds the CLI surface + fail-fast existence check.
+    if let Some(run_id) = inherits_from {
+        let run_dir = belt_dir().join("runs").join(run_id);
+        if !run_dir.is_dir() {
+            return Err(miette::miette!("--inherits-from: run not found: {run_id}"));
+        }
+    }
+
     let args_map: HashMap<String, serde_json::Value> = args.into_iter().collect();
     // Detect the current git branch from the user's shell CWD so
     // workspace-scoped URI resolvers (Task 15) can filter runs by branch.

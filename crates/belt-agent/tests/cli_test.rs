@@ -1718,3 +1718,27 @@ fn feature_dev_migrated_pipeline_boots() {
     assert!(invoke.is_object(), "invoke must be present");
     assert_eq!(invoke["skill"].as_str(), Some("/brainstorming"));
 }
+
+#[test]
+fn init_with_inherits_from_missing_errors() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("p.yml"),
+        r#"name: p
+version: 1
+phases:
+  - id: only
+    description: "only"
+"#,
+    )
+    .unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "p.yml", "--inherits-from", "01947deadbeef"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("run not found"), "stderr: {stderr}");
+}
