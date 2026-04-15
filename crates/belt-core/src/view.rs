@@ -3,6 +3,7 @@ use crate::model::{Artifact, ArtifactRef, Invoker, RunState};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::hash::BuildHasher;
 use std::path::Path;
 
 /// Subset of `ExpandedPhase` fields used by [`build_status_view`] to enrich
@@ -230,21 +231,79 @@ fn resolve_artifact(artifact: &Artifact, phase_start: Option<DateTime<Utc>>) -> 
     }
 }
 
+/// Evaluates an [`Artifact::when`] expression.
+///
+/// Grammar (MVP, debug-flow refresh spec, 2026-04-15):
+/// - `None` (no `when:` clause) → `true` (artifact always active)
+/// - `"args.<flag>"` → true iff `args[<flag>]` is `Value::Bool(true)`
+///
+/// Unsupported expressions, undefined arg references, and non-bool
+/// arg values all evaluate to `false`. This mirrors the conservative
+/// "if unsure, omit" stance chosen for status JSON: only the explicit
+/// `args.<flag>` form may activate a conditional artifact, so typos
+/// and future grammar extensions fail closed rather than leaking
+/// phantom artifacts into the view.
+#[must_use]
+pub fn evaluate_when<S: BuildHasher>(
+    when: Option<&str>,
+    args: &HashMap<String, serde_json::Value, S>,
+) -> bool {
+    let Some(expr) = when else {
+        return true;
+    };
+    let expr = expr.trim();
+    let Some(arg_name) = expr.strip_prefix("args.") else {
+        return false;
+    };
+    args.get(arg_name)
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// Returns the subset of `phase.produces` whose [`Artifact::when`]
+/// expression evaluates to true under `args` (or which have no
+/// `when:` clause).
+///
+/// Callers use this to filter conditional artifacts out of the
+/// status JSON before runtime resolution, so that flags like
+/// `--e2e=false` do not surface artifacts that the run will never
+/// produce.
+#[must_use]
+pub fn active_produces<'a, S: BuildHasher>(
+    phase: &'a crate::model::ExpandedPhase,
+    args: &HashMap<String, serde_json::Value, S>,
+) -> Vec<&'a Artifact> {
+    phase
+        .produces
+        .iter()
+        .filter(|artifact| evaluate_when(artifact.when.as_deref(), args))
+        .collect()
+}
+
 /// Resolve the `produces` list for a phase, or return `None` when the
 /// phase declares no artifacts. Keeping this `None`-vs-`Some(empty)`
 /// distinction mirrors the Plan A serialization shape (absent vs empty
 /// list both collapse to "omitted" via `skip_serializing_if`, but
 /// `Option` semantics are clearer for consumers).
-fn resolve_produces(
+///
+/// `args` is used to filter conditional artifacts via [`evaluate_when`]
+/// before resolving filesystem state. An empty `args` map treats every
+/// `when:` clause as false (undefined flag → conservative omission).
+fn resolve_produces<S: BuildHasher>(
     artifacts: &[Artifact],
     phase_start: Option<DateTime<Utc>>,
+    args: &HashMap<String, serde_json::Value, S>,
 ) -> Option<Vec<ResolvedArtifact>> {
-    if artifacts.is_empty() {
+    let active: Vec<&Artifact> = artifacts
+        .iter()
+        .filter(|a| evaluate_when(a.when.as_deref(), args))
+        .collect();
+    if active.is_empty() {
         None
     } else {
         Some(
-            artifacts
-                .iter()
+            active
+                .into_iter()
                 .map(|a| resolve_artifact(a, phase_start))
                 .collect(),
         )
@@ -279,7 +338,7 @@ pub fn build_status_view(
                 verify_checks: read_verify_checks(run_dir, &meta.id),
                 regate_checks: read_regate_checks(run_dir, &meta.id),
                 invoke: meta.invoke.clone(),
-                produces: resolve_produces(&meta.produces, phase_start),
+                produces: resolve_produces(&meta.produces, phase_start, &state.args),
                 consumes: meta.consumes.clone(),
             }
         })
