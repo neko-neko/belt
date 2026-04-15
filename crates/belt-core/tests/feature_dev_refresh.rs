@@ -199,3 +199,25 @@ fn top_level_args_are_e2e_and_codex_only() -> Result<(), BeltError> {
     );
     Ok(())
 }
+
+#[test]
+fn feature_dev_scenarios_artifact_has_typed_when_field() {
+    let pipeline_path = feature_dev_pipeline_path();
+    let pipeline =
+        belt_core::parser::parse_pipeline(&pipeline_path).expect("feature-dev pipeline must parse");
+    let test_scenarios_phase = pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == "test-scenarios")
+        .expect("test-scenarios phase must exist");
+    let scenarios_artifact = test_scenarios_phase
+        .produces
+        .iter()
+        .find(|a| a.name == "scenarios")
+        .expect("scenarios artifact must exist");
+    assert_eq!(
+        scenarios_artifact.when,
+        Some("args.e2e".to_string()),
+        "scenarios.when must parse as a typed field (regression test for silent-drop bug)"
+    );
+}
