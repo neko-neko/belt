@@ -756,3 +756,32 @@ phases:
         }
     }
 }
+
+/// Lint rule: a `consumes: External` URI referencing `belt://latest/<pipeline>/...`
+/// (or its workspace-qualified variant) should emit a *warning* when no sibling
+/// `<pipeline>.yml` nor `<pipeline>/pipeline.yml` exists next to the current
+/// pipeline file. This is authoring-time feedback — the producer may live in a
+/// different repo, so the check is advisory, not fatal.
+#[test]
+fn lint_warns_on_belt_uri_with_unknown_sibling_pipeline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let consumer = tmp.path().join("consumer.yml");
+    std::fs::write(
+        &consumer,
+        r#"name: consumer
+version: 1
+phases:
+  - id: rca
+    description: "rca"
+    consumes:
+      - name: prior
+        uri: "belt://latest/no-such-producer/notes/x.md"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&consumer).unwrap();
+    assert!(
+        diags.iter().any(|d| d.message.contains("no-such-producer")),
+        "expected a diagnostic mentioning 'no-such-producer', got: {diags:?}"
+    );
+}

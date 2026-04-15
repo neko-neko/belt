@@ -120,6 +120,11 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: External `consumes` URIs parse as valid belt:// grammar
     check_external_uri_grammar(&pipeline, &mut diagnostics);
 
+    // Check: External `consumes` URIs with Latest/WorkspaceLatest selectors
+    // reference a pipeline with a sibling YAML in the current directory.
+    // Warning-only: producers can legitimately live outside the repo.
+    check_external_uri_sibling_producer(&pipeline, base_dir, &mut diagnostics);
+
     // Check: validate file references exist on disk
     check_validate_file_refs(&pipeline, base_dir, &mut diagnostics);
 
@@ -348,6 +353,48 @@ fn check_external_uri_grammar(pipeline: &Pipeline, diagnostics: &mut Vec<LintDia
                         severity: Severity::Error,
                         message: format!(
                             "phase '{}': consumes '{}' URI invalid: {e}",
+                            phase.id, name
+                        ),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Lint rule: warn (not error) when a `consumes: External` URI with a
+/// `Latest` or `WorkspaceLatest` selector references a pipeline with no
+/// sibling YAML in the same directory as the current pipeline file.
+///
+/// Resolution strategy: look for `<base_dir>/<pipeline>.yml` *or*
+/// `<base_dir>/<pipeline>/pipeline.yml`. If neither exists, emit a warning.
+///
+/// The `Run` variant is intentionally skipped — it targets a specific run
+/// UUID and is not expected to have a sibling pipeline definition.
+///
+/// False positives are acceptable by design (spec intent): producers can
+/// legitimately live in a separate repository or be defined elsewhere on
+/// disk. Severity is Warning so authors can dismiss per case.
+fn check_external_uri_sibling_producer(
+    pipeline: &Pipeline,
+    base_dir: &Path,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for phase in &pipeline.phases {
+        for aref in &phase.consumes {
+            if let ArtifactRef::External { name, uri } = aref {
+                let producer = match uri {
+                    crate::uri::BeltUri::Latest { pipeline: p, .. }
+                    | crate::uri::BeltUri::WorkspaceLatest { pipeline: p, .. } => p,
+                    crate::uri::BeltUri::Run { .. } => continue,
+                };
+                let sibling_file = base_dir.join(format!("{producer}.yml"));
+                let sibling_dir = base_dir.join(producer).join("pipeline.yml");
+                if !sibling_file.is_file() && !sibling_dir.is_file() {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Warning,
+                        message: format!(
+                            "phase '{}': consumes '{}' references pipeline '{producer}' but no sibling YAML found (looked for '{producer}.yml' and '{producer}/pipeline.yml')",
                             phase.id, name
                         ),
                     });
