@@ -134,6 +134,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: validate file references exist on disk
     check_validate_file_refs(&pipeline, base_dir, &mut diagnostics);
 
+    // Check: Artifact.when expressions must reference defined args.
+    check_artifact_when_references(&pipeline, &mut diagnostics);
+
     // Phase 2: Try expansion (catches issues in sub-pipelines)
     if diagnostics.iter().all(|d| d.severity != Severity::Error) {
         if let Err(e) = expand_pipeline(path) {
@@ -441,6 +444,45 @@ fn check_produces_protected_by_gate(pipeline: &Pipeline, diagnostics: &mut Vec<L
                     message: format!(
                         "phase '{}': produces '{}' path '{}' is not protected by gate",
                         phase.id, art.name, art.path
+                    ),
+                });
+            }
+        }
+    }
+}
+
+/// Lint rule: `Artifact.when` expressions must reference args that are
+/// declared in the pipeline's `args:` map. Only `args.<flag>` form is
+/// supported at runtime (view / engine resolution); anything else is
+/// authoring-time dead code.
+///
+/// Warning-only — an undefined arg reference always evaluates to `false`,
+/// so the artifact is silently filtered from `status` / `resolved_consumes`.
+/// The lint surfaces this drift at authoring time.
+fn check_artifact_when_references(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    let defined_args: HashSet<&str> = pipeline.args.keys().map(String::as_str).collect();
+    for phase in &pipeline.phases {
+        for artifact in &phase.produces {
+            let Some(expr) = artifact.when.as_deref() else {
+                continue;
+            };
+            let expr = expr.trim();
+            let Some(arg_name) = expr.strip_prefix("args.") else {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "phase '{}' artifact '{}' has unsupported when expression '{}'; only `args.<flag>` is supported",
+                        phase.id, artifact.name, expr
+                    ),
+                });
+                continue;
+            };
+            if !defined_args.contains(arg_name) {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "phase '{}' artifact '{}' references undefined arg '{}' in when clause",
+                        phase.id, artifact.name, arg_name
                     ),
                 });
             }

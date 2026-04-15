@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use belt_core::expander::expand_pipeline;
+use belt_core::lint::{Severity, lint_pipeline};
 use belt_core::parser::parse_pipeline;
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -183,5 +184,35 @@ phases:
     assert!(
         resolved_true.is_some(),
         "ArtifactRef must resolve to Some when source when=true"
+    );
+}
+
+#[test]
+fn lint_warns_undefined_arg_in_artifact_when() {
+    let yaml = r#"
+name: test-when-lint
+version: 1
+args:
+  e2e:
+    type: bool
+    default: false
+phases:
+  - id: phase1
+    description: "Phase 1"
+    invoke:
+      skill: /test-skill
+    produces:
+      - name: bad
+        path: "out/*.md"
+        when: "args.undefined_flag"
+"#;
+    let fixture = write_fixture("when_lint.yml", yaml);
+    let diagnostics = lint_pipeline(&fixture).expect("lint");
+    let undefined_warning = diagnostics
+        .iter()
+        .find(|d| d.severity == Severity::Warning && d.message.contains("undefined_flag"));
+    assert!(
+        undefined_warning.is_some(),
+        "lint must emit Warning for undefined arg reference in Artifact.when, got diagnostics: {diagnostics:?}"
     );
 }

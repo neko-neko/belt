@@ -1,0 +1,16 @@
+
+name: test-when-lint
+version: 1
+args:
+  e2e:
+    type: bool
+    default: false
+phases:
+  - id: phase1
+    description: "Phase 1"
+    invoke:
+      skill: /test-skill
+    produces:
+      - name: bad
+        path: "out/*.md"
+        when: "args.undefined_flag"
