@@ -14,7 +14,7 @@ audit: required
   2. Verify the file exists
   3. Parse as JSON and confirm a `findings` array field is present
 - **pass_condition**: File exists AND parses as valid JSON AND contains a `findings` array
-- **fail_diagnosis_hint**: `/implementation-review` invocation interrupted or artifact path drift. Re-invoke the skill from the fix-plan-review phase
+- **fail_diagnosis_hint**: `/spec-review` invocation interrupted or artifact path drift. Re-invoke the skill from the fix-plan-review phase
 - **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
 
 ### FIX-PLAN-REVIEW-02: Fix plan and RCA Report are consistent
@@ -37,7 +37,7 @@ audit: required
   2. Filter findings where `severity == "blocker"`
   3. For each blocker finding, verify either (a) a resolution comment / fix commit is referenced in the fix plan, OR (b) the finding has been explicitly rejected by user triage
 - **pass_condition**: Zero unresolved blocker findings
-- **fail_diagnosis_hint**: User triage (accept/reject for each finding) is incomplete, or fix commits have not landed. Re-run the `/implementation-review` fix phase with accepted blocker findings
+- **fail_diagnosis_hint**: User triage (accept/reject for each finding) is incomplete, or fix commits have not landed. Re-run the `/spec-review` fix phase with accepted blocker findings
 - **depends_on_artifacts**: [.belt/runs/*/review/findings.json, docs/plans/*-fix-plan.md]
 
 ## Observation Collection

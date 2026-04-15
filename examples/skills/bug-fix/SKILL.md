@@ -35,8 +35,11 @@ Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 
 ### Phase 3: fix-plan-review
 
-- **INVOKE**: Skill tool `/implementation-review` with `codex` passed through.
+- **INVOKE**: Skill tool `/spec-review` with `codex` passed through.
 - No supplement required; the skill is self-contained.
+- Note: spec-review を fix-plan レビューに流用する。`design-judgment` 観点の
+  grill-me は原則発動しない (設計判断は rca / fix-plan で決定済みのため)。
+  発動した場合は上流 (rca / fix-plan) の見直しサインとして扱う。
 
 ### Phase 4: execute
 
@@ -72,7 +75,7 @@ Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 - **Never skip Phase 1 / 2 / 6 / 7 / 8 の supplement load**: bug-fix 固有 override が inject されず drift 発生.
 - **Never delegate root cause synthesis to subagents**: parallel exploration results は orchestrator が再構築.
 - **Never proceed without a failing reproduction test**: RCA-05 blocker.
-- **Never filter or omit review findings**: `/code-review`, `/implementation-review` の triage は user 責務.
+- **Never filter or omit review findings**: `/code-review`, `/spec-review` の triage は user 責務.
 - **Never bypass the Phase 8 A/B choice**: merge-vs-PR は user 決定.
 - **Never hand-edit files under `docs/plans/<topic>-*`**: phase-produced; manual edits break belt の phase-start mtime filter.
 - **Never modify the consumed global skills**: override は `references/*-supplement.md` 経由のみ.
