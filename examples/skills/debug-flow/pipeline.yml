@@ -1,33 +1,36 @@
 name: debug-flow
-description: "Quality-gated debugging orchestrator"
 version: 1
+description: "Quality-gated debugging pipeline (8 phases)"
+
 args:
-  e2e: { type: bool, default: false }
-  smoke: { type: bool, default: false }
-  codex: { type: bool, default: false }
-  ui: { type: bool, default: false }
-  iterations: { type: number, default: 3 }
-  swarm: { type: bool, default: false }
+  e2e:
+    type: bool
+    default: false
+    description: "Enable E2E testing phases (monkey-test, dogfood)"
+  codex:
+    type: bool
+    default: false
+    description: "Enable Codex parallel review in review phases"
 
 phases:
-  # ─── Root Cause Analysis ───
   - id: rca
     description: "Investigate root cause via parallel exploration"
     invoke:
       skill: /systematic-debugging
-      args:
-        swarm: "args.swarm"
     produces:
       - name: rca_report
         path: "docs/plans/*-rca-report.md"
-        description: "Root cause analysis report identifying the underlying defect and contributing conditions"
+        description: "Root cause analysis report (Symptom / Investigation Record / Root Cause / Reproduction Test / Fix Strategy)"
+      - name: rca_scenarios
+        path: "docs/plans/*-rca-scenarios.yml"
+        description: "Reproduction scenarios in Given/When/Then YAML for monkey-test replay"
+        when: "args.e2e"
     gate:
       - file_exists: "docs/plans/*-rca-report.md"
     validate: ./criteria/rca.md
     confirm: true
     max_retries: 3
 
-  # ─── Fix Plan ───
   - id: fix-plan
     description: "Create fix plan from RCA report"
     invoke:
@@ -37,30 +40,25 @@ phases:
     produces:
       - name: fix_plan_doc
         path: "docs/plans/*-fix-plan.md"
-        description: "Fix plan describing the remediation strategy and task breakdown"
+        description: "Fix plan with RCA Fix Strategy → task mapping"
     gate:
       - file_exists: "docs/plans/*-fix-plan.md"
     validate: ./criteria/fix-plan.md
     confirm: true
     max_retries: 3
 
-  # ─── Fix Plan Review ───
   - id: fix-plan-review
-    description: "Plan review via implementation-review sub-pipeline"
+    description: "Plan review via implementation-review"
     invoke:
-      pipeline: ../implementation-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
+      skill: /implementation-review
+      args:
         codex: "args.codex"
-        ui: "args.ui"
-        swarm: "args.swarm"
     consumes:
       - fix_plan_doc
     validate: ./criteria/fix-plan-review.md
     confirm: true
     max_retries: 3
 
-  # ─── Execute ───
   - id: execute
     description: "TDD implementation following the fix plan"
     invoke:
@@ -72,61 +70,67 @@ phases:
     confirm: true
     max_retries: 3
 
-  # ─── Smoke Test (conditional) ───
-  - id: smoke-test
-    description: "Local smoke test with browser verification"
-    when: "args.smoke"
-    invoke:
-      skill: /smoke-test
-    produces:
-      - name: smoke_test_report
-        path: "smoke-test-report.md"
-        description: "Ad-hoc smoke test report with adversarial probes"
-    gate:
-      - file_exists: "smoke-test-report.md"
-    validate: ../../criteria/smoke-test.md
-    confirm: true
-    max_retries: 3
-
-  # ─── Code Review ───
   - id: code-review
-    description: "Multi-perspective code review via code-review sub-pipeline"
+    description: "Multi-perspective code review"
     invoke:
-      pipeline: ../code-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
+      skill: /code-review
+      args:
         codex: "args.codex"
-        swarm: "args.swarm"
     consumes:
+      - rca_report
       - fix_plan_doc
     validate: ../../criteria/code-review.md
-    regate: [execute, smoke-test]
-    confirm: true
-    max_retries: 3
-
-  # ─── Test Review (conditional) ───
-  - id: test-review
-    description: "Multi-perspective test review via test-review sub-pipeline"
-    when: "args.e2e"
-    invoke:
-      pipeline: ../test-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
-        codex: "args.codex"
-        swarm: "args.swarm"
-    consumes:
-      - fix_plan_doc
-    validate: ../../criteria/test-review.md
     regate: [execute]
     confirm: true
     max_retries: 3
 
-  # ─── Integrate ───
+  - id: monkey-test
+    description: "Replay reproduction scenarios via agent-browser"
+    when: "args.e2e"
+    invoke:
+      skill: /monkey-test
+    consumes:
+      - rca_report
+      - rca_scenarios
+      - fix_plan_doc
+    produces:
+      - name: monkey_test_report
+        path: "docs/plans/*-monkey-test-report.md"
+      - name: monkey_test_results
+        path: "docs/plans/*-monkey-test-results.json"
+    gate:
+      - file_exists: "docs/plans/*-monkey-test-report.md"
+    validate: ./criteria/monkey-test.md
+    confirm: true
+    max_retries: 3
+
+  - id: dogfood
+    description: "Exploratory regression testing around fix scope"
+    when: "args.e2e"
+    invoke:
+      skill: /dogfood
+    consumes:
+      - rca_report
+      - rca_scenarios
+      - fix_plan_doc
+      - monkey_test_report
+      - monkey_test_results
+    produces:
+      - name: dogfood_report
+        path: "docs/plans/*-dogfood-report/report.md"
+    gate:
+      - file_exists: "docs/plans/*-dogfood-report/report.md"
+    validate: ./criteria/dogfood.md
+    confirm: true
+    max_retries: 3
+
   - id: integrate
-    description: "Merge, PR, or branch management"
+    description: "Integrate fix (user chooses: wt merge or gh pr create)"
     invoke:
       skill: /worktrunk
-    validate:
-      - "Integration method chosen and executed"
-      - "All pre-merge checks pass"
+    consumes:
+      - rca_report
+      - fix_plan_doc
+    validate: ./criteria/integrate.md
     confirm: true
+    max_retries: 3
