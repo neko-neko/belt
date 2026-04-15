@@ -1,44 +1,90 @@
 ---
 name: feature-dev
 description: >-
-  Quality-gated development orchestrator. Drives a 10-phase pipeline
-  (design → review → plan → review → execute → doc-audit → smoke-test →
-  code-review → test-review → integrate) via belt-agent CLI.
-  Conditional phases: --e2e (test-review), --smoke (smoke-test), --doc (doc-audit).
-  Passthrough flags: --codex, --ui, --iterations N, --swarm.
+  Quality-gated development pipeline (8 phases). Design → test scenarios → plan →
+  execute → code review → monkey test (E2E scripted) → dogfood (E2E exploratory) →
+  integrate. Web UI testing phases are conditional on --e2e.
 user-invocable: true
-argument-hint: "[--e2e] [--smoke] [--doc] [--codex] [--ui] [--iterations N] [--swarm]"
 ---
 
-# Feature Dev Orchestrator
+# feature-dev
 
-Quality-gated development pipeline driven by belt-agent.
-belt handles phase transitions, gates, regate, and conditional skipping.
-The orchestrator dispatches skills per phase and auditor agents per audit.
+Belt pipeline for quality-gated development. 8 phases driven by belt-agent.
 
-## Dispatch Rules
+## Args
 
-| invoke variant | Orchestrator action |
-|---|---|
-| `skill:` | Invoke the Claude Code slash-command skill named in `invoke.skill`, passing `invoke.args` as arguments. |
-| `pipeline:` | Initialise a nested `belt-agent` run on the referenced sub-pipeline (`invoke.pipeline`) with `invoke.with` as args. |
+| Arg | Type | Default | Description |
+|---|---|---|---|
+| e2e | bool | false | Enable monkey-test and dogfood phases |
+| codex | bool | false | Enable Codex parallel review in code-review |
 
-Phase validation is driven by `validate:` on each phase. When `validate` is
-a file reference (e.g., `./criteria/design.md`), read the file and judge
-each criterion defined inside it before calling `belt-agent step --confirm`.
-When `validate` is a list of inline strings, judge each string directly.
-Both forms use the same `phase-auditor` subagent by convention; see
-`../../references/audit-protocol.md`.
+## Phase-Specific Invocation Rules
 
-## Evidence Plan
+### Phase 1: design
 
-Generated after `design-audit` completes. Re-evaluated after `plan-review-audit`
-if design hash changed. Details: `references/evidence-plan-protocol.md`.
+- **INVOKE 1**: Read `./references/brainstorming-supplement.md` into context.
+- **INVOKE 2**: Skill tool `/brainstorming`.
+- The supplement injects parallel exploration (code-explorer / code-architect /
+  impact-analyzer), implicit-rules extraction, required design sections, and
+  worktree creation order.
 
-## Red Flags — NEVER DO
+### Phase 2: test-scenarios
 
-- Skip the `design` phase
-- Auto-answer brainstorming design questions
-- Filter or omit review findings
-- Choose merge/PR/keep/discard on behalf of the user
-- Proceed past a FAIL verdict without fix + re-audit or user intervention
+- **INVOKE**: Skill tool `/test-scenarios` with `e2e` passed through from args.
+- Produces `test-strategy.md` always; produces `scenarios.yml` when e2e.
+
+### Phase 3: plan
+
+- **INVOKE 1**: Read `./references/writing-plans-supplement.md`.
+- **INVOKE 2**: Skill tool `/writing-plans`.
+- The supplement enforces path override and Must-Verify / scenarios cross-referencing.
+
+### Phase 4: execute
+
+- **INVOKE**: Skill tool `/subagent-driven-development`.
+- Orchestrator must reconstruct plan tasks into self-contained implementation
+  specs before dispatching `feature-implementer` subagents. Do not forward
+  broad research verbatim.
+
+### Phase 5: code-review
+
+- **INVOKE**: Skill tool `/code-review` with `codex` passed through.
+- On fix commits, Phase 4 validate is re-verified per belt regate semantics.
+  `max_retries: 3` limits the review-fix loop.
+
+### Phase 6: monkey-test (when e2e)
+
+- **INVOKE 1**: Read `./references/monkey-test-supplement.md`.
+- **INVOKE 2**: Skill tool `/monkey-test`.
+
+### Phase 7: dogfood (when e2e)
+
+- **INVOKE 1**: Read `./references/dogfood-supplement.md`.
+- **INVOKE 2**: Skill tool `/dogfood`.
+- The supplement injects prior-phase artifacts as exploration hints.
+
+### Phase 8: integrate
+
+- **INVOKE 1**: Read `./references/worktrunk-supplement.md`.
+- **INVOKE 2**: Prompt user for mode (A: `wt merge` / B: `gh pr create`) and
+  execute accordingly via `/worktrunk`.
+
+## Red Flags
+
+- **Never skip the Phase 1 supplement load**: parallel exploration and the
+  required design sections depend on it.
+- **Never pass --iterations to /code-review**: single-pass review by design.
+- **Never bypass the Phase 8 A/B choice**: merge-vs-PR is always user-decided.
+- **Never modify the consumed global skills**: all overrides go through
+  `references/*-supplement.md`.
+- **Never hand-edit files under `docs/features/<topic>/`**: they are
+  phase-produced; manual edits break belt's phase-start mtime filter.
+
+## References
+
+- `./references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
+- `./references/brainstorming-supplement.md` — Phase 1 overrides
+- `./references/writing-plans-supplement.md` — Phase 3 overrides
+- `./references/monkey-test-supplement.md` — Phase 6 context injection
+- `./references/dogfood-supplement.md` — Phase 7 overrides and context injection
+- `./references/worktrunk-supplement.md` — Phase 8 A/B choice logic
