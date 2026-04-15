@@ -1,1 +1,1 @@
-pipeline = "pipeline.yml"
+pipeline = "./pipeline.yml"
