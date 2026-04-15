@@ -8,11 +8,7 @@
 
 use std::path::PathBuf;
 
-use belt_core::{
-    error::BeltError,
-    model::ArgType,
-    parser::parse_pipeline,
-};
+use belt_core::{error::BeltError, model::ArgType, parser::parse_pipeline};
 
 fn repo_root() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
