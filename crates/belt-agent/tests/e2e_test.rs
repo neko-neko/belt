@@ -442,3 +442,141 @@ fn e2e_chain_producer_to_consumer_happy_path() {
         .unwrap_or_else(|e| panic!("read_to_string({}) failed: {e}", resolved_abs.display()));
     assert_eq!(contents, "Review narrative body");
 }
+
+/// `belt://latest/<pipeline>/...` resolution must be scoped to the current
+/// git branch so narrative does not leak between branches that happen to
+/// share a workspace. This test seeds TWO completed producer runs of the
+/// same pipeline: one on `main` with an *earlier* UUIDv7 and one on
+/// `develop` with a *later* UUIDv7. Lex-max on run_id alone would select
+/// the develop run; but the branch filter (Task 14 + Task 17 wiring) must
+/// steer the resolver back to the main run because the consumer is init'd
+/// on branch `main`.
+///
+/// Task 11 discovered that `git init -b main` alone yields an ambiguous
+/// unborn HEAD — `git rev-parse --abbrev-ref HEAD` either fails or
+/// returns the literal `"HEAD"`. Seeding an `--allow-empty` commit with
+/// inline identity mirrors the fix from `git::current_branch`'s own
+/// tests and keeps the fixture independent of the runner's global git
+/// config.
+#[test]
+fn e2e_branch_isolation_for_latest_uri() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Producer run on branch=main (completed).
+    let main_run = "01947aaa-0000-7000-8000-000000000000";
+    let main_dir = tmp.path().join(".belt/runs").join(main_run);
+    std::fs::create_dir_all(main_dir.join("notes")).unwrap();
+    std::fs::write(main_dir.join("notes/phase-review.md"), "main body").unwrap();
+    std::fs::write(
+        main_dir.join("state.json"),
+        format!(
+            r#"{{
+  "run_id": "{main_run}",
+  "pipeline": "chain-producer",
+  "pipeline_file": "/tmp/x.yml",
+  "version": 1,
+  "branch": "main",
+  "args": {{}},
+  "current_phase": "done",
+  "completed_phases": ["review","done"],
+  "skipped_phases": [],
+  "status": "completed",
+  "created_at": "2026-04-14T00:00:00Z",
+  "updated_at": "2026-04-14T00:00:00Z"
+}}"#
+        ),
+    )
+    .unwrap();
+
+    // Producer run on branch=develop with lexicographically LATER run_id,
+    // should NOT be picked when current_branch == main.
+    let dev_run = "01947bbb-0000-7000-8000-000000000000";
+    let dev_dir = tmp.path().join(".belt/runs").join(dev_run);
+    std::fs::create_dir_all(dev_dir.join("notes")).unwrap();
+    std::fs::write(dev_dir.join("notes/phase-review.md"), "develop body").unwrap();
+    std::fs::write(
+        dev_dir.join("state.json"),
+        format!(
+            r#"{{
+  "run_id": "{dev_run}",
+  "pipeline": "chain-producer",
+  "pipeline_file": "/tmp/x.yml",
+  "version": 1,
+  "branch": "develop",
+  "args": {{}},
+  "current_phase": "done",
+  "completed_phases": ["review","done"],
+  "skipped_phases": [],
+  "status": "completed",
+  "created_at": "2026-04-14T00:00:00Z",
+  "updated_at": "2026-04-14T00:00:00Z"
+}}"#
+        ),
+    )
+    .unwrap();
+
+    // Init a git repo on `main`.
+    let init_st = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(tmp.path())
+        .status()
+        .unwrap();
+    assert!(init_st.success());
+    // Make an initial commit so HEAD actually points to a real commit on
+    // branch 'main' (not ambiguous unborn branch). Without this,
+    // `git rev-parse --abbrev-ref HEAD` returns "HEAD" and the branch
+    // filter degrades to None, which would mask the test's intent.
+    let commit_st = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.email=belt@test.invalid",
+            "-c",
+            "user.name=belt",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+        ])
+        .current_dir(tmp.path())
+        .status()
+        .unwrap();
+    assert!(commit_st.success());
+
+    // Copy consumer fixture.
+    let consumer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-consumer.yml");
+    std::fs::copy(&consumer_src, tmp.path().join("chain-consumer.yml")).unwrap();
+
+    // Init consumer — should pick main_run, not dev_run.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "init stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Find the new run (not main_run, not dev_run).
+    let consumer_run = std::fs::read_dir(tmp.path().join(".belt/runs"))
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
+        .find(|n| n != main_run && n != dev_run)
+        .unwrap();
+    let state = std::fs::read_to_string(
+        tmp.path()
+            .join(format!(".belt/runs/{consumer_run}/state.json")),
+    )
+    .unwrap();
+    let v: serde_json::Value = serde_json::from_str(&state).unwrap();
+    let rc = v
+        .get("resolved_consumes")
+        .and_then(|x| x.as_object())
+        .unwrap();
+    let path = rc.values().next().unwrap().as_str().unwrap();
+    assert!(path.contains(main_run), "should pick main run, got: {path}");
+}
