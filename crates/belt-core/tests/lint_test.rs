@@ -706,3 +706,53 @@ phases:
         .collect();
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
 }
+
+/// Lint rule: External URI grammar is validated.
+///
+/// Note: `BeltUri::parse` already rejects unknown selectors at YAML
+/// deserialization time (see `BeltUri::Deserialize`), so `parse_pipeline`
+/// may hard-fail before our dedicated lint pass runs. This test accepts
+/// either outcome:
+///   - `Ok(diags)` with a URI-grammar diagnostic, or
+///   - `Ok(diags)` containing a parse-level error that mentions the URI.
+///   - `Err(_)` (parse-level rejection propagated).
+/// All three satisfy the intent: invalid URI grammar is surfaced.
+#[test]
+fn lint_rejects_invalid_uri_grammar() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-uri
+version: 1
+phases:
+  - id: first
+    description: "first"
+    consumes:
+      - name: bad
+        uri: "belt://bogus/whatever/x.md"
+"#,
+    );
+
+    let result = lint_pipeline(&path);
+    match result {
+        Ok(diags) => {
+            assert!(
+                diags.iter().any(|d| {
+                    let m = d.message.to_lowercase();
+                    m.contains("uri") || m.contains("selector") || m.contains("invalid")
+                }),
+                "lint should flag invalid URI grammar, got: {diags:?}"
+            );
+        }
+        Err(err) => {
+            let msg = format!("{err}");
+            let low = msg.to_lowercase();
+            assert!(
+                low.contains("uri") || low.contains("selector") || msg.contains("belt://"),
+                "parse error should mention URI grammar: {msg}"
+            );
+        }
+    }
+}

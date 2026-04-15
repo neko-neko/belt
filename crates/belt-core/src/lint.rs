@@ -117,6 +117,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: produces uniqueness per phase + consumes resolves to earlier phase
     check_artifact_flow(&pipeline, &mut diagnostics);
 
+    // Check: External `consumes` URIs parse as valid belt:// grammar
+    check_external_uri_grammar(&pipeline, &mut diagnostics);
+
     // Check: validate file references exist on disk
     check_validate_file_refs(&pipeline, base_dir, &mut diagnostics);
 
@@ -317,7 +320,37 @@ fn check_artifact_flow(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic
                     // External refs are resolved at init time by belt-agent
                     // against a different run's state.json, so there is no
                     // earlier-phase produces to check here. URI grammar
-                    // validation is owned by a dedicated lint rule.
+                    // validation is owned by `check_external_uri_grammar`.
+                }
+            }
+        }
+    }
+}
+
+/// Lint rule: every `consumes: External { uri }` entry must be a syntactically
+/// valid `belt://` URI.
+///
+/// In practice the YAML deserializer already rejects malformed URIs via
+/// `BeltUri::parse` (called from `BeltUri::Deserialize`), so by the time a
+/// `Pipeline` is materialized all External refs are grammar-valid. This lint
+/// performs a `Display → parse` roundtrip as a defensive, belt-and-suspenders
+/// check: if Display ever diverges from parse (future refactor), the lint
+/// catches the drift. It also encodes the invariant explicitly so that if
+/// `BeltUri::parse` is ever relaxed (e.g., to emit warnings instead of hard
+/// errors), the lint continues to flag invalid grammar at authoring time.
+fn check_external_uri_grammar(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    for phase in &pipeline.phases {
+        for aref in &phase.consumes {
+            if let ArtifactRef::External { name, uri } = aref {
+                let s = uri.to_string();
+                if let Err(e) = crate::uri::BeltUri::parse(&s) {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Error,
+                        message: format!(
+                            "phase '{}': consumes '{}' URI invalid: {e}",
+                            phase.id, name
+                        ),
+                    });
                 }
             }
         }
