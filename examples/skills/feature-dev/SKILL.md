@@ -5,6 +5,7 @@ description: >-
   execute → code review → monkey test (E2E scripted) → dogfood (E2E exploratory) →
   integrate. Web UI testing phases are conditional on --e2e.
 user-invocable: true
+argument-hint: "[--e2e] [--codex]"
 ---
 
 # feature-dev
