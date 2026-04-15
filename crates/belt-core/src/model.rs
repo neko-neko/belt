@@ -178,6 +178,10 @@ mod validate_de {
 /// is the filesystem path the LLM is expected to produce (glob permitted for
 /// runtime-determined filenames like `docs/plans/*-design.md`).
 ///
+/// `when` is an optional expression (currently `args.<flag>` boolean reference
+/// only) that, when false, causes the artifact to be omitted from the run's
+/// produces list (see spec 2026-04-15-debug-flow-refresh-design.md "Artifact.when Semantics").
+///
 /// Glob resolution semantics are intentionally not specified here; they are
 /// deferred to the Plan B examples migration implementation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +190,8 @@ pub struct Artifact {
     pub path: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub when: Option<String>,
 }
 
 /// A reference to an artifact. `Named` is same-phase short-form. `Qualified`

@@ -1,0 +1,17 @@
+
+name: test-when-field
+version: 1
+args:
+  e2e:
+    type: bool
+    default: false
+phases:
+  - id: phase1
+    invoke:
+      skill: /test-skill
+    produces:
+      - name: conditional_artifact
+        path: "output/*.md"
+        when: "args.e2e"
+      - name: unconditional_artifact
+        path: "other/*.md"

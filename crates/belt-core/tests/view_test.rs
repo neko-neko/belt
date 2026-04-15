@@ -633,6 +633,7 @@ fn phase_view_serializes_invoke_skill() {
             name: "design_doc".to_string(),
             path: "docs/plans/*-design.md".to_string(),
             description: Some("design".to_string()),
+            when: None,
         }],
         consumes: vec![],
     }];
@@ -687,6 +688,7 @@ fn glob_resolution_picks_newest_after_phase_start() {
             name: "design_doc".to_string(),
             path: glob_pattern.clone(),
             description: None,
+            when: None,
         }],
         consumes: vec![],
     }];
@@ -760,6 +762,7 @@ fn glob_resolution_zero_matches_reports_missing() {
             name: "missing_doc".to_string(),
             path: glob_pattern,
             description: None,
+            when: None,
         }],
         consumes: vec![],
     }];
@@ -830,6 +833,7 @@ fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
             name: "doc".to_string(),
             path: glob_pattern,
             description: None,
+            when: None,
         }],
         consumes: vec![],
     }];
@@ -895,6 +899,7 @@ fn concrete_path_skips_filter() {
             name: "report".to_string(),
             path: concrete.to_str().unwrap().to_string(),
             description: None,
+            when: None,
         }],
         consumes: vec![],
     }];
