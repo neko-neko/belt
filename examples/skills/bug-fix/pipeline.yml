@@ -48,9 +48,9 @@ phases:
     max_retries: 3
 
   - id: fix-plan-review
-    description: "Plan review via implementation-review"
+    description: "Plan review via spec-review"
     invoke:
-      skill: /implementation-review
+      skill: /spec-review
       args:
         codex: "args.codex"
     consumes:
