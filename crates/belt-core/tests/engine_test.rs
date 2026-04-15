@@ -2017,3 +2017,34 @@ phases:
         .expect("phase_start_times must persist");
     assert_eq!(written.to_rfc3339(), read_back.to_rfc3339());
 }
+
+// ---------------------------------------------------------------------------
+// init_creates_notes_directory
+//
+// Ensures the run-scoped notes directory (`<run_dir>/notes/`) is created on
+// `Engine::init`, so downstream tasks can write narrative Markdown artifacts
+// without worrying about directory-creation ordering.
+// ---------------------------------------------------------------------------
+#[test]
+fn init_creates_notes_directory() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "p.yml",
+        r#"name: p
+version: 1
+phases:
+  - id: one
+    description: "only phase"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    let notes = belt_dir.join("runs").join(&state.run_id).join("notes");
+    assert!(notes.is_dir(), "notes dir not created: {}", notes.display());
+}

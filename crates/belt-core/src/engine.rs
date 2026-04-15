@@ -45,6 +45,10 @@ impl Engine {
         let run_dir = self.belt_dir.join("runs").join(&run_id);
         std::fs::create_dir_all(&run_dir)?;
 
+        // Create run-scoped notes directory for narrative artifacts
+        // (context-neutral narrative artifact spec).
+        std::fs::create_dir_all(run_dir.join("notes"))?;
+
         let now = now_iso8601();
         let mut phase_start_times: HashMap<String, chrono::DateTime<chrono::Utc>> = HashMap::new();
         phase_start_times.insert(active.id.clone(), chrono::Utc::now());
