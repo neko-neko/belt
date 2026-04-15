@@ -6,7 +6,7 @@
 //! - phases = [review, fix], review.invoke.agents = [<skill>-reviewer]
 //! - consolidated agent files exist; legacy per-observation files are removed.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use belt_core::{
     error::BeltError,
