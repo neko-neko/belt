@@ -125,6 +125,12 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Warning-only: producers can legitimately live outside the repo.
     check_external_uri_sibling_producer(&pipeline, base_dir, &mut diagnostics);
 
+    // Check: each `produces` entry is protected by a gate (file_exists
+    // matching the path, or has_output: true). Warning-only: the phase may
+    // legitimately write elsewhere, but without gate protection downstream
+    // consumers may see missing files at runtime.
+    check_produces_protected_by_gate(&pipeline, &mut diagnostics);
+
     // Check: validate file references exist on disk
     check_validate_file_refs(&pipeline, base_dir, &mut diagnostics);
 
@@ -399,6 +405,44 @@ fn check_external_uri_sibling_producer(
                         ),
                     });
                 }
+            }
+        }
+    }
+}
+
+/// Lint rule: warn when a phase's `produces` entries are not protected by a
+/// matching gate check. A `produces` entry is considered protected when any
+/// gate in the same phase is either:
+///   - `file_exists: <path>` with a literal string-equal `path` to the
+///     produces entry's `path` (raw template string — `{run_id}` is not
+///     expanded at lint time), or
+///   - `has_output: true` (presence-check on the phase's `output_dir`, weaker
+///     but spec-accepted).
+///
+/// Without gate protection, the phase can complete "successfully" without
+/// actually writing the promised file. Downstream consumers then observe
+/// missing paths or empty `resolved_consumes` at runtime — a class of bug
+/// this lint catches at authoring time.
+///
+/// Warning-only: the phase may legitimately write the file via an external
+/// mechanism (e.g., tracked via another pipeline's gate), so the check is
+/// advisory rather than fatal.
+fn check_produces_protected_by_gate(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    for phase in &pipeline.phases {
+        for art in &phase.produces {
+            let protected = phase.gate.iter().any(|g| match g {
+                GateCheck::FileExists { file_exists } => file_exists == &art.path,
+                GateCheck::HasOutput { has_output: true } => true,
+                _ => false,
+            });
+            if !protected {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "phase '{}': produces '{}' path '{}' is not protected by gate",
+                        phase.id, art.name, art.path
+                    ),
+                });
             }
         }
     }

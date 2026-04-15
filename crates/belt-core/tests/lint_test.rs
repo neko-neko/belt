@@ -785,3 +785,32 @@ phases:
         "expected a diagnostic mentioning 'no-such-producer', got: {diags:?}"
     );
 }
+
+#[test]
+fn lint_warns_on_produces_without_gate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("p.yml");
+    std::fs::write(
+        &p,
+        r#"name: p
+version: 1
+phases:
+  - id: review
+    description: "review"
+    produces:
+      - name: notes
+        path: ".belt/runs/{run_id}/notes/phase-review.md"
+    gate:
+      - cmd: "echo ok"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&p).unwrap();
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == belt_core::lint::Severity::Warning
+                && d.message.contains("not protected by gate")),
+        "expected a Warning diagnostic mentioning 'not protected by gate', got: {diags:?}"
+    );
+}
