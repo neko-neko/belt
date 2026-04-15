@@ -8,6 +8,8 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+mod git;
+
 #[derive(Parser)]
 #[command(name = "belt-agent", about = "belt-agent — workflow runtime for LLM")]
 struct Cli {
