@@ -631,4 +631,130 @@ fn e2e_consumer_init_fails_when_no_completed_producer() {
         stderr.contains("chain-producer"),
         "expected resolver error about chain-producer; stderr: {stderr}"
     );
+
+    // Atomicity probe (BELT-33): a failed init must NOT leave an orphan
+    // consumer run directory behind. The only run that may exist is the
+    // pre-seeded in_progress producer; any other directory indicates
+    // init materialised state before resolver validation succeeded.
+    let stray: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
+        .filter(|n| n != run)
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "orphan consumer run left behind after failed init: {stray:?}"
+    );
+}
+
+/// Regression for BELT-33: a resolver failure during `init` must not
+/// leave an orphan `.belt/runs/<id>/` behind. Running `init` twice —
+/// once while the producer is missing (fail), once after the producer
+/// completes (succeed) — must end up with exactly two run directories:
+/// the completed producer plus the successful consumer. A pre-fix
+/// cmd_init accumulates a half-initialised consumer run from the first
+/// failed call, breaking this invariant.
+#[test]
+fn e2e_init_succeeds_after_resolver_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Copy the producer / consumer fixtures into the tempdir so pipeline
+    // paths resolve relative to cwd.
+    let producer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-producer.yml");
+    let consumer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-consumer.yml");
+    std::fs::copy(&producer_src, tmp.path().join("chain-producer.yml")).unwrap();
+    std::fs::copy(&consumer_src, tmp.path().join("chain-consumer.yml")).unwrap();
+
+    // 1. Consumer init with no producer — must fail.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "first consumer init should fail (no producer)"
+    );
+
+    // 2. `.belt/runs/` must be empty — BELT-33 atomicity.
+    let runs_dir = tmp.path().join(".belt/runs");
+    let after_fail: Vec<_> = if runs_dir.is_dir() {
+        std::fs::read_dir(&runs_dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    assert!(
+        after_fail.is_empty(),
+        "no orphan run should remain after failed init: {after_fail:?}"
+    );
+
+    // 3. Run the producer pipeline to completion.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-producer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "producer init should succeed, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let run_dirs: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    assert_eq!(run_dirs.len(), 1, "exactly one producer run expected");
+    let producer_run = run_dirs[0].file_name().into_string().unwrap();
+    std::fs::write(
+        tmp.path()
+            .join(format!(".belt/runs/{producer_run}/notes/phase-review.md")),
+        "body",
+    )
+    .unwrap();
+    for _ in 0..2 {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+            .args(["verify"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+            .args(["step", "--confirm"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+    }
+
+    // 4. Consumer init — must now succeed because the producer is COMPLETED.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "second consumer init should succeed, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // 5. Exactly two runs — producer + consumer. No orphan from step 1.
+    let final_runs: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
+        .collect();
+    assert_eq!(
+        final_runs.len(),
+        2,
+        "expected exactly producer + consumer, got: {final_runs:?}"
+    );
 }
