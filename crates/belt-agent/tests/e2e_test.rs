@@ -282,3 +282,163 @@ fn next_json_output_includes_uri_and_resolved_path() {
         "resolved: {resolved}"
     );
 }
+
+/// Full chain happy path using the fixtures from Task 22
+/// (`chain-producer.yml` → `chain-consumer.yml`).
+///
+/// Simulates an LLM driving the producer pipeline to COMPLETED (writing the
+/// `phase-review.md` narrative along the way), then initialising the consumer
+/// pipeline in the same workspace and reading the producer's note content
+/// back through the `resolved_path` surfaced by `belt-agent next`. This is
+/// the end-to-end wiring that the context-neutral narrative plan exists to
+/// deliver: note body written in run A must flow through `belt://latest/...`
+/// into run B without the consumer skill knowing the producer's run_id.
+#[test]
+fn e2e_chain_producer_to_consumer_happy_path() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Copy fixtures into tmp so pipeline paths resolve relative to cwd.
+    let producer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-producer.yml");
+    let consumer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-consumer.yml");
+    let producer = tmp.path().join("chain-producer.yml");
+    let consumer = tmp.path().join("chain-consumer.yml");
+    std::fs::copy(&producer_src, &producer).unwrap();
+    std::fs::copy(&consumer_src, &consumer).unwrap();
+
+    // 1. Init producer.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-producer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "producer init stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // 2. Read producer run_id from the newly-created run directory.
+    let run_dirs: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    assert_eq!(run_dirs.len(), 1, "expected exactly one producer run");
+    let producer_run = run_dirs[0].file_name().into_string().unwrap();
+
+    // 3. Write the review note (simulating the LLM producing the narrative).
+    //    The producer's `review` gate requires this file to exist.
+    std::fs::write(
+        tmp.path()
+            .join(format!(".belt/runs/{producer_run}/notes/phase-review.md")),
+        "Review narrative body",
+    )
+    .unwrap();
+
+    // 4. Advance through `review` → `done` → COMPLETED.
+    //    `review` gate passes because the file exists.
+    //    `done` has no gate (auto-PASS on verify) but declares `confirm: true`
+    //    (fixture invariant added in Task 22 so lint accepts the phase), so
+    //    both `step` calls must pass `--confirm`.
+    for i in 0..2 {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+            .args(["verify"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "verify[{i}] stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let verify_json: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(
+            verify_json.get("verdict").and_then(|x| x.as_str()),
+            Some("PASS"),
+            "verify[{i}] verdict: {verify_json}"
+        );
+
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+            .args(["step", "--confirm"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "step[{i}] stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    // 5. Confirm producer state is COMPLETED.
+    let state_json = std::fs::read_to_string(
+        tmp.path()
+            .join(format!(".belt/runs/{producer_run}/state.json")),
+    )
+    .unwrap();
+    let v: Value = serde_json::from_str(&state_json).unwrap();
+    assert_eq!(
+        v.get("status").and_then(|x| x.as_str()),
+        Some("completed"),
+        "producer should be completed, state.json: {state_json}"
+    );
+
+    // 6. Init consumer in the same workspace.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "consumer init stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // 7. Run `next` on the consumer run. `phase.consumes[0].resolved_path`
+    //    must point at the producer's `notes/phase-review.md`, and the file
+    //    body must round-trip exactly what we wrote in step 3.
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["next"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "next stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let next_json: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let consumes = next_json
+        .get("phase")
+        .and_then(|p| p.get("consumes"))
+        .and_then(|x| x.as_array())
+        .expect("phase.consumes array");
+    assert_eq!(consumes.len(), 1, "expected one consumes entry");
+    let entry = &consumes[0];
+    let path = entry
+        .get("resolved_path")
+        .and_then(|x| x.as_str())
+        .expect("resolved_path (or null)");
+    assert!(
+        path.contains(&producer_run),
+        "resolved_path should target producer run '{producer_run}': {path}"
+    );
+    // `resolved_path` is emitted relative to the agent's working directory
+    // (`belt_dir()` returns a relative `.belt` by convention) so we re-root
+    // it against `tmp.path()` before reading.
+    let path_buf = std::path::Path::new(path);
+    let resolved_abs = if path_buf.is_absolute() {
+        path_buf.to_path_buf()
+    } else {
+        tmp.path().join(path_buf)
+    };
+    let contents = std::fs::read_to_string(&resolved_abs)
+        .unwrap_or_else(|e| panic!("read_to_string({}) failed: {e}", resolved_abs.display()));
+    assert_eq!(contents, "Review narrative body");
+}
