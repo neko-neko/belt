@@ -171,8 +171,10 @@ fn cmd_init(
     inherits_from: Option<&str>,
 ) -> miette::Result<()> {
     // Validate that --inherits-from points to an existing run directory.
-    // Actual synthetic resolved_consumes entry wiring is deferred to Task 17;
-    // Task 16 only adds the CLI surface + fail-fast existence check.
+    // Fail-fast early (before init creates a run directory) so we never
+    // leave an orphaned state.json pointing at a non-existent parent run.
+    // The *synthetic* resolved_consumes entry for --inherits-from is added
+    // further below, after the run is materialised.
     if let Some(run_id) = inherits_from {
         let run_dir = belt_dir().join("runs").join(run_id);
         if !run_dir.is_dir() {
@@ -186,9 +188,47 @@ fn cmd_init(
     // `current_branch` returns `None` outside a git repo, in detached HEAD,
     // or before the first commit — belt-core trusts the value verbatim.
     let branch = crate::git::current_branch(std::path::Path::new("."));
-    let state = engine
+    let mut state = engine
         .init_with_branch(pipeline_path, &args_map, branch)
         .map_err(|e| miette::miette!("{e}"))?;
+
+    // Resolve every External `belt://` URI in each phase's `consumes:` list
+    // at init time so downstream steps read pinned filesystem paths straight
+    // from RunState (no repeated resolver work, no late binding). Resolved
+    // paths are stored absolute when the resolver can produce them; relative
+    // fallbacks are preserved verbatim.
+    let belt = belt_dir();
+    let phases = expand_pipeline(pipeline_path).map_err(|e| miette::miette!("{e}"))?;
+    let resolver = crate::resolver::Resolver {
+        belt_dir: &belt,
+        current_branch: state.branch.clone(),
+    };
+    let mut resolved_map: HashMap<String, String> = HashMap::new();
+    for phase in &phases {
+        for aref in &phase.consumes {
+            if let belt_core::model::ArtifactRef::External { uri, .. } = aref {
+                let path = resolver.resolve(uri).map_err(|e| miette::miette!("{e}"))?;
+                resolved_map.insert(uri.to_string(), path.display().to_string());
+            }
+        }
+    }
+
+    // --inherits-from registers the inherited run under a synthetic
+    // `belt://run/<id>/` key so skills can locate the parent run directory
+    // without requiring an explicit External reference in the pipeline YAML.
+    // The existence check above guarantees run_dir is a directory here.
+    if let Some(run_id) = inherits_from {
+        let run_dir = belt.join("runs").join(run_id);
+        resolved_map.insert(
+            format!("belt://run/{run_id}/"),
+            run_dir.display().to_string(),
+        );
+    }
+
+    engine
+        .set_resolved_consumes(&mut state, resolved_map)
+        .map_err(|e| miette::miette!("{e}"))?;
+
     let pipeline_file = Path::new(&state.pipeline_file);
     let phase = engine
         .next_phase_info(&state, pipeline_file)

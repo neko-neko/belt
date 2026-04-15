@@ -32,7 +32,6 @@ pub(crate) struct Resolver<'a> {
 }
 
 impl Resolver<'_> {
-    #[allow(dead_code, reason = "Task 17 wires this into cmd_init")]
     pub(crate) fn resolve(&self, uri: &BeltUri) -> Result<PathBuf, ResolveError> {
         match uri {
             BeltUri::Run { run_id, path } => self.resolve_run(run_id, path),

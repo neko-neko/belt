@@ -330,6 +330,23 @@ impl Engine {
         Ok(())
     }
 
+    /// Replace `state.resolved_consumes` with the given map and persist.
+    ///
+    /// Used by belt-agent at `init` time, after it has walked each phase's
+    /// `consumes:` list and resolved every `ArtifactRef::External { uri, .. }`
+    /// through the `belt://` resolver. Subsequent runtime phases (`next`,
+    /// `verify`) read the resolved filesystem paths straight from `RunState`
+    /// without re-invoking the resolver, which keeps resolution decisions
+    /// pinned to the run's inception snapshot.
+    pub fn set_resolved_consumes(
+        &self,
+        state: &mut RunState,
+        resolved: HashMap<String, String>,
+    ) -> BeltResult<()> {
+        state.resolved_consumes = resolved;
+        self.save_state(state)
+    }
+
     /// Return the current `RunState` (alias for `load_state`).
     pub fn status(&self, run_id: &str) -> BeltResult<RunState> {
         self.load_state(run_id)
