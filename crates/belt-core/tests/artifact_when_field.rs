@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use belt_core::expander::expand_pipeline;
 use belt_core::parser::parse_pipeline;
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -53,5 +54,33 @@ phases:
     assert_eq!(
         produces[1].when, None,
         "unconditional Artifact.when must be None"
+    );
+}
+
+#[test]
+fn expander_retains_artifact_when_field_via_clone() {
+    let yaml = r#"
+name: test-when-expander
+version: 1
+args:
+  e2e:
+    type: bool
+    default: false
+phases:
+  - id: phase1
+    description: "Phase 1"
+    invoke:
+      skill: /test-skill
+    produces:
+      - name: conditional_artifact
+        path: "output/*.md"
+        when: "args.e2e"
+"#;
+    let fixture = write_fixture("when_expander.yml", yaml);
+    let expanded = expand_pipeline(&fixture).expect("expansion must succeed");
+    assert_eq!(
+        expanded[0].produces[0].when,
+        Some("args.e2e".to_string()),
+        "expander must retain Artifact.when via Clone derive"
     );
 }
