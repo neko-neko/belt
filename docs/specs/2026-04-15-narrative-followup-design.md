@@ -228,11 +228,12 @@ docs only の差分 3 箇所。
 - 検証: `matches!(result, Err(ResolveError::NoCompletedRun { .. }))`
 - 備考: 観測可能な silent skip の副作用は「この run が candidate に残らず、他候補なしで NoCompletedRun になる」。現挙動を固定する意図。loud 化は Non-Goal
 
-**(3) `resolve_latest_errors_when_state_json_is_directory`**
+**(3) `resolve_latest_skips_state_json_that_is_a_directory`**
 
-- 準備: state.json の位置に file ではなくディレクトリを作る
+- 準備: state.json の位置に file ではなくディレクトリを作る。他 candidate は作らない
 - 実行: `Resolver::resolve(BeltUri::Latest { .. })`
-- 検証: `matches!(result, Err(ResolveError::Io(_)))`
+- 検証: `matches!(result, Err(ResolveError::NoCompletedRun { .. }))`
+- 備考: `resolver.rs:80` の `if !state_path.is_file() { continue; }` により silent skip される現挙動を固定する。Io error にはならない（`read_to_string` に到達しない）
 
 #### E2E test 1 本追加 (`crates/belt-agent/tests/e2e_test.rs`)
 
@@ -290,7 +291,7 @@ args + pipeline_path
 - **Idempotency**: resolver 失敗 → producer seed → init 再実行が成功 (BELT-33 regression 新規)
 - **Corrupt JSON**: loud `StateParse` error (BELT-35 unit + E2E)
 - **Schema 欠落**: silent skip 挙動を固定 (BELT-35 unit)
-- **Non-file state.json**: directory の場合の `Io` error (BELT-35 unit)
+- **Non-file state.json**: directory の場合の silent skip 挙動を固定 (BELT-35 unit)
 
 ### Verification commands (変更 crate スコープ)
 
