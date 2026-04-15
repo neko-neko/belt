@@ -97,6 +97,20 @@ audit: required
 - **depends_on_artifacts**: [docs/plans/*-rca-report.md]
 - **forward_check**: Fix Plan must include tasks for paired paths if asymmetry risk is identified
 
+### RCA-09: Reproduction scenarios file exists when --e2e
+- **severity**: blocker
+- **verify_type**: automated
+- **verification**:
+  1. Read `args.e2e` from `belt-agent status --run-id <id>` JSON output
+  2. If `args.e2e=false`, PASS (vacuously satisfied — scenarios not required for non-e2e runs)
+  3. If `args.e2e=true`:
+     a. Search for scenarios file using `Glob("docs/plans/*-rca-scenarios.yml")`
+     b. Verify the file contains at least one scenario in Given/When/Then format
+- **pass_condition**: `args.e2e=false`, OR (file exists with ≥1 Given/When/Then scenario)
+- **fail_diagnosis_hint**: If `--e2e=true` and file is missing, the RCA executor did not load `rca-supplement.md`. Confirm supplement injection in SKILL.md Phase 1 invocation
+- **depends_on_artifacts**: [docs/plans/*-rca-scenarios.yml]  # only relevant when args.e2e=true
+- **forward_check**: monkey-test phase consumes `rca_scenarios` when `args.e2e=true`
+
 ## Observation Collection
 
 The phase-auditor MUST include `observations[]` in its verdict output.
