@@ -758,3 +758,58 @@ fn e2e_init_succeeds_after_resolver_failure() {
         "expected exactly producer + consumer, got: {final_runs:?}"
     );
 }
+
+/// BELT-35 E2E probe: when the only producer has a corrupt state.json,
+/// a consumer init fails loudly (non-zero exit, stderr mentions parse
+/// failure) AND leaves no orphan consumer run behind. The orphan
+/// assertion cross-verifies BELT-33 atomicity under a different
+/// resolver-error path (StateParse, not NoCompletedRun).
+#[test]
+fn e2e_init_fails_when_producer_state_json_is_corrupt() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Producer run directory with a truncated state.json.
+    let run = "01947cor-0000-7000-8000-000000000000";
+    let dir = tmp.path().join(".belt/runs").join(run);
+    std::fs::create_dir_all(dir.join("notes")).unwrap();
+    std::fs::write(dir.join("notes/phase-review.md"), "x").unwrap();
+    std::fs::write(dir.join("state.json"), r#"{"run_id": "trun"#).unwrap();
+
+    // Consumer fixture references chain-producer via belt://latest/...
+    let consumer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-consumer.yml");
+    std::fs::copy(&consumer_src, tmp.path().join("chain-consumer.yml")).unwrap();
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        !out.status.success(),
+        "init should fail on corrupt state.json"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("state.json parse error")
+            || stderr.contains("json")
+            || stderr.contains("parse"),
+        "stderr should mention state.json parse failure: {stderr}"
+    );
+
+    // Atomicity cross-check (BELT-33): the failed init must not leave an
+    // orphan consumer run. Only the pre-seeded corrupt producer should
+    // remain.
+    let survivors: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
+        .filter(|n| n != run)
+        .collect();
+    assert!(
+        survivors.is_empty(),
+        "orphan consumer run left behind: {survivors:?}"
+    );
+}
