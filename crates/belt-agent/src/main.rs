@@ -306,7 +306,17 @@ fn cmd_next(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
         .next_phase_info(&state, pipeline_path)
         .map_err(|e| miette::miette!("{e}"))?;
     let attempt = state.phase_attempts.get(&phase.id).copied().unwrap_or(0);
-    let phase_obj = phase_json(&phase);
+    let mut phase_obj = phase_json(&phase);
+    // Augment External consumes entries with `resolved_path` from
+    // `state.resolved_consumes`, computed at `init` time. Named/Qualified
+    // entries keep their existing (derived-Serialize) JSON shape so existing
+    // consumers are not broken.
+    if let serde_json::Value::Object(map) = &mut phase_obj {
+        map.insert(
+            "consumes".to_string(),
+            build_consumes_with_resolved(&phase.consumes, &state.resolved_consumes),
+        );
+    }
 
     let out = json!({
         "run_id": state.run_id,
@@ -324,6 +334,41 @@ fn cmd_next(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
         serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
     );
     Ok(())
+}
+
+/// Render the `consumes` list for `next` output.
+///
+/// `ArtifactRef::External` entries are augmented with a `resolved_path` field
+/// looked up by URI in `state.resolved_consumes` (populated at `init` time).
+/// `resolved_path` is `null` if the lookup misses, which should not happen
+/// under normal operation but is preserved as an explicit JSON signal rather
+/// than silently omitting the field (consumers can distinguish "unresolvable"
+/// from "not External"). `Named` and `Qualified` variants are emitted via
+/// their derived `Serialize` shape to preserve backwards compatibility with
+/// existing integration tests and skill-side consumers.
+fn build_consumes_with_resolved(
+    refs: &[belt_core::model::ArtifactRef],
+    resolved: &HashMap<String, String>,
+) -> serde_json::Value {
+    use belt_core::model::ArtifactRef;
+    let mut out: Vec<serde_json::Value> = Vec::with_capacity(refs.len());
+    for aref in refs {
+        match aref {
+            ArtifactRef::External { name, uri } => {
+                let uri_str = uri.to_string();
+                let resolved_path = resolved.get(&uri_str);
+                out.push(json!({
+                    "name": name,
+                    "uri": uri_str,
+                    "resolved_path": resolved_path,
+                }));
+            }
+            other => {
+                out.push(serde_json::to_value(other).unwrap_or(serde_json::Value::Null));
+            }
+        }
+    }
+    serde_json::Value::Array(out)
 }
 
 fn cmd_verify(engine: &Engine, run: Option<&String>) -> miette::Result<()> {

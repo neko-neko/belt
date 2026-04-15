@@ -2,6 +2,55 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::TempDir;
 
+/// Shared chain fixture setup used by context-neutral narrative tests.
+///
+/// Writes a COMPLETED producer run at `tmp/.belt/runs/<producer_run>/` and a
+/// consumer pipeline YAML (`tmp/consumer.yml`) that references the producer
+/// via a `belt://run/<id>/...` External URI. Returns the producer run_id so
+/// tests can reference it in assertions.
+fn setup_chain(tmp: &std::path::Path) -> String {
+    let producer_run = "01947a0a-0000-7000-8000-000000000000";
+    let producer_dir = tmp.join(".belt/runs").join(producer_run);
+    std::fs::create_dir_all(producer_dir.join("notes")).unwrap();
+    std::fs::write(producer_dir.join("notes/phase-review.md"), "body").unwrap();
+    std::fs::write(
+        producer_dir.join("state.json"),
+        format!(
+            r#"{{
+  "run_id": "{producer_run}",
+  "pipeline": "feature-dev",
+  "pipeline_file": "/tmp/x.yml",
+  "version": 1,
+  "branch": null,
+  "args": {{}},
+  "current_phase": "done",
+  "completed_phases": ["review", "done"],
+  "skipped_phases": [],
+  "status": "completed",
+  "created_at": "2026-04-14T00:00:00Z",
+  "updated_at": "2026-04-14T00:00:00Z"
+}}"#
+        ),
+    )
+    .unwrap();
+
+    std::fs::write(
+        tmp.join("consumer.yml"),
+        r#"name: debug-flow
+version: 1
+phases:
+  - id: rca
+    description: "rca"
+    consumes:
+      - name: prior_review
+        uri: "belt://run/01947a0a-0000-7000-8000-000000000000/notes/phase-review.md"
+"#,
+    )
+    .unwrap();
+
+    producer_run.to_string()
+}
+
 /// Test the full lifecycle with a pipeline that uses sub-pipelines.
 #[test]
 fn e2e_sub_pipeline_expansion() {
@@ -132,50 +181,9 @@ phases:
 #[test]
 fn init_resolves_external_uris_and_writes_resolved_consumes() {
     let tmp = tempfile::tempdir().unwrap();
+    let producer_run = setup_chain(tmp.path());
 
-    // 1. Create a producer run that is COMPLETED.
-    let producer_run = "01947a0a-0000-7000-8000-000000000000";
-    let producer_dir = tmp.path().join(".belt/runs").join(producer_run);
-    std::fs::create_dir_all(producer_dir.join("notes")).unwrap();
-    std::fs::write(producer_dir.join("notes/phase-review.md"), "body").unwrap();
-    std::fs::write(
-        producer_dir.join("state.json"),
-        format!(
-            r#"{{
-  "run_id": "{producer_run}",
-  "pipeline": "feature-dev",
-  "pipeline_file": "/tmp/x.yml",
-  "version": 1,
-  "branch": null,
-  "args": {{}},
-  "current_phase": "done",
-  "completed_phases": ["review", "done"],
-  "skipped_phases": [],
-  "status": "completed",
-  "created_at": "2026-04-14T00:00:00Z",
-  "updated_at": "2026-04-14T00:00:00Z"
-}}"#
-        ),
-    )
-    .unwrap();
-
-    // 2. Write a consumer pipeline.
-    let consumer_yml = tmp.path().join("consumer.yml");
-    std::fs::write(
-        &consumer_yml,
-        r#"name: debug-flow
-version: 1
-phases:
-  - id: rca
-    description: "rca"
-    consumes:
-      - name: prior_review
-        uri: "belt://run/01947a0a-0000-7000-8000-000000000000/notes/phase-review.md"
-"#,
-    )
-    .unwrap();
-
-    // 3. Init.
+    // Init.
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
         .args(["init", "consumer.yml"])
         .current_dir(tmp.path())
@@ -187,11 +195,11 @@ phases:
         String::from_utf8_lossy(&output.stderr)
     );
 
-    // 4. Inspect state.json.
+    // Inspect state.json.
     let runs: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
         .unwrap()
         .filter_map(|e| e.ok().map(|e| e.file_name().into_string().unwrap()))
-        .filter(|n| n != producer_run)
+        .filter(|n| n != &producer_run)
         .collect();
     assert_eq!(runs.len(), 1, "expected one new run");
     let new_state = std::fs::read_to_string(
@@ -212,5 +220,65 @@ phases:
     assert!(
         path.ends_with("notes/phase-review.md"),
         "resolved path: {path}"
+    );
+}
+
+/// `belt-agent next` must include `uri` and `resolved_path` for each
+/// `ArtifactRef::External` entry in the current phase's `consumes`. Skills
+/// invoking `next` read `resolved_path` to know which file to load for
+/// narrative context. Named and Qualified refs retain their existing JSON
+/// shape so downstream consumers are not broken.
+#[test]
+fn next_json_output_includes_uri_and_resolved_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _producer_run = setup_chain(tmp.path());
+
+    // Init consumer.
+    let init_out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        init_out.status.success(),
+        "init stderr: {}",
+        String::from_utf8_lossy(&init_out.stderr)
+    );
+
+    // Run `next` and parse JSON.
+    let next_out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["next"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        next_out.status.success(),
+        "next stderr: {}",
+        String::from_utf8_lossy(&next_out.stderr)
+    );
+    let json: Value = serde_json::from_slice(&next_out.stdout).unwrap();
+    let consumes = json
+        .get("phase")
+        .and_then(|p| p.get("consumes"))
+        .and_then(|x| x.as_array())
+        .expect("phase.consumes array");
+    assert_eq!(consumes.len(), 1);
+    let entry = &consumes[0];
+    assert_eq!(
+        entry.get("name").and_then(|x| x.as_str()),
+        Some("prior_review")
+    );
+    let uri_val = entry.get("uri").expect("entry missing uri");
+    assert_eq!(
+        uri_val.as_str(),
+        Some("belt://run/01947a0a-0000-7000-8000-000000000000/notes/phase-review.md"),
+    );
+    let resolved = entry
+        .get("resolved_path")
+        .and_then(|x| x.as_str())
+        .expect("entry missing resolved_path (or null)");
+    assert!(
+        resolved.ends_with("notes/phase-review.md"),
+        "resolved: {resolved}"
     );
 }
