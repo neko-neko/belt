@@ -73,7 +73,6 @@ Belt pipeline for quality-gated development. 8 phases driven by belt-agent.
 
 - **Never skip the Phase 1 supplement load**: parallel exploration and the
   required design sections depend on it.
-- **Never pass --iterations to /code-review**: single-pass review by design.
 - **Never bypass the Phase 8 A/B choice**: merge-vs-PR is always user-decided.
 - **Never modify the consumed global skills**: all overrides go through
   `references/*-supplement.md`.
