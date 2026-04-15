@@ -1,26 +1,20 @@
 name: test-review
 version: 1
 args:
-  iterations: { type: number, default: 3 }
   codex: { type: bool, default: false }
-  swarm: { type: bool, default: false }
 
 phases:
   - id: review
-    description: "3-perspective test review"
+    description: "Multi-perspective test review (3 observations) + requirement map"
     invoke:
       agents:
-        - test-review-coverage
-        - test-review-quality
-        - test-review-design-alignment
-      iterations: "args.iterations"
+        - test-reviewer
       args:
         codex: "args.codex"
-        swarm: "args.swarm"
     produces:
       - name: review_findings
         path: ".belt/runs/*/review/findings.json"
-        description: "Deduplicated N-way voted findings across coverage, quality, and design-alignment perspectives"
+        description: "Deduplicated findings (coverage, quality, design-alignment) + informational requirement_map"
     confirm: true
 
   - id: fix
