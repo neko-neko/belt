@@ -231,6 +231,13 @@ impl Engine {
             }
         }
 
+        // Transition terminal status when the pipeline has no further phases
+        // so `belt://latest/...` resolvers (Task 14) can filter for finished
+        // runs. `save_state` below persists this alongside `current_phase`.
+        if next_phase.is_none() {
+            state.status = RunStatus::Completed;
+        }
+
         state.updated_at = now_iso8601();
         self.save_state(state)?;
 

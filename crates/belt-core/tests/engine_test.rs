@@ -2048,3 +2048,62 @@ phases:
     let notes = belt_dir.join("runs").join(&state.run_id).join("notes");
     assert!(notes.is_dir(), "notes dir not created: {}", notes.display());
 }
+
+// ---------------------------------------------------------------------------
+// step_marks_run_completed_when_no_next_phase
+//
+// Ensures that when `Engine::step` advances past the last phase, the run's
+// `status` transitions from `InProgress` to `Completed`. This is required by
+// Task 14's resolver, which filters runs by `status == "completed"` for
+// `belt://latest/...` URI resolution.
+// ---------------------------------------------------------------------------
+#[test]
+fn step_marks_run_completed_when_no_next_phase() {
+    use belt_core::model::RunStatus;
+
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"name: solo
+version: 1
+phases:
+  - id: only
+    description: "only phase"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    // Simulate verify pass so `step` is not blocked by the verify-before-step
+    // guard.
+    state.phase_verify_passed.insert("only".into(), true);
+
+    // Sanity: run starts in InProgress.
+    assert_eq!(state.status, RunStatus::InProgress);
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed");
+
+    assert!(next.is_none(), "no next phase after the only phase");
+    assert_eq!(
+        state.status,
+        RunStatus::Completed,
+        "status must transition to Completed when pipeline finishes"
+    );
+
+    // Adversarial probe: the transition must survive serde round-trip so
+    // downstream `belt://latest/...` resolvers can filter completed runs by
+    // re-loading state.json from disk.
+    let reloaded = engine.load_state(&state.run_id).expect("reload");
+    assert_eq!(
+        reloaded.status,
+        RunStatus::Completed,
+        "status=Completed must persist to disk via save_state"
+    );
+}
