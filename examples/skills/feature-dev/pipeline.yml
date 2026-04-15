@@ -1,6 +1,6 @@
 name: feature-dev
 version: 1
-description: "Quality-gated development pipeline (8 phases)"
+description: "Quality-gated development pipeline (9 phases)"
 
 args:
   e2e:

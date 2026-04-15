@@ -1,16 +1,17 @@
 ---
 name: feature-dev
 description: >-
-  Quality-gated development pipeline (8 phases). Design → test scenarios → plan →
-  execute → code review → monkey test (E2E scripted) → dogfood (E2E exploratory) →
-  integrate. Web UI testing phases are conditional on --e2e.
+  Quality-gated development pipeline (9 phases). Design → test scenarios →
+  spec review → plan → execute → code review → monkey test (E2E scripted) →
+  dogfood (E2E exploratory) → integrate. Web UI testing phases are conditional
+  on --e2e.
 user-invocable: true
 argument-hint: "[--e2e] [--codex]"
 ---
 
 # feature-dev
 
-Belt pipeline for quality-gated development. 8 phases driven by belt-agent.
+Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 
 ## Args
 
@@ -34,37 +35,46 @@ Belt pipeline for quality-gated development. 8 phases driven by belt-agent.
 - **INVOKE**: Skill tool `/test-scenarios` with `e2e` passed through from args.
 - Produces `test-strategy.md` always; produces `scenarios.yml` when e2e.
 
-### Phase 3: plan
+### Phase 3: spec-review
+
+- **INVOKE**: Skill tool `/spec-review` with `codex` passed through from args.
+- Targets `test-strategy.md`. If `scenarios.yml` exists (`args.e2e`), include
+  it in the review scope.
+- grill-me dialogue for `requirements` / `design-judgment` findings; direct
+  selection triage for the remaining observations.
+- regate: `test-scenarios`; fix loop capped at `max_retries: 3`.
+
+### Phase 4: plan
 
 - **INVOKE 1**: Read `./references/writing-plans-supplement.md`.
 - **INVOKE 2**: Skill tool `/writing-plans`.
 - The supplement enforces path override and Must-Verify / scenarios cross-referencing.
 
-### Phase 4: execute
+### Phase 5: execute
 
 - **INVOKE**: Skill tool `/subagent-driven-development`.
 - Orchestrator must reconstruct plan tasks into self-contained implementation
   specs before dispatching `feature-implementer` subagents. Do not forward
   broad research verbatim.
 
-### Phase 5: code-review
+### Phase 6: code-review
 
 - **INVOKE**: Skill tool `/code-review` with `codex` passed through.
 - On fix commits, Phase 4 validate is re-verified per belt regate semantics.
   `max_retries: 3` limits the review-fix loop.
 
-### Phase 6: monkey-test (when e2e)
+### Phase 7: monkey-test (when e2e)
 
 - **INVOKE 1**: Read `./references/monkey-test-supplement.md`.
 - **INVOKE 2**: Skill tool `/monkey-test`.
 
-### Phase 7: dogfood (when e2e)
+### Phase 8: dogfood (when e2e)
 
 - **INVOKE 1**: Read `./references/dogfood-supplement.md`.
 - **INVOKE 2**: Skill tool `/dogfood`.
 - The supplement injects prior-phase artifacts as exploration hints.
 
-### Phase 8: integrate
+### Phase 9: integrate
 
 - **INVOKE 1**: Read `./references/worktrunk-supplement.md`.
 - **INVOKE 2**: Prompt user for mode (A: `wt merge` / B: `gh pr create`) and
