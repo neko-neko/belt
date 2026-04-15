@@ -1,5 +1,5 @@
 //! Integration tests locking the refreshed review-skill pipelines
-//! (/code-review, /spec-review, /test-review, /implementation-review).
+//! (/code-review, /spec-review, /implementation-review).
 //!
 //! Shape contract:
 //! - args = { codex: bool } only (no iterations, swarm, ui)
@@ -24,7 +24,6 @@ fn pipeline_path(skill: &str) -> PathBuf {
 const REVIEW_SKILLS: &[(&str, &str, &str)] = &[
     ("code-review", "code-reviewer", "code-review"),
     ("spec-review", "spec-reviewer", "spec-review"),
-    ("test-review", "test-reviewer", "test-review"),
     (
         "implementation-review",
         "implementation-reviewer",
