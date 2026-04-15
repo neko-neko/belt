@@ -18,7 +18,7 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 | Arg | Type | Default | Description |
 |---|---|---|---|
 | e2e | bool | false | Enable monkey-test and dogfood phases |
-| codex | bool | false | Enable Codex parallel review in code-review |
+| codex | bool | false | Enable Codex parallel review in spec-review and code-review |
 
 ## Phase-Specific Invocation Rules
 
@@ -60,7 +60,7 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 ### Phase 6: code-review
 
 - **INVOKE**: Skill tool `/code-review` with `codex` passed through.
-- On fix commits, Phase 4 validate is re-verified per belt regate semantics.
+- On fix commits, Phase 5 validate is re-verified per belt regate semantics.
   `max_retries: 3` limits the review-fix loop.
 
 ### Phase 7: monkey-test (when e2e)
@@ -84,7 +84,7 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 
 - **Never skip the Phase 1 supplement load**: parallel exploration and the
   required design sections depend on it.
-- **Never bypass the Phase 8 A/B choice**: merge-vs-PR is always user-decided.
+- **Never bypass the Phase 9 A/B choice**: merge-vs-PR is always user-decided.
 - **Never modify the consumed global skills**: all overrides go through
   `references/*-supplement.md`.
 - **Never hand-edit files under `docs/features/<topic>/`**: they are
@@ -94,7 +94,7 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 
 - `./references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
 - `./references/brainstorming-supplement.md` — Phase 1 overrides
-- `./references/writing-plans-supplement.md` — Phase 3 overrides
-- `./references/monkey-test-supplement.md` — Phase 6 context injection
-- `./references/dogfood-supplement.md` — Phase 7 overrides and context injection
-- `./references/worktrunk-supplement.md` — Phase 8 A/B choice logic
+- `./references/writing-plans-supplement.md` — Phase 4 overrides
+- `./references/monkey-test-supplement.md` — Phase 7 context injection
+- `./references/dogfood-supplement.md` — Phase 8 overrides and context injection
+- `./references/worktrunk-supplement.md` — Phase 9 A/B choice logic
