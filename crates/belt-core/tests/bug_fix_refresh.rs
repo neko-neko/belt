@@ -1,4 +1,4 @@
-//! Integration tests for the refreshed /debug-flow pipeline.
+//! Integration tests for the refreshed /bug-fix pipeline.
 //!
 //! Shape contract (spec docs/specs/2026-04-15-debug-flow-refresh-design.md):
 //! - args = { e2e: bool, codex: bool } only (iterations / swarm / ui / smoke removed)
@@ -28,16 +28,16 @@ fn repo_root() -> PathBuf {
     path
 }
 
-fn debug_flow_dir() -> PathBuf {
-    repo_root().join("examples/skills/debug-flow")
+fn bug_fix_dir() -> PathBuf {
+    repo_root().join("examples/skills/bug-fix")
 }
 
-fn debug_flow_pipeline_path() -> PathBuf {
-    debug_flow_dir().join("pipeline.yml")
+fn bug_fix_pipeline_path() -> PathBuf {
+    bug_fix_dir().join("pipeline.yml")
 }
 
-fn debug_flow_pipeline() -> Pipeline {
-    parse_pipeline(&debug_flow_pipeline_path()).expect("debug-flow pipeline.yml must parse")
+fn bug_fix_pipeline() -> Pipeline {
+    parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline.yml must parse")
 }
 
 const EXPECTED_PHASES: &[&str] = &[
@@ -53,7 +53,7 @@ const EXPECTED_PHASES: &[&str] = &[
 
 #[test]
 fn args_are_e2e_and_codex_only() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     let mut keys: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
     keys.sort();
     assert_eq!(keys, vec!["codex", "e2e"]);
@@ -68,7 +68,7 @@ fn args_are_e2e_and_codex_only() {
 
 #[test]
 fn no_legacy_args() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     for legacy in ["iterations", "swarm", "ui", "smoke"] {
         assert!(
             !pipeline.args.contains_key(legacy),
@@ -79,14 +79,14 @@ fn no_legacy_args() {
 
 #[test]
 fn phase_count_and_order() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     let actual: Vec<&str> = pipeline.phases.iter().map(|p| p.id.as_str()).collect();
     assert_eq!(actual, EXPECTED_PHASES);
 }
 
 #[test]
 fn all_phases_use_skill_invoke() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     for phase in &pipeline.phases {
         let invoker = phase
             .invoke
@@ -110,7 +110,7 @@ fn all_phases_use_skill_invoke() {
 
 #[test]
 fn review_phases_pass_codex_only() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     for phase in &pipeline.phases {
         if !matches!(phase.id.as_str(), "fix-plan-review" | "code-review") {
             continue;
@@ -137,7 +137,7 @@ fn review_phases_pass_codex_only() {
 
 #[test]
 fn only_code_review_has_regate() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     for phase in &pipeline.phases {
         if phase.id == "code-review" {
             assert_eq!(
@@ -158,7 +158,7 @@ fn only_code_review_has_regate() {
 
 #[test]
 fn rca_scenarios_when_is_typed() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     let rca = pipeline
         .phases
         .iter()
@@ -178,7 +178,7 @@ fn rca_scenarios_when_is_typed() {
 
 #[test]
 fn rca_scenarios_filtered_when_e2e_false() {
-    let expanded = expand_pipeline(&debug_flow_pipeline_path()).expect("expansion must succeed");
+    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("expansion must succeed");
     let mut args_false: HashMap<String, serde_json::Value> = HashMap::new();
     args_false.insert("e2e".to_string(), serde_json::Value::Bool(false));
     let active = belt_core::view::active_produces(&expanded[0], &args_false);
@@ -195,7 +195,7 @@ fn rca_scenarios_filtered_when_e2e_false() {
 
 #[test]
 fn rca_scenarios_present_when_e2e_true() {
-    let expanded = expand_pipeline(&debug_flow_pipeline_path()).expect("expansion must succeed");
+    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("expansion must succeed");
     let mut args_true: HashMap<String, serde_json::Value> = HashMap::new();
     args_true.insert("e2e".to_string(), serde_json::Value::Bool(true));
     let active = belt_core::view::active_produces(&expanded[0], &args_true);
@@ -206,7 +206,7 @@ fn rca_scenarios_present_when_e2e_true() {
 
 #[test]
 fn all_phases_have_max_retries_3_and_confirm_true() {
-    let pipeline = debug_flow_pipeline();
+    let pipeline = bug_fix_pipeline();
     for phase in &pipeline.phases {
         assert_eq!(
             phase.max_retries, 3,
@@ -219,7 +219,7 @@ fn all_phases_have_max_retries_3_and_confirm_true() {
 
 #[test]
 fn supplement_files_exist() {
-    let refs_dir = debug_flow_dir().join("references");
+    let refs_dir = bug_fix_dir().join("references");
     for name in [
         "path-convention.md",
         "rca-supplement.md",
@@ -237,7 +237,7 @@ fn supplement_files_exist() {
 
 #[test]
 fn dead_letter_references_removed() {
-    let refs_dir = debug_flow_dir().join("references");
+    let refs_dir = bug_fix_dir().join("references");
     for name in ["evidence-plan-protocol.md", "fix-dispatch-strategy.md"] {
         assert!(
             !refs_dir.join(name).exists(),
@@ -248,7 +248,7 @@ fn dead_letter_references_removed() {
 
 #[test]
 fn criteria_files_exist() {
-    let criteria_dir = debug_flow_dir().join("criteria");
+    let criteria_dir = bug_fix_dir().join("criteria");
     for name in [
         "rca.md",
         "fix-plan.md",
@@ -264,7 +264,7 @@ fn criteria_files_exist() {
     }
 
     // Shared criteria: pipeline.yml uses `../../criteria/` relative to
-    // `examples/skills/debug-flow/`, resolving to `examples/criteria/`.
+    // `examples/skills/bug-fix/`, resolving to `examples/criteria/`.
     let shared = repo_root().join("examples/criteria");
     for name in ["execute.md", "code-review.md"] {
         assert!(
@@ -276,7 +276,7 @@ fn criteria_files_exist() {
 
 #[test]
 fn skill_md_has_expected_sections() {
-    let skill_md = debug_flow_dir().join("SKILL.md");
+    let skill_md = bug_fix_dir().join("SKILL.md");
     let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
     for section in [
         "## Phase-Specific Invocation Rules",
@@ -293,7 +293,7 @@ fn skill_md_has_expected_sections() {
 
 #[test]
 fn skill_md_declares_supplement_injection_per_phase() {
-    let skill_md = debug_flow_dir().join("SKILL.md");
+    let skill_md = bug_fix_dir().join("SKILL.md");
     let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
     // Phases 1 (rca), 2 (fix-plan), 6 (monkey-test), 7 (dogfood), 8 (integrate)
     // must each reference a specific supplement via INVOKE 1 in SKILL.md.

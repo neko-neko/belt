@@ -1,6 +1,6 @@
 # Fix Plan Supplement (Phase 2 override for `/writing-plans`)
 
-**Invoked by:** `examples/skills/debug-flow/SKILL.md` Phase 2 (INVOKE 1 = Read this file; INVOKE 2 = `/writing-plans`).
+**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 2 (INVOKE 1 = Read this file; INVOKE 2 = `/writing-plans`).
 
 ## Output path override
 

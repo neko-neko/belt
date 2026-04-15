@@ -1,6 +1,6 @@
 # Worktrunk Supplement (Phase 8 override for `/worktrunk`)
 
-**Invoked by:** `examples/skills/debug-flow/SKILL.md` Phase 8 (INVOKE 1 = Read this file; INVOKE 2 = prompt user for mode; INVOKE 3 = `/worktrunk`).
+**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 8 (INVOKE 1 = Read this file; INVOKE 2 = prompt user for mode; INVOKE 3 = `/worktrunk`).
 
 ## A/B choice prompt
 
@@ -12,11 +12,11 @@ After all review / monkey-test / dogfood phases pass, prompt the user:
 >
 > Which? (A / B)
 
-Default: no default; always require explicit user choice. This is a debug-flow Red Flag ("Never bypass the Phase 8 A/B choice").
+Default: no default; always require explicit user choice. This is a bug-fix Red Flag ("Never bypass the Phase 8 A/B choice").
 
 ## Branch naming convention
 
-Debug-flow branches follow: `bugfix/YYYY-MM-DD-<topic>` (see `./path-convention.md`).
+Bug-fix branches follow: `bugfix/YYYY-MM-DD-<topic>` (see `./path-convention.md`).
 
 ## Pre-merge checks
 
@@ -38,7 +38,7 @@ After `wt merge`:
 
 After `gh pr create`:
 - Confirm PR URL is reachable
-- No further action in debug-flow — user follows up externally
+- No further action in bug-fix — user follows up externally
 
 ## Commit message convention for the fix
 

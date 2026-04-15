@@ -1,6 +1,6 @@
 # RCA Supplement (Phase 1 override for `/systematic-debugging`)
 
-**Invoked by:** `examples/skills/debug-flow/SKILL.md` Phase 1 (INVOKE 1 = Read this file; INVOKE 2 = `/systematic-debugging`).
+**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 1 (INVOKE 1 = Read this file; INVOKE 2 = `/systematic-debugging`).
 
 ## Output path override
 
@@ -36,7 +36,7 @@ Orchestrator dispatches exploration subagents in parallel, then synthesizes:
 2. `code-architect` — architecture patterns and implicit contracts
 3. `impact-analyzer` — reverse dependencies and shared state
 
-**After** subagent results return, the orchestrator reconstructs the root cause **itself** (do NOT forward broad research verbatim into Reproduction Test / Fix Strategy). See debug-flow SKILL.md Red Flag "Never delegate root cause synthesis to subagents."
+**After** subagent results return, the orchestrator reconstructs the root cause **itself** (do NOT forward broad research verbatim into Reproduction Test / Fix Strategy). See bug-fix SKILL.md Red Flag "Never delegate root cause synthesis to subagents."
 
 ## Reproduction test requirement
 

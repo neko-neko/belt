@@ -1,4 +1,4 @@
-name: debug-flow
+name: bug-fix
 version: 1
 description: "Quality-gated debugging pipeline (8 phases)"
 

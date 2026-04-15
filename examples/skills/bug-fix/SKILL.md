@@ -1,5 +1,5 @@
 ---
-name: debug-flow
+name: bug-fix
 description: >-
   Quality-gated debugging pipeline (8 phases). rca → fix-plan → plan-review →
   execute → code-review → monkey-test (E2E scripted) → dogfood (E2E exploratory)
@@ -8,7 +8,7 @@ user-invocable: true
 argument-hint: "[--e2e] [--codex]"
 ---
 
-# debug-flow
+# bug-fix
 
 Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 
@@ -69,7 +69,7 @@ Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 ## Red Flags
 
 - **Never skip Phase 1 (rca)**: root cause must precede fix. "Fix first" is anti-pattern.
-- **Never skip Phase 1 / 2 / 6 / 7 / 8 の supplement load**: debug-flow 固有 override が inject されず drift 発生.
+- **Never skip Phase 1 / 2 / 6 / 7 / 8 の supplement load**: bug-fix 固有 override が inject されず drift 発生.
 - **Never delegate root cause synthesis to subagents**: parallel exploration results は orchestrator が再構築.
 - **Never proceed without a failing reproduction test**: RCA-05 blocker.
 - **Never filter or omit review findings**: `/code-review`, `/implementation-review` の triage は user 責務.

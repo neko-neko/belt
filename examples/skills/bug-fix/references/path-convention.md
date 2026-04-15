@@ -1,10 +1,10 @@
-# Debug Flow Path Convention
+# Bug Fix Path Convention
 
-**Purpose:** SSOT for file naming and directory layout under `docs/plans/` for a debug-flow run.
+**Purpose:** SSOT for file naming and directory layout under `docs/plans/` for a bug-fix run.
 
 ## Base path
 
-All debug-flow run outputs live under:
+All bug-fix run outputs live under:
 
 ```
 docs/plans/YYYY-MM-DD-<topic>-*

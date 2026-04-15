@@ -36,7 +36,7 @@ fn setup_chain(tmp: &std::path::Path) -> String {
 
     std::fs::write(
         tmp.join("consumer.yml"),
-        r#"name: debug-flow
+        r#"name: bug-fix
 version: 1
 phases:
   - id: rca

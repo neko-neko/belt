@@ -1,10 +1,10 @@
 # Monkey Test Supplement (Phase 6 override for `/monkey-test`)
 
-**Invoked by:** `examples/skills/debug-flow/SKILL.md` Phase 6 (INVOKE 1 = Read this file; INVOKE 2 = `/monkey-test`). Only runs when `args.e2e=true`.
+**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 6 (INVOKE 1 = Read this file; INVOKE 2 = `/monkey-test`). Only runs when `args.e2e=true`.
 
 ## Scenarios source
 
-`/monkey-test` defaults to `docs/features/*/scenarios.yml` (feature-dev). In debug-flow, override to:
+`/monkey-test` defaults to `docs/features/*/scenarios.yml` (feature-dev). In bug-fix, override to:
 
 ```
 docs/plans/*-rca-scenarios.yml
