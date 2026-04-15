@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use belt_core::{error::BeltError, expander::expand_pipeline, parser::parse_pipeline};
+use belt_core::{
+    error::BeltError, expander::expand_pipeline, model::ArgType, parser::parse_pipeline,
+};
 
 fn feature_dev_pipeline_path() -> PathBuf {
     // `CARGO_MANIFEST_DIR` points at `crates/belt-core`; walk two levels up to
@@ -124,6 +126,76 @@ fn scenarios_produce_is_conditional_on_e2e() -> Result<(), BeltError> {
             .and_then(serde_json::Value::as_str),
         Some("args.e2e"),
         "scenarios.yml produce must be gated by args.e2e"
+    );
+    Ok(())
+}
+
+#[test]
+fn code_review_regates_execute_only() -> Result<(), BeltError> {
+    let pipeline = parse_pipeline(&feature_dev_pipeline_path())?;
+
+    let code_review = pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == "code-review")
+        .ok_or_else(|| BeltError::InvalidPipeline {
+            message: "code-review phase missing".to_string(),
+        })?;
+
+    assert_eq!(
+        code_review.regate,
+        vec!["execute".to_string()],
+        "code-review.regate must target only [execute] (no smoke-test/doc-audit)"
+    );
+    assert_eq!(
+        code_review.max_retries, 3,
+        "code-review.max_retries must be 3"
+    );
+    Ok(())
+}
+
+#[test]
+fn top_level_args_are_e2e_and_codex_only() -> Result<(), BeltError> {
+    let pipeline = parse_pipeline(&feature_dev_pipeline_path())?;
+
+    let mut names: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        vec!["codex", "e2e"],
+        "args must be exactly {{codex, e2e}}"
+    );
+
+    let e2e = pipeline
+        .args
+        .get("e2e")
+        .ok_or_else(|| BeltError::InvalidPipeline {
+            message: "e2e arg missing".to_string(),
+        })?;
+    assert!(
+        matches!(e2e.arg_type, ArgType::Bool),
+        "e2e arg must be typed bool"
+    );
+    assert_eq!(
+        e2e.default.as_ref().and_then(serde_json::Value::as_bool),
+        Some(false),
+        "e2e arg default must be false"
+    );
+
+    let codex = pipeline
+        .args
+        .get("codex")
+        .ok_or_else(|| BeltError::InvalidPipeline {
+            message: "codex arg missing".to_string(),
+        })?;
+    assert!(
+        matches!(codex.arg_type, ArgType::Bool),
+        "codex arg must be typed bool"
+    );
+    assert_eq!(
+        codex.default.as_ref().and_then(serde_json::Value::as_bool),
+        Some(false),
+        "codex arg default must be false"
     );
     Ok(())
 }
