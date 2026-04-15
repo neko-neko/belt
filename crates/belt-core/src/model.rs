@@ -188,18 +188,29 @@ pub struct Artifact {
     pub description: Option<String>,
 }
 
-/// A reference to an artifact produced by an earlier phase. `Named` is the
-/// short form — lint resolves it to the most recent earlier phase that
-/// produced that name. `Qualified` disambiguates when multiple earlier phases
-/// produce the same name.
+/// A reference to an artifact. `Named` is same-phase short-form. `Qualified`
+/// targets an earlier phase in the same pipeline. `External` targets an
+/// artifact produced by a previous run (possibly a different pipeline) and
+/// is addressed through a `belt://` URI. `External` is resolved at init time
+/// by belt-agent and the resolved absolute path is persisted in
+/// `RunState.resolved_consumes`.
 ///
-/// Ordering: `Named` (scalar string) is checked before `Qualified` (struct
-/// mapping) for serde-saphyr untagged enum disambiguation.
+/// serde-saphyr untagged enum ordering:
+/// `Named` (scalar) → `External` (has `uri:` key) → `Qualified` (has `from:` key).
+/// Each struct-like variant has a unique discriminating field name, so
+/// disambiguation is based on field presence and is deterministic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ArtifactRef {
     Named(String),
-    Qualified { name: String, from: String },
+    External {
+        name: String,
+        uri: crate::uri::BeltUri,
+    },
+    Qualified {
+        name: String,
+        from: String,
+    },
 }
 
 /// Number of iterations for an `Invoker::Agents` invocation.
@@ -298,6 +309,20 @@ pub struct SubPipeline {
     pub phases: Vec<Phase>,
 }
 
+/// Terminal status of a run. Default `InProgress` applies during execution.
+/// `Completed` set when the last phase's `step` succeeds. `Failed` is
+/// reserved for future use (no command currently writes it in MVP).
+/// `Paused` is NOT added here to avoid a collision with BELT-28's
+/// `on_escalation: pause` proposal (separate boolean field planned there).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    #[default]
+    InProgress,
+    Completed,
+    Failed,
+}
+
 /// Persisted run state for a pipeline execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunState {
@@ -305,6 +330,17 @@ pub struct RunState {
     pub pipeline: String,
     pub pipeline_file: String,
     pub version: u32,
+    /// Git branch captured at `init` time for workspace-scoped artifact
+    /// resolution. `None` for legacy state.json files (backward compat)
+    /// or when the engine is invoked outside a git working tree.
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// Resolved `belt://` URI -> absolute filesystem path mapping, populated
+    /// at `init` time from each phase's `consumes` list. Empty for legacy
+    /// state.json files (backward compat) and for pipelines that declare no
+    /// External artifact references.
+    #[serde(default)]
+    pub resolved_consumes: HashMap<String, String>,
     pub args: HashMap<String, serde_json::Value>,
     pub current_phase: String,
     pub completed_phases: Vec<String>,
@@ -321,6 +357,12 @@ pub struct RunState {
     /// resolution to files created during the phase's active window.
     #[serde(default)]
     pub phase_start_times: HashMap<String, DateTime<Utc>>,
+    /// Terminal lifecycle status. Defaults to `InProgress` on init / when
+    /// absent from legacy state.json files. Transitions to `Completed` are
+    /// driven by the engine (Task 9); the field is plumbed here so the
+    /// `RunStatus` enum can be serialised as part of the persisted state.
+    #[serde(default)]
+    pub status: RunStatus,
     pub created_at: String,
     pub updated_at: String,
 }

@@ -8,6 +8,9 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+mod git;
+mod resolver;
+
 #[derive(Parser)]
 #[command(name = "belt-agent", about = "belt-agent — workflow runtime for LLM")]
 struct Cli {
@@ -28,6 +31,11 @@ enum Command {
         /// Pipeline arguments (KEY=VALUE)
         #[arg(long = "arg", value_parser = parse_arg)]
         args: Vec<(String, serde_json::Value)>,
+        /// Optional `run_id` to inherit narrative from (context-neutral
+        /// narrative artifact). Equivalent to adding a hidden
+        /// `belt://run/<run_id>/...` reference for lookup.
+        #[arg(long = "inherits-from")]
+        inherits_from: Option<String>,
     },
     /// Get current phase info
     Next {
@@ -139,9 +147,13 @@ fn main() -> miette::Result<()> {
     let engine = Engine::new(&belt_dir());
 
     match cli.command {
-        Command::Init { file, args } => {
+        Command::Init {
+            file,
+            args,
+            inherits_from,
+        } => {
             let pipeline_path = resolve_pipeline(cli.config.as_ref(), file.as_ref())?;
-            cmd_init(&engine, &pipeline_path, args)?;
+            cmd_init(&engine, &pipeline_path, args, inherits_from.as_deref())?;
         }
         Command::Next { run } => cmd_next(&engine, run.as_ref())?,
         Command::Verify { run } => cmd_verify(&engine, run.as_ref())?,
@@ -156,11 +168,67 @@ fn cmd_init(
     engine: &Engine,
     pipeline_path: &Path,
     args: Vec<(String, serde_json::Value)>,
+    inherits_from: Option<&str>,
 ) -> miette::Result<()> {
+    // Validate that --inherits-from points to an existing run directory.
+    // Fail-fast early (before init creates a run directory) so we never
+    // leave an orphaned state.json pointing at a non-existent parent run.
+    // The *synthetic* resolved_consumes entry for --inherits-from is added
+    // further below, after the run is materialised.
+    if let Some(run_id) = inherits_from {
+        let run_dir = belt_dir().join("runs").join(run_id);
+        if !run_dir.is_dir() {
+            return Err(miette::miette!("--inherits-from: run not found: {run_id}"));
+        }
+    }
+
     let args_map: HashMap<String, serde_json::Value> = args.into_iter().collect();
-    let state = engine
-        .init(pipeline_path, &args_map)
+    // Detect the current git branch from the user's shell CWD so
+    // workspace-scoped URI resolvers (Task 15) can filter runs by branch.
+    // `current_branch` returns `None` outside a git repo, in detached HEAD,
+    // or before the first commit — belt-core trusts the value verbatim.
+    let branch = crate::git::current_branch(std::path::Path::new("."));
+    let mut state = engine
+        .init_with_branch(pipeline_path, &args_map, branch)
         .map_err(|e| miette::miette!("{e}"))?;
+
+    // Resolve every External `belt://` URI in each phase's `consumes:` list
+    // at init time so downstream steps read pinned filesystem paths straight
+    // from RunState (no repeated resolver work, no late binding). Resolved
+    // paths are stored absolute when the resolver can produce them; relative
+    // fallbacks are preserved verbatim.
+    let belt = belt_dir();
+    let phases = expand_pipeline(pipeline_path).map_err(|e| miette::miette!("{e}"))?;
+    let resolver = crate::resolver::Resolver {
+        belt_dir: &belt,
+        current_branch: state.branch.clone(),
+    };
+    let mut resolved_map: HashMap<String, String> = HashMap::new();
+    for phase in &phases {
+        for aref in &phase.consumes {
+            if let belt_core::model::ArtifactRef::External { uri, .. } = aref {
+                let path = resolver.resolve(uri).map_err(|e| miette::miette!("{e}"))?;
+                resolved_map.insert(uri.to_string(), path.display().to_string());
+            }
+        }
+    }
+
+    // --inherits-from registers the inherited run under a synthetic
+    // `belt://run/<id>/` key so skills can locate the parent run directory
+    // without requiring an explicit External reference in the pipeline YAML.
+    // The existence check above guarantees run_dir is a directory here.
+    if let Some(run_id) = inherits_from {
+        let run_dir = belt.join("runs").join(run_id);
+        resolved_map.insert(
+            format!("belt://run/{run_id}/"),
+            run_dir.display().to_string(),
+        );
+    }
+
+    engine
+        .set_resolved_consumes(&mut state, resolved_map)
+        .map_err(|e| miette::miette!("{e}"))?;
+
     let pipeline_file = Path::new(&state.pipeline_file);
     let phase = engine
         .next_phase_info(&state, pipeline_file)
@@ -238,7 +306,17 @@ fn cmd_next(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
         .next_phase_info(&state, pipeline_path)
         .map_err(|e| miette::miette!("{e}"))?;
     let attempt = state.phase_attempts.get(&phase.id).copied().unwrap_or(0);
-    let phase_obj = phase_json(&phase);
+    let mut phase_obj = phase_json(&phase);
+    // Augment External consumes entries with `resolved_path` from
+    // `state.resolved_consumes`, computed at `init` time. Named/Qualified
+    // entries keep their existing (derived-Serialize) JSON shape so existing
+    // consumers are not broken.
+    if let serde_json::Value::Object(map) = &mut phase_obj {
+        map.insert(
+            "consumes".to_string(),
+            build_consumes_with_resolved(&phase.consumes, &state.resolved_consumes),
+        );
+    }
 
     let out = json!({
         "run_id": state.run_id,
@@ -256,6 +334,41 @@ fn cmd_next(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
         serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
     );
     Ok(())
+}
+
+/// Render the `consumes` list for `next` output.
+///
+/// `ArtifactRef::External` entries are augmented with a `resolved_path` field
+/// looked up by URI in `state.resolved_consumes` (populated at `init` time).
+/// `resolved_path` is `null` if the lookup misses, which should not happen
+/// under normal operation but is preserved as an explicit JSON signal rather
+/// than silently omitting the field (consumers can distinguish "unresolvable"
+/// from "not External"). `Named` and `Qualified` variants are emitted via
+/// their derived `Serialize` shape to preserve backwards compatibility with
+/// existing integration tests and skill-side consumers.
+fn build_consumes_with_resolved(
+    refs: &[belt_core::model::ArtifactRef],
+    resolved: &HashMap<String, String>,
+) -> serde_json::Value {
+    use belt_core::model::ArtifactRef;
+    let mut out: Vec<serde_json::Value> = Vec::with_capacity(refs.len());
+    for aref in refs {
+        match aref {
+            ArtifactRef::External { name, uri } => {
+                let uri_str = uri.to_string();
+                let resolved_path = resolved.get(&uri_str);
+                out.push(json!({
+                    "name": name,
+                    "uri": uri_str,
+                    "resolved_path": resolved_path,
+                }));
+            }
+            other => {
+                out.push(serde_json::to_value(other).unwrap_or(serde_json::Value::Null));
+            }
+        }
+    }
+    serde_json::Value::Array(out)
 }
 
 fn cmd_verify(engine: &Engine, run: Option<&String>) -> miette::Result<()> {

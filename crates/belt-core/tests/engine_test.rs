@@ -2017,3 +2017,268 @@ phases:
         .expect("phase_start_times must persist");
     assert_eq!(written.to_rfc3339(), read_back.to_rfc3339());
 }
+
+// ---------------------------------------------------------------------------
+// init_creates_notes_directory
+//
+// Ensures the run-scoped notes directory (`<run_dir>/notes/`) is created on
+// `Engine::init`, so downstream tasks can write narrative Markdown artifacts
+// without worrying about directory-creation ordering.
+// ---------------------------------------------------------------------------
+#[test]
+fn init_creates_notes_directory() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "p.yml",
+        r#"name: p
+version: 1
+phases:
+  - id: one
+    description: "only phase"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    let notes = belt_dir.join("runs").join(&state.run_id).join("notes");
+    assert!(notes.is_dir(), "notes dir not created: {}", notes.display());
+}
+
+// ---------------------------------------------------------------------------
+// step_marks_run_completed_when_no_next_phase
+//
+// Ensures that when `Engine::step` advances past the last phase, the run's
+// `status` transitions from `InProgress` to `Completed`. This is required by
+// Task 14's resolver, which filters runs by `status == "completed"` for
+// `belt://latest/...` URI resolution.
+// ---------------------------------------------------------------------------
+#[test]
+fn step_marks_run_completed_when_no_next_phase() {
+    use belt_core::model::RunStatus;
+
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"name: solo
+version: 1
+phases:
+  - id: only
+    description: "only phase"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let mut state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    // Simulate verify pass so `step` is not blocked by the verify-before-step
+    // guard.
+    state.phase_verify_passed.insert("only".into(), true);
+
+    // Sanity: run starts in InProgress.
+    assert_eq!(state.status, RunStatus::InProgress);
+
+    let next = engine
+        .step(&mut state, &pipeline_path)
+        .expect("step should succeed");
+
+    assert!(next.is_none(), "no next phase after the only phase");
+    assert_eq!(
+        state.status,
+        RunStatus::Completed,
+        "status must transition to Completed when pipeline finishes"
+    );
+
+    // Adversarial probe: the transition must survive serde round-trip so
+    // downstream `belt://latest/...` resolvers can filter completed runs by
+    // re-loading state.json from disk.
+    let reloaded = engine.load_state(&state.run_id).expect("reload");
+    assert_eq!(
+        reloaded.status,
+        RunStatus::Completed,
+        "status=Completed must persist to disk via save_state"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// next_phase_info_expands_run_id_in_file_exists_gate
+//
+// `next_phase_info` must replace `{run_id}` tokens in file_exists gate paths
+// so that the LLM-facing JSON emitted by `belt-agent next` carries run-scoped
+// absolute-ish paths rather than raw templates.
+// ---------------------------------------------------------------------------
+#[test]
+fn next_phase_info_expands_run_id_in_file_exists_gate() {
+    use belt_core::model::GateCheck;
+
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"name: t
+version: 1
+phases:
+  - id: review
+    description: "review"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-review.md"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    let phase = engine
+        .next_phase_info(&state, &pipeline_path)
+        .expect("next_phase_info should succeed");
+
+    assert_eq!(phase.gate.len(), 1, "review should have one gate check");
+    match &phase.gate[0] {
+        GateCheck::FileExists { file_exists } => {
+            let expected = format!(".belt/runs/{}/notes/phase-review.md", state.run_id);
+            assert_eq!(
+                *file_exists, expected,
+                "{{run_id}} must be substituted into file_exists gate path"
+            );
+            assert!(
+                !file_exists.contains("{run_id}"),
+                "no raw template tokens should remain after expansion"
+            );
+        }
+        other => panic!("expected FileExists gate, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// next_phase_info_expands_run_id_in_produces_path
+//
+// `next_phase_info` must replace `{run_id}` tokens in `produces[*].path` so
+// that downstream consumers (narrative artifact writers, Task 22 fixtures)
+// receive run-scoped paths from the phase descriptor.
+// ---------------------------------------------------------------------------
+#[test]
+fn next_phase_info_expands_run_id_in_produces_path() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"name: t
+version: 1
+phases:
+  - id: review
+    description: "review"
+    produces:
+      - name: notes
+        path: ".belt/runs/{run_id}/notes/phase-review.md"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    let phase = engine
+        .next_phase_info(&state, &pipeline_path)
+        .expect("next_phase_info should succeed");
+
+    assert_eq!(
+        phase.produces.len(),
+        1,
+        "review should produce one artifact"
+    );
+    let expected = format!(".belt/runs/{}/notes/phase-review.md", state.run_id);
+    assert_eq!(
+        phase.produces[0].path, expected,
+        "{{run_id}} must be substituted into produces[*].path"
+    );
+    assert!(
+        !phase.produces[0].path.contains("{run_id}"),
+        "no raw template tokens should remain after expansion"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// init_records_branch_when_provided
+//
+// `Engine::init_with_branch` accepts a caller-supplied branch name and stores
+// it verbatim in `RunState.branch`. Belt-core remains pure: the caller
+// (belt-agent) is responsible for detecting the branch via git; core trusts
+// whatever `Option<String>` it receives. This test pins the happy path.
+// ---------------------------------------------------------------------------
+#[test]
+fn init_records_branch_when_provided() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: only
+    description: "only phase"
+"#,
+    );
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+
+    let state = engine
+        .init_with_branch(&pipeline_path, &HashMap::new(), Some("develop".to_string()))
+        .expect("init_with_branch should succeed");
+
+    assert_eq!(
+        state.branch,
+        Some("develop".to_string()),
+        "branch parameter must be recorded verbatim in RunState"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// init_legacy_records_no_branch
+//
+// The legacy 2-arg `Engine::init` is preserved for backward compatibility and
+// delegates to `init_with_branch(.., None)`. Existing callers (and this test)
+// observe `branch: None` in the resulting state, matching the pre-Task-12
+// behaviour guarded by Tasks 8/9/10.
+// ---------------------------------------------------------------------------
+#[test]
+fn init_legacy_records_no_branch() {
+    let dir = TempDir::new().expect("tempdir");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: t
+version: 1
+phases:
+  - id: only
+    description: "only phase"
+"#,
+    );
+
+    let belt_dir = dir.path().join(".belt");
+    let engine = Engine::new(&belt_dir);
+
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+
+    assert_eq!(
+        state.branch, None,
+        "legacy init must leave branch unset for backward compatibility"
+    );
+}

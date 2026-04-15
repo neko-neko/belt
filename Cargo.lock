@@ -156,6 +156,7 @@ dependencies = [
  "predicates",
  "serde_json",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]

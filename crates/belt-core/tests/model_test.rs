@@ -1,7 +1,8 @@
 use belt_core::model::{
     ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, IterationsSpec, Pipeline,
-    RunState, SubPipeline, ValidationSource,
+    RunState, RunStatus, SubPipeline, ValidationSource,
 };
+use belt_core::uri::BeltUri;
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
 #[test]
@@ -395,6 +396,8 @@ fn run_state_regate_passed_round_trip() {
         pipeline: "test".to_string(),
         pipeline_file: "pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "build".to_string(),
         completed_phases: vec![],
@@ -403,6 +406,7 @@ fn run_state_regate_passed_round_trip() {
         phase_verify_passed: HashMap::new(),
         regate_passed,
         phase_start_times: HashMap::new(),
+        status: RunStatus::default(),
         created_at: "2026-01-01T00:00:00Z".to_string(),
         updated_at: "2026-01-01T00:00:00Z".to_string(),
     };
@@ -987,4 +991,116 @@ fn iterations_spec_json_roundtrip() {
         back,
         IterationsSpec::Template("args.iterations".to_string())
     );
+}
+
+#[test]
+fn artifact_ref_external_deserializes_from_yaml() {
+    let yaml = r#"
+- name: prior_review
+  uri: "belt://latest/feature-dev/notes/phase-review.md"
+"#;
+    let refs: Vec<ArtifactRef> = serde_saphyr::from_str(yaml).unwrap();
+    assert_eq!(refs.len(), 1);
+    match &refs[0] {
+        ArtifactRef::External { name, uri } => {
+            assert_eq!(name, "prior_review");
+            assert!(matches!(uri, BeltUri::Latest { .. }));
+        }
+        other => panic!("expected External, got {other:?}"),
+    }
+}
+
+#[test]
+fn artifact_ref_named_still_works() {
+    let refs: Vec<ArtifactRef> = serde_saphyr::from_str("- notes\n").unwrap();
+    matches!(refs[0], ArtifactRef::Named(_));
+}
+
+#[test]
+fn artifact_ref_qualified_still_works() {
+    let yaml = r#"
+- name: notes
+  from: review
+"#;
+    let refs: Vec<ArtifactRef> = serde_saphyr::from_str(yaml).unwrap();
+    matches!(refs[0], ArtifactRef::Qualified { .. });
+}
+
+#[test]
+fn run_status_serializes_as_lowercase_string() {
+    assert_eq!(
+        serde_json::to_string(&RunStatus::InProgress).unwrap(),
+        "\"in_progress\""
+    );
+    assert_eq!(
+        serde_json::to_string(&RunStatus::Completed).unwrap(),
+        "\"completed\""
+    );
+    assert_eq!(
+        serde_json::to_string(&RunStatus::Failed).unwrap(),
+        "\"failed\""
+    );
+}
+
+#[test]
+fn run_status_default_is_in_progress() {
+    let default: RunStatus = Default::default();
+    assert_eq!(default, RunStatus::InProgress);
+}
+
+#[test]
+fn run_state_new_fields_roundtrip() {
+    use std::collections::HashMap;
+
+    let state = RunState {
+        run_id: "01947abc".into(),
+        pipeline: "feature-dev".into(),
+        pipeline_file: "/tmp/feature-dev.yml".into(),
+        version: 1,
+        branch: Some("main".into()),
+        resolved_consumes: {
+            let mut m = HashMap::new();
+            m.insert(
+                "belt://latest/feature-dev/notes/phase-review.md".into(),
+                "/abs/.belt/runs/01947/notes/phase-review.md".into(),
+            );
+            m
+        },
+        args: HashMap::new(),
+        current_phase: "review".into(),
+        completed_phases: vec![],
+        skipped_phases: vec![],
+        phase_attempts: HashMap::new(),
+        phase_verify_passed: HashMap::new(),
+        regate_passed: HashMap::new(),
+        phase_start_times: HashMap::new(),
+        status: RunStatus::InProgress,
+        created_at: "2026-04-14T00:00:00Z".into(),
+        updated_at: "2026-04-14T00:00:00Z".into(),
+    };
+    let json = serde_json::to_string(&state).unwrap();
+    let decoded: RunState = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.branch, Some("main".into()));
+    assert_eq!(decoded.resolved_consumes.len(), 1);
+    assert_eq!(decoded.status, RunStatus::InProgress);
+}
+
+#[test]
+fn run_state_deserializes_legacy_without_new_fields() {
+    let legacy = r#"{
+        "run_id": "01947abc",
+        "pipeline": "feature-dev",
+        "pipeline_file": "/tmp/x.yml",
+        "version": 1,
+        "args": {},
+        "current_phase": "review",
+        "completed_phases": [],
+        "skipped_phases": [],
+        "created_at": "2026-04-14T00:00:00Z",
+        "updated_at": "2026-04-14T00:00:00Z"
+    }"#;
+    let decoded: RunState = serde_json::from_str(legacy).unwrap();
+    assert_eq!(decoded.branch, None);
+    assert!(decoded.resolved_consumes.is_empty());
+    assert_eq!(decoded.status, RunStatus::InProgress);
 }

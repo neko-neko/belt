@@ -467,10 +467,15 @@ pipeline.yml: 0 errors, 0 warnings
   "pipeline_file": "./pipeline.yml",
   "version": 1,
   "args": { "codex": false, "smoke": true, "e2e": false },
+  "branch": "feature/belt-32-artifact",
+  "status": "InProgress",
   "current_phase": "code-review/triage",
   "completed_phases": ["design/explore", "design/synthesize", "..."],
   "skipped_phases": ["doc-audit"],
   "phase_attempts": { "execute": 2 },
+  "resolved_consumes": {
+    "belt://latest/design.md": "/abs/path/.belt/runs/01J.../design/explore/design.md"
+  },
   "last_verify": {
     "phase": "execute",
     "verdict": "PASS",
@@ -480,6 +485,12 @@ pipeline.yml: 0 errors, 0 warnings
   "updated_at": "2026-04-06T14:30:00Z"
 }
 ```
+
+BELT-spec 2026-04-14 (context-neutral narrative artifact) で追加された 3 フィールド:
+
+- `branch: Option<String>` — init 時点の git ブランチ名。非 git リポジトリや detached HEAD では `None`。belt-agent の `git::current_branch` ラッパ経由で `Engine::init_with_branch` が記録する。`belt://workspace/{branch}/latest/` 解決に使用
+- `resolved_consumes: HashMap<String, String>` — URI → 解決済み絶対パスのスナップショット。init 時に belt-agent resolver が pipeline の consumes 内の `ArtifactRef::External` 全エントリを解決し記録する。`belt-agent next` は consume 項目の `resolved_path` として再出力する
+- `status: RunStatus` — `InProgress` | `Completed` | `Failed`。デフォルトは `InProgress`。`Engine::step` が last-phase advance 時に `Completed` へ遷移させる。`Failed` は将来用に予約
 
 ## 7. Crate Architecture
 
@@ -560,6 +571,8 @@ belt-core + clap + miette[fancy]。lint/fmt コードは含まない。
 - belt-tui (ratatui-based 監視 UI)
 - Composed pipelines (Level 3)
 
+BELT-spec 2026-04-14 は run をまたいだ narrative 参照のために `belt://` URI スキーム (selector: `latest/`, `workspace/{branch}/latest/`, `run/{run_id}/`) を導入した。現スコープはローカルの `.belt/runs/` のみだが、これは将来のクロスリポジトリ解決の土台となる。URI 解決は belt-agent の resolver が init 時に実行し、belt-core は pure を保つ (ファイルシステム走査を行わない)。完全な設計は `docs/specs/2026-04-14-belt-context-neutral-narrative-artifact.md` を参照。
+
 ## 9. Gap Analysis
 
 feature-dev / debug-flow / linear-refresh の 3 ワークフローに対する意味的カバレッジ分析。全て本設計でカバーされることを確認済み。
@@ -587,7 +600,9 @@ feature-dev / debug-flow / linear-refresh の 3 ワークフローに対する�
 | サブエージェント dispatch | ユースケースごとに perspectives/agents が異なる。個別最適化の範囲 |
 | N-way 投票、Codex 並列 | `args` + `config` でパラメータを渡すが、実行は LLM |
 | Fix dispatch 戦略 | SKILL.md に記述。belt は関知しない |
-| handover / session notes | SKILL.md protocol |
+| phase-scoped narrative (Artifact via `belt://` URI) | belt (belt-core が `belt://` URI を Artifact に記録、belt-agent resolver が init 時に実体パス解決) |
+| session-level narrative (active_tasks, recent_decisions) | SKILL.md protocol |
+| handover / resume approval gate | SKILL.md protocol |
 | Linear sync | SKILL.md protocol |
 
 ## 10. Context Reduction Estimate

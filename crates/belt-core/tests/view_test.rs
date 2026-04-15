@@ -1,5 +1,5 @@
 use belt_core::engine::Engine;
-use belt_core::model::{Artifact, Invoker, RunState};
+use belt_core::model::{Artifact, Invoker, RunState, RunStatus};
 use belt_core::view::{PhaseMetadata, PhaseState, PipelineStatus, build_status_view};
 use std::collections::HashMap;
 
@@ -9,6 +9,8 @@ fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
         pipeline: "test".to_string(),
         pipeline_file: "/tmp/pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: current.to_string(),
         completed_phases: completed.iter().map(|s| (*s).to_string()).collect(),
@@ -17,6 +19,7 @@ fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
         phase_start_times: HashMap::new(),
+        status: RunStatus::default(),
         created_at: "2026-04-07T00:00:00Z".to_string(),
         updated_at: "2026-04-07T00:00:00Z".to_string(),
     }
@@ -603,6 +606,8 @@ fn phase_view_serializes_invoke_skill() {
         pipeline: "test".to_string(),
         pipeline_file: "pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "design".to_string(),
         completed_phases: vec![],
@@ -611,6 +616,7 @@ fn phase_view_serializes_invoke_skill() {
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
         phase_start_times: HashMap::new(),
+        status: RunStatus::default(),
         created_at: "2026-04-11T00:00:00Z".to_string(),
         updated_at: "2026-04-11T00:00:00Z".to_string(),
     };
@@ -693,6 +699,8 @@ fn glob_resolution_picks_newest_after_phase_start() {
         pipeline: "test".to_string(),
         pipeline_file: "/tmp/pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "design".to_string(),
         completed_phases: vec!["design".to_string()],
@@ -701,6 +709,7 @@ fn glob_resolution_picks_newest_after_phase_start() {
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
         phase_start_times,
+        status: RunStatus::default(),
         created_at: String::new(),
         updated_at: String::new(),
     };
@@ -763,6 +772,8 @@ fn glob_resolution_zero_matches_reports_missing() {
         pipeline: "test".to_string(),
         pipeline_file: "/tmp/pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "p".to_string(),
         completed_phases: vec!["p".to_string()],
@@ -771,6 +782,7 @@ fn glob_resolution_zero_matches_reports_missing() {
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
         phase_start_times,
+        status: RunStatus::default(),
         created_at: String::new(),
         updated_at: String::new(),
     };
@@ -830,6 +842,8 @@ fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
         pipeline: "test".to_string(),
         pipeline_file: "/tmp/pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "p".to_string(),
         completed_phases: vec!["p".to_string()],
@@ -838,6 +852,7 @@ fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
         phase_start_times,
+        status: RunStatus::default(),
         created_at: String::new(),
         updated_at: String::new(),
     };
@@ -892,6 +907,8 @@ fn concrete_path_skips_filter() {
         pipeline: "test".to_string(),
         pipeline_file: "/tmp/pipeline.yml".to_string(),
         version: 1,
+        branch: None,
+        resolved_consumes: HashMap::new(),
         args: HashMap::new(),
         current_phase: "smoke".to_string(),
         completed_phases: vec!["smoke".to_string()],
@@ -900,6 +917,7 @@ fn concrete_path_skips_filter() {
         phase_verify_passed: HashMap::new(),
         regate_passed: HashMap::new(),
         phase_start_times,
+        status: RunStatus::default(),
         created_at: String::new(),
         updated_at: String::new(),
     };

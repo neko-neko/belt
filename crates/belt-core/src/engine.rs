@@ -1,6 +1,6 @@
 use crate::error::{BeltError, BeltResult};
 use crate::expander::expand_pipeline;
-use crate::model::{ExpandedPhase, RunState};
+use crate::model::{ExpandedPhase, RunState, RunStatus};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,13 +25,37 @@ impl Engine {
 
     /// Initialize a new pipeline run.
     ///
-    /// Parses and expands the pipeline, finds the first active phase
-    /// (evaluating `when:` conditions against `args`), creates a `RunState`,
-    /// persists it, and creates the output directory for the first phase.
+    /// Thin backward-compatibility wrapper around
+    /// [`Engine::init_with_branch`] that records `branch: None` in the
+    /// resulting [`RunState`]. Belt-core stays pure: it does not shell out
+    /// to `git`. Callers that want to record the current branch should use
+    /// [`Engine::init_with_branch`] instead (belt-agent wires this via the
+    /// `git::current_branch` wrapper).
     pub fn init(
         &self,
         pipeline_path: &Path,
         args: &HashMap<String, serde_json::Value>,
+    ) -> BeltResult<RunState> {
+        self.init_with_branch(pipeline_path, args, None)
+    }
+
+    /// Initialize a new pipeline run, recording the caller-supplied git
+    /// branch in [`RunState::branch`].
+    ///
+    /// Parses and expands the pipeline, finds the first active phase
+    /// (evaluating `when:` conditions against `args`), creates a `RunState`,
+    /// persists it, and creates the output directory for the first phase.
+    ///
+    /// `branch` is trusted verbatim: belt-core never executes processes, so
+    /// the boundary layer (belt-agent) is responsible for detecting the
+    /// current branch (typically via `git rev-parse --abbrev-ref HEAD`) and
+    /// passing the result through unchanged. `None` is valid and preserves
+    /// the pre-Task-12 behaviour.
+    pub fn init_with_branch(
+        &self,
+        pipeline_path: &Path,
+        args: &HashMap<String, serde_json::Value>,
+        branch: Option<String>,
     ) -> BeltResult<RunState> {
         let pipeline = crate::parser::parse_pipeline(pipeline_path)?;
         let phases = expand_pipeline(pipeline_path)?;
@@ -45,6 +69,10 @@ impl Engine {
         let run_dir = self.belt_dir.join("runs").join(&run_id);
         std::fs::create_dir_all(&run_dir)?;
 
+        // Create run-scoped notes directory for narrative artifacts
+        // (context-neutral narrative artifact spec).
+        std::fs::create_dir_all(run_dir.join("notes"))?;
+
         let now = now_iso8601();
         let mut phase_start_times: HashMap<String, chrono::DateTime<chrono::Utc>> = HashMap::new();
         phase_start_times.insert(active.id.clone(), chrono::Utc::now());
@@ -53,6 +81,8 @@ impl Engine {
             pipeline: pipeline.name,
             pipeline_file: std::fs::canonicalize(pipeline_path)?.display().to_string(),
             version: pipeline.version,
+            branch,
+            resolved_consumes: HashMap::new(),
             args: args.clone(),
             current_phase: active.id.clone(),
             completed_phases: Vec::new(),
@@ -65,6 +95,7 @@ impl Engine {
             },
             regate_passed: HashMap::new(),
             phase_start_times,
+            status: RunStatus::default(),
             created_at: now.clone(),
             updated_at: now,
         };
@@ -102,6 +133,14 @@ impl Engine {
     }
 
     /// Return the current `ExpandedPhase` with `output_dir` set.
+    ///
+    /// Also rewrites the `{run_id}` template token in `produces[*].path` and
+    /// in `gate` string fields (`file_exists`, `cmd`) so that the LLM-facing
+    /// JSON emitted by `belt-agent next` carries run-scoped paths rather than
+    /// raw templates. This is a presentation-layer transformation: the raw
+    /// pipeline YAML on disk is unchanged and `RunState` never persists the
+    /// expanded form. `consumes` URIs are intentionally NOT rewritten here —
+    /// they go through the dedicated `belt://` resolver.
     pub fn next_phase_info(
         &self,
         state: &RunState,
@@ -123,6 +162,30 @@ impl Engine {
         let output_dir = run_dir.join(phase.id.replace('/', "_"));
         std::fs::create_dir_all(&output_dir)?;
         phase.output_dir = Some(output_dir.display().to_string());
+
+        // Expand `{run_id}` template in fields the LLM sees at step time.
+        // Idempotent: a second call on already-expanded text is a no-op
+        // because the token is gone after the first substitution.
+        for artifact in &mut phase.produces {
+            artifact.path = expand_run_id(&artifact.path, &state.run_id);
+        }
+        for check in &mut phase.gate {
+            match check {
+                crate::model::GateCheck::FileExists { file_exists } => {
+                    *file_exists = expand_run_id(file_exists, &state.run_id);
+                }
+                crate::model::GateCheck::Cmd { cmd, .. } => {
+                    *cmd = expand_run_id(cmd, &state.run_id);
+                }
+                // `GitClean` / `HasOutput` carry only booleans (no string to
+                // rewrite). `Uses` names a pipeline reference, not a runtime
+                // path: the resolver (future work) owns its rewriting, not
+                // this layer.
+                crate::model::GateCheck::GitClean { .. }
+                | crate::model::GateCheck::HasOutput { .. }
+                | crate::model::GateCheck::Uses { .. } => {}
+            }
+        }
 
         Ok(phase)
     }
@@ -224,6 +287,13 @@ impl Engine {
             }
         }
 
+        // Transition terminal status when the pipeline has no further phases
+        // so `belt://latest/...` resolvers (Task 14) can filter for finished
+        // runs. `save_state` below persists this alongside `current_phase`.
+        if next_phase.is_none() {
+            state.status = RunStatus::Completed;
+        }
+
         state.updated_at = now_iso8601();
         self.save_state(state)?;
 
@@ -258,6 +328,23 @@ impl Engine {
         state.updated_at = now_iso8601();
         self.save_state(state)?;
         Ok(())
+    }
+
+    /// Replace `state.resolved_consumes` with the given map and persist.
+    ///
+    /// Used by belt-agent at `init` time, after it has walked each phase's
+    /// `consumes:` list and resolved every `ArtifactRef::External { uri, .. }`
+    /// through the `belt://` resolver. Subsequent runtime phases (`next`,
+    /// `verify`) read the resolved filesystem paths straight from `RunState`
+    /// without re-invoking the resolver, which keeps resolution decisions
+    /// pinned to the run's inception snapshot.
+    pub fn set_resolved_consumes(
+        &self,
+        state: &mut RunState,
+        resolved: HashMap<String, String>,
+    ) -> BeltResult<()> {
+        state.resolved_consumes = resolved;
+        self.save_state(state)
     }
 
     /// Return the current `RunState` (alias for `load_state`).
@@ -322,6 +409,16 @@ impl Engine {
                 message: "no runs found".to_string(),
             })
     }
+}
+
+/// Expand `{run_id}` placeholders in a string.
+///
+/// Pure and deterministic. Used by [`Engine::next_phase_info`] to rewrite
+/// template tokens in phase `produces[*].path` and string gate fields so
+/// that LLM-facing output carries run-scoped paths. Idempotent: a second
+/// pass over the returned string is a no-op because the token is gone.
+fn expand_run_id(s: &str, run_id: &str) -> String {
+    s.replace("{run_id}", run_id)
 }
 
 /// Evaluate a `when:` expression against the provided args.

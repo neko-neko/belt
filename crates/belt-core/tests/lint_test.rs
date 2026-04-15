@@ -706,3 +706,111 @@ phases:
         .collect();
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
 }
+
+/// Lint rule: External URI grammar is validated.
+///
+/// Note: `BeltUri::parse` already rejects unknown selectors at YAML
+/// deserialization time (see `BeltUri::Deserialize`), so `parse_pipeline`
+/// may hard-fail before our dedicated lint pass runs. This test accepts
+/// either outcome:
+///   - `Ok(diags)` with a URI-grammar diagnostic, or
+///   - `Ok(diags)` containing a parse-level error that mentions the URI.
+///   - `Err(_)` (parse-level rejection propagated).
+/// All three satisfy the intent: invalid URI grammar is surfaced.
+#[test]
+fn lint_rejects_invalid_uri_grammar() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+    let path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: bad-uri
+version: 1
+phases:
+  - id: first
+    description: "first"
+    consumes:
+      - name: bad
+        uri: "belt://bogus/whatever/x.md"
+"#,
+    );
+
+    let result = lint_pipeline(&path);
+    match result {
+        Ok(diags) => {
+            assert!(
+                diags.iter().any(|d| {
+                    let m = d.message.to_lowercase();
+                    m.contains("uri") || m.contains("selector") || m.contains("invalid")
+                }),
+                "lint should flag invalid URI grammar, got: {diags:?}"
+            );
+        }
+        Err(err) => {
+            let msg = format!("{err}");
+            let low = msg.to_lowercase();
+            assert!(
+                low.contains("uri") || low.contains("selector") || msg.contains("belt://"),
+                "parse error should mention URI grammar: {msg}"
+            );
+        }
+    }
+}
+
+/// Lint rule: a `consumes: External` URI referencing `belt://latest/<pipeline>/...`
+/// (or its workspace-qualified variant) should emit a *warning* when no sibling
+/// `<pipeline>.yml` nor `<pipeline>/pipeline.yml` exists next to the current
+/// pipeline file. This is authoring-time feedback — the producer may live in a
+/// different repo, so the check is advisory, not fatal.
+#[test]
+fn lint_warns_on_belt_uri_with_unknown_sibling_pipeline() {
+    let tmp = tempfile::tempdir().unwrap();
+    let consumer = tmp.path().join("consumer.yml");
+    std::fs::write(
+        &consumer,
+        r#"name: consumer
+version: 1
+phases:
+  - id: rca
+    description: "rca"
+    consumes:
+      - name: prior
+        uri: "belt://latest/no-such-producer/notes/x.md"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&consumer).unwrap();
+    assert!(
+        diags.iter().any(|d| d.message.contains("no-such-producer")),
+        "expected a diagnostic mentioning 'no-such-producer', got: {diags:?}"
+    );
+}
+
+#[test]
+fn lint_warns_on_produces_without_gate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("p.yml");
+    std::fs::write(
+        &p,
+        r#"name: p
+version: 1
+phases:
+  - id: review
+    description: "review"
+    produces:
+      - name: notes
+        path: ".belt/runs/{run_id}/notes/phase-review.md"
+    gate:
+      - cmd: "echo ok"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&p).unwrap();
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == belt_core::lint::Severity::Warning
+                && d.message.contains("not protected by gate")),
+        "expected a Warning diagnostic mentioning 'not protected by gate', got: {diags:?}"
+    );
+}

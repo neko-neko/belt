@@ -117,6 +117,20 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: produces uniqueness per phase + consumes resolves to earlier phase
     check_artifact_flow(&pipeline, &mut diagnostics);
 
+    // Check: External `consumes` URIs parse as valid belt:// grammar
+    check_external_uri_grammar(&pipeline, &mut diagnostics);
+
+    // Check: External `consumes` URIs with Latest/WorkspaceLatest selectors
+    // reference a pipeline with a sibling YAML in the current directory.
+    // Warning-only: producers can legitimately live outside the repo.
+    check_external_uri_sibling_producer(&pipeline, base_dir, &mut diagnostics);
+
+    // Check: each `produces` entry is protected by a gate (file_exists
+    // matching the path, or has_output: true). Warning-only: the phase may
+    // legitimately write elsewhere, but without gate protection downstream
+    // consumers may see missing files at runtime.
+    check_produces_protected_by_gate(&pipeline, &mut diagnostics);
+
     // Check: validate file references exist on disk
     check_validate_file_refs(&pipeline, base_dir, &mut diagnostics);
 
@@ -313,6 +327,122 @@ fn check_artifact_flow(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic
                         });
                     }
                 }
+                ArtifactRef::External { .. } => {
+                    // External refs are resolved at init time by belt-agent
+                    // against a different run's state.json, so there is no
+                    // earlier-phase produces to check here. URI grammar
+                    // validation is owned by `check_external_uri_grammar`.
+                }
+            }
+        }
+    }
+}
+
+/// Lint rule: every `consumes: External { uri }` entry must be a syntactically
+/// valid `belt://` URI.
+///
+/// In practice the YAML deserializer already rejects malformed URIs via
+/// `BeltUri::parse` (called from `BeltUri::Deserialize`), so by the time a
+/// `Pipeline` is materialized all External refs are grammar-valid. This lint
+/// performs a `Display → parse` roundtrip as a defensive, belt-and-suspenders
+/// check: if Display ever diverges from parse (future refactor), the lint
+/// catches the drift. It also encodes the invariant explicitly so that if
+/// `BeltUri::parse` is ever relaxed (e.g., to emit warnings instead of hard
+/// errors), the lint continues to flag invalid grammar at authoring time.
+fn check_external_uri_grammar(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    for phase in &pipeline.phases {
+        for aref in &phase.consumes {
+            if let ArtifactRef::External { name, uri } = aref {
+                let s = uri.to_string();
+                if let Err(e) = crate::uri::BeltUri::parse(&s) {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Error,
+                        message: format!(
+                            "phase '{}': consumes '{}' URI invalid: {e}",
+                            phase.id, name
+                        ),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Lint rule: warn (not error) when a `consumes: External` URI with a
+/// `Latest` or `WorkspaceLatest` selector references a pipeline with no
+/// sibling YAML in the same directory as the current pipeline file.
+///
+/// Resolution strategy: look for `<base_dir>/<pipeline>.yml` *or*
+/// `<base_dir>/<pipeline>/pipeline.yml`. If neither exists, emit a warning.
+///
+/// The `Run` variant is intentionally skipped — it targets a specific run
+/// UUID and is not expected to have a sibling pipeline definition.
+///
+/// False positives are acceptable by design (spec intent): producers can
+/// legitimately live in a separate repository or be defined elsewhere on
+/// disk. Severity is Warning so authors can dismiss per case.
+fn check_external_uri_sibling_producer(
+    pipeline: &Pipeline,
+    base_dir: &Path,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for phase in &pipeline.phases {
+        for aref in &phase.consumes {
+            if let ArtifactRef::External { name, uri } = aref {
+                let producer = match uri {
+                    crate::uri::BeltUri::Latest { pipeline: p, .. }
+                    | crate::uri::BeltUri::WorkspaceLatest { pipeline: p, .. } => p,
+                    crate::uri::BeltUri::Run { .. } => continue,
+                };
+                let sibling_file = base_dir.join(format!("{producer}.yml"));
+                let sibling_dir = base_dir.join(producer).join("pipeline.yml");
+                if !sibling_file.is_file() && !sibling_dir.is_file() {
+                    diagnostics.push(LintDiagnostic {
+                        severity: Severity::Warning,
+                        message: format!(
+                            "phase '{}': consumes '{}' references pipeline '{producer}' but no sibling YAML found (looked for '{producer}.yml' and '{producer}/pipeline.yml')",
+                            phase.id, name
+                        ),
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Lint rule: warn when a phase's `produces` entries are not protected by a
+/// matching gate check. A `produces` entry is considered protected when any
+/// gate in the same phase is either:
+///   - `file_exists: <path>` with a literal string-equal `path` to the
+///     produces entry's `path` (raw template string — `{run_id}` is not
+///     expanded at lint time), or
+///   - `has_output: true` (presence-check on the phase's `output_dir`, weaker
+///     but spec-accepted).
+///
+/// Without gate protection, the phase can complete "successfully" without
+/// actually writing the promised file. Downstream consumers then observe
+/// missing paths or empty `resolved_consumes` at runtime — a class of bug
+/// this lint catches at authoring time.
+///
+/// Warning-only: the phase may legitimately write the file via an external
+/// mechanism (e.g., tracked via another pipeline's gate), so the check is
+/// advisory rather than fatal.
+fn check_produces_protected_by_gate(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    for phase in &pipeline.phases {
+        for art in &phase.produces {
+            let protected = phase.gate.iter().any(|g| match g {
+                GateCheck::FileExists { file_exists } => file_exists == &art.path,
+                GateCheck::HasOutput { has_output: true } => true,
+                _ => false,
+            });
+            if !protected {
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
+                        "phase '{}': produces '{}' path '{}' is not protected by gate",
+                        phase.id, art.name, art.path
+                    ),
+                });
             }
         }
     }
