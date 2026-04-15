@@ -1,3 +1,12 @@
+---
+superseded_by: docs/specs/2026-04-14-feature-dev-refresh-design.md
+superseded_date: 2026-04-14
+superseded_scope: >-
+  The 19→10 phase collapse remains accurate, but the phase set has been
+  replaced by the 8-phase refresh (design → test-scenarios → plan → execute
+  → code-review → monkey-test → dogfood → integrate) per the new design.
+---
+
 # feature-dev belt pipeline 移植設計
 
 ## 概要
