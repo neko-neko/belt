@@ -1,59 +1,42 @@
 ---
 name: code-review
 description: >-
-  7-perspective code review pipeline. Dispatches 6 review agents + /simplify
-  in parallel with N-way voting. File/line-based semantic similarity.
-argument-hint: "[--codex] [--iterations N] [--swarm]"
+  Multi-perspective code review via a single consolidated reviewer subagent.
+  7 observations: quality, security, performance, test, ai-antipattern, impact,
+  simplification. Diff-scoped. Optional Codex adversarial pass.
+argument-hint: "[--codex]"
 ---
 
 # Code Review
 
-7-perspective code review with N-way voting and direct selection triage.
+Multi-perspective code review with direct selection triage.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only code-review-specific concerns (scope detection, simplify handling, impact context, voting, triage, verify).
+Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only code-review-specific concerns (scope detection, impact context, triage, verify).
 
 ## Scope Detection
 
-Determine diff scope before dispatching agents:
+Determine diff scope before dispatching the reviewer agent:
 
-1. If branch differs from main → `git diff main...HEAD`
-2. If staged changes → `git diff --staged`
-3. Pass diff summary as context to all agents
+1. If branch differs from `main` → `git diff main...HEAD`
+2. Else if staged changes exist → `git diff --staged`
+3. Else → report "no diff detected" and exit without dispatching
 
-## /simplify Handling
+Pass the diff summary (file list + line counts) as context to the reviewer agent.
 
-`/simplify` is invoked via Skill tool (not Agent tool). Its output is free-text, not structured JSON.
-Parse simplify output into findings format (file, description, suggestion).
-Simplify findings are **not subject to N-way voting** — included directly after dedup.
+## Impact Observation Context
 
-## code-review-impact Context
-
-If a design doc exists in the output directory (`*-design.md`), pass its Impact Analysis
-section as additional context to the `code-review-impact` agent.
-
-## Voting Protocol
-
-Activated when this phase's `invoke.iterations` > 1. Each agent is dispatched N times independently.
-
-**Semantic similarity** (file/line-based):
-- Match: same `file` + line within ±10 lines + similar `description`
-- Threshold: majority (>50% of iterations must agree)
-- Codex findings: not voted, included if unique after dedup
-- Simplify findings: not voted, included directly
-
-**Base selection**: iteration with most findings becomes the base set.
+If a design doc exists in the current run's output directory (filename matches `*-design.md`), pass the Impact Analysis section content as additional context to the reviewer agent. The Impact observation consumes it.
 
 ## Triage
 
-Categories: `simplify`, `quality`, `security`, `performance`, `test`, `ai-antipattern`, `impact`, `codex`
+Categories: `quality`, `security`, `performance`, `test`, `ai-antipattern`, `impact`, `simplification`, `codex`.
 
-**No dialogue phase.** All findings presented as numbered list sorted by severity descending.
-User selects which to fix by number.
+All findings are presented as a numbered list sorted by severity descending. User selects which to fix by number. No dialogue phase.
 
 ## Verify (after fix)
 
 1. `git diff` — confirm changes match approved findings scope
-2. **Auto-detect and run project linter:**
+2. Auto-detect and run project linter:
 
 | Indicator file | Linter command |
 |---|---|
@@ -63,7 +46,7 @@ User selects which to fix by number.
 | `go.mod` | `go vet ./...` |
 | `Makefile` (has lint target) | `make lint` |
 
-3. **Auto-detect and run project tests:**
+3. Auto-detect and run project tests:
 
 | Indicator file | Test command |
 |---|---|
@@ -81,11 +64,9 @@ User selects which to fix by number.
 - Modify code without user approval of findings
 - Change files outside the diff scope
 - Omit or filter findings before presenting to user
-- Ignore consensus vote results
 - Suppress or hide test/linter failures
 
 **Always:**
-- Announce which agents are being dispatched and how many iterations
-- Wait for all parallel agents to complete before voting
+- Announce the reviewer agent being dispatched (and Codex, if `--codex`)
 - Run linter and tests after applying fixes
 - Apply fixes serially to avoid merge conflicts in the same file
