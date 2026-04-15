@@ -188,20 +188,19 @@ fn cmd_init(
     // `current_branch` returns `None` outside a git repo, in detached HEAD,
     // or before the first commit — belt-core trusts the value verbatim.
     let branch = crate::git::current_branch(std::path::Path::new("."));
-    let mut state = engine
-        .init_with_branch(pipeline_path, &args_map, branch)
-        .map_err(|e| miette::miette!("{e}"))?;
 
     // Resolve every External `belt://` URI in each phase's `consumes:` list
-    // at init time so downstream steps read pinned filesystem paths straight
-    // from RunState (no repeated resolver work, no late binding). Resolved
-    // paths are stored absolute when the resolver can produce them; relative
-    // fallbacks are preserved verbatim.
+    // *before* creating the run directory. If any resolver call fails we
+    // return early without having written anything to `.belt/runs/`, so a
+    // failed init cannot leave an orphan half-initialised run behind
+    // (BELT-33). The resolver reads `.belt/runs/` to find completed
+    // producer runs, which works fine before the current run is
+    // materialised.
     let belt = belt_dir();
     let phases = expand_pipeline(pipeline_path).map_err(|e| miette::miette!("{e}"))?;
     let resolver = crate::resolver::Resolver {
         belt_dir: &belt,
-        current_branch: state.branch.clone(),
+        current_branch: branch.clone(),
     };
     let mut resolved_map: HashMap<String, String> = HashMap::new();
     for phase in &phases {
@@ -225,6 +224,12 @@ fn cmd_init(
         );
     }
 
+    // Every URI has resolved successfully — now materialise the run
+    // directory and persist the resolved mapping. This is the earliest
+    // point at which `cmd_init` writes anything to `.belt/runs/`.
+    let mut state = engine
+        .init_with_branch(pipeline_path, &args_map, branch)
+        .map_err(|e| miette::miette!("{e}"))?;
     engine
         .set_resolved_consumes(&mut state, resolved_map)
         .map_err(|e| miette::miette!("{e}"))?;

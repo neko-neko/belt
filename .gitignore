@@ -5,6 +5,7 @@ Cargo.lock.backup
 
 # Claude Code session state (local only)
 .agents/
+.claude/worktrees/
 
 # Editor / OS
 *.swp

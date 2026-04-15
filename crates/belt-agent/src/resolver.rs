@@ -426,4 +426,94 @@ mod tests {
             Err(ResolveError::BranchAwareRequiresGit)
         ));
     }
+
+    /// BELT-35 adversarial probe: a truncated state.json surfaces a loud
+    /// `StateParse` error rather than silently selecting a different
+    /// candidate or coercing to empty. Documents current fail-loud
+    /// behaviour for corrupt JSON.
+    #[test]
+    fn resolve_latest_errors_on_corrupt_state_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let run_dir = belt_dir.join("runs").join("01947cor");
+        fs::create_dir_all(run_dir.join("notes")).unwrap();
+        fs::write(run_dir.join("notes").join("phase-review.md"), "x").unwrap();
+        // Truncated mid-field — not valid JSON.
+        fs::write(run_dir.join("state.json"), r#"{"run_id": "trun"#).unwrap();
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+        };
+        let uri = BeltUri::Latest {
+            pipeline: "feature-dev".into(),
+            path: "notes/phase-review.md".into(),
+        };
+        assert!(matches!(r.resolve(&uri), Err(ResolveError::StateParse(_))));
+    }
+
+    /// BELT-35 adversarial probe: state.json with a missing `pipeline`
+    /// field is *silently skipped* by the candidate loop — it falls back
+    /// to an empty pipeline name via `unwrap_or("")`, mismatches the
+    /// requested pipeline, and is dropped. With no other candidate, the
+    /// resolver returns `NoCompletedRun`. Documents the current
+    /// silent-skip behaviour for schema-missing state.json. A loud
+    /// variant is explicitly out of scope (see Non-Goals in the spec).
+    #[test]
+    fn resolve_latest_skips_state_json_without_pipeline_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let run_dir = belt_dir.join("runs").join("01947mis");
+        fs::create_dir_all(run_dir.join("notes")).unwrap();
+        fs::write(run_dir.join("notes").join("phase-review.md"), "x").unwrap();
+        // Valid JSON, but `pipeline` field is missing.
+        fs::write(
+            run_dir.join("state.json"),
+            r#"{"run_id": "01947mis", "status": "completed", "branch": null}"#,
+        )
+        .unwrap();
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+        };
+        let uri = BeltUri::Latest {
+            pipeline: "feature-dev".into(),
+            path: "notes/phase-review.md".into(),
+        };
+        assert!(matches!(
+            r.resolve(&uri),
+            Err(ResolveError::NoCompletedRun { .. })
+        ));
+    }
+
+    /// BELT-35 adversarial probe: when the `state.json` path is a
+    /// directory (not a file), `resolver.rs:80`'s
+    /// `if !state_path.is_file() { continue; }` silently skips the run.
+    /// With no other candidate, the resolver returns `NoCompletedRun`.
+    /// Documents that we do NOT surface an `Io` error in this case —
+    /// the `read_to_string` call is never reached.
+    #[test]
+    fn resolve_latest_skips_state_json_that_is_a_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let run_dir = belt_dir.join("runs").join("01947dir");
+        // state.json is a directory, not a file.
+        fs::create_dir_all(run_dir.join("state.json")).unwrap();
+        fs::create_dir_all(run_dir.join("notes")).unwrap();
+        fs::write(run_dir.join("notes").join("phase-review.md"), "x").unwrap();
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+        };
+        let uri = BeltUri::Latest {
+            pipeline: "feature-dev".into(),
+            path: "notes/phase-review.md".into(),
+        };
+        assert!(matches!(
+            r.resolve(&uri),
+            Err(ResolveError::NoCompletedRun { .. })
+        ));
+    }
 }

@@ -36,7 +36,7 @@ belt は **2 種類の利用者** (Developer / Agent) に最適化された**別
 ```
 belt/
 ├── crates/
-│   ├── belt-core/    # 📦 library: model, parser, expander, engine, gate, lint
+│   ├── belt-core/    # 📦 library: 10 modules (model / parser / expander / engine / gate / lint / config / view / uri / error)
 │   ├── belt/         # 🛠  Human CLI binary (belt lint)
 │   └── belt-agent/   # 🤖 Agent runtime CLI binary (belt-agent init/next/verify/step/status)
 ```
@@ -58,7 +58,7 @@ belt-core (pure library)
 
 `belt` と `belt-agent` の間には依存関係がない。
 
-## belt-core の 7 モジュール
+## belt-core の 10 モジュール
 
 | モジュール | 責務 |
 |-----------|------|
@@ -68,6 +68,9 @@ belt-core (pure library)
 | `engine` | `Engine` — init/step/verify_verdict/next_phase_info/status/latest_run_id。RunState 永続化、when: 評価 |
 | `gate` | `execute_gate()`, `execute_gates()`, `all_passed()` — cmd, file_exists, git_clean, has_output の 4 実装 |
 | `lint` | `lint_pipeline()` — 7 静的検証 (duplicate IDs, regate, args, description, uses references) + expansion 試行 |
+| `config` | `belt.toml` config 読み込み (相対 path 解決含む)。BELT-22 で追加 |
+| `view` | `status` / `next` JSON の query-time assembly (YAML drift 反映)。BELT-29 で追加 |
+| `uri` | `belt://` URI parser (Run / Latest / WorkspaceLatest)。pure library、I/O ゼロ。2026-04-15 narrative artifact で追加 |
 | `error` | `BeltError` (thiserror + miette) — YamlParse, FileNotFound, InvalidPipeline, GateFailed, State, Io |
 
 ## YAML パイプライン構造
