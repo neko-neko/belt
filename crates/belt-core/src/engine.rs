@@ -3,6 +3,7 @@ use crate::expander::expand_pipeline;
 use crate::model::{ExpandedPhase, RunState, RunStatus};
 use std::cmp::Reverse;
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -409,6 +410,41 @@ impl Engine {
                 message: "no runs found".to_string(),
             })
     }
+}
+
+/// Resolves an artifact name to its producing artifact in the expanded pipeline.
+///
+/// Scans `phases` in declaration order, returning the first [`Artifact`]
+/// whose `name` matches `artifact_name` AND whose `when:` expression is
+/// truthy under `args` (via [`crate::view::evaluate_when`]). If the name
+/// matches an artifact whose `when:` evaluates to false, resolution stops
+/// and returns `None` — a conditionally-skipped source must NOT fall
+/// through to a later same-named artifact.
+///
+/// Returns `None` when:
+/// - No phase produces an artifact with the given name.
+/// - The first match's `when:` evaluates to false under `args`.
+///
+/// Used by future `belt-agent next` consume-resolution to propagate
+/// "not produced" state as `resolved_path: null` for conditional
+/// upstream artifacts (spec: Artifact.when Semantics #2).
+#[must_use]
+pub fn resolve_artifact_ref<'a, S: BuildHasher>(
+    phases: &'a [ExpandedPhase],
+    artifact_name: &str,
+    args: &HashMap<String, serde_json::Value, S>,
+) -> Option<&'a crate::model::Artifact> {
+    for phase in phases {
+        for artifact in &phase.produces {
+            if artifact.name == artifact_name {
+                if crate::view::evaluate_when(artifact.when.as_deref(), args) {
+                    return Some(artifact);
+                }
+                return None;
+            }
+        }
+    }
+    None
 }
 
 /// Expand `{run_id}` placeholders in a string.

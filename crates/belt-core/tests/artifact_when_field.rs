@@ -136,3 +136,52 @@ phases:
     let names_empty: Vec<&str> = produces_empty.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(names_empty, vec!["unconditional"]);
 }
+
+#[test]
+fn artifact_ref_returns_none_when_source_conditional_false() {
+    let yaml = r#"
+name: test-when-resolve
+version: 1
+args:
+  e2e:
+    type: bool
+    default: false
+phases:
+  - id: phase1
+    description: "Phase 1"
+    invoke:
+      skill: /test-skill
+    produces:
+      - name: conditional
+        path: "out/*.md"
+        when: "args.e2e"
+  - id: phase2
+    description: "Phase 2"
+    invoke:
+      skill: /test-skill
+    consumes:
+      - conditional
+"#;
+    let fixture = write_fixture("when_resolve.yml", yaml);
+    let expanded = belt_core::expander::expand_pipeline(&fixture).expect("expand");
+
+    // args.e2e=false → resolve_artifact_ref must return None
+    let mut args_false: HashMap<String, serde_json::Value> = HashMap::new();
+    args_false.insert("e2e".to_string(), serde_json::Value::Bool(false));
+    let resolved_false =
+        belt_core::engine::resolve_artifact_ref(&expanded, "conditional", &args_false);
+    assert!(
+        resolved_false.is_none(),
+        "ArtifactRef must resolve to None when source when=false"
+    );
+
+    // args.e2e=true → resolve_artifact_ref returns Some(...)
+    let mut args_true: HashMap<String, serde_json::Value> = HashMap::new();
+    args_true.insert("e2e".to_string(), serde_json::Value::Bool(true));
+    let resolved_true =
+        belt_core::engine::resolve_artifact_ref(&expanded, "conditional", &args_true);
+    assert!(
+        resolved_true.is_some(),
+        "ArtifactRef must resolve to Some when source when=true"
+    );
+}
