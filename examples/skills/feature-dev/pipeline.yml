@@ -10,7 +10,7 @@ args:
   codex:
     type: bool
     default: false
-    description: "Enable Codex parallel review in code-review"
+    description: "Enable Codex parallel review in spec-review and code-review"
 
 phases:
   - id: design
