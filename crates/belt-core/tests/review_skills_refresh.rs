@@ -137,7 +137,6 @@ fn review_skills_consolidated_agent_files_exist() {
 
 #[test]
 fn legacy_review_agent_files_are_removed() {
-    let agents_dir = repo_root().join(".claude/agents");
     const LEGACY: &[&str] = &[
         "code-review-quality",
         "code-review-security",
@@ -158,6 +157,7 @@ fn legacy_review_agent_files_are_removed() {
         "implementation-review-consistency",
         "implementation-review-ui-spec",
     ];
+    let agents_dir = repo_root().join(".claude/agents");
     for name in LEGACY {
         let path = agents_dir.join(format!("{name}.md"));
         assert!(
