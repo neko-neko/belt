@@ -89,7 +89,7 @@ The phase-auditor must return JSON in this structure:
 
 When verdict is FAIL (no escalation):
 1. Extract `fix_instruction` from each failed criterion's detail
-2. Apply fix per `references/fix-dispatch-strategy.md`
+2. Apply the fix (see individual skill SKILL.md Fix sections for workflow-specific dispatch rules)
 3. Re-run `belt-agent verify` to confirm output still exists
 4. The orchestrator re-dispatches the auditor (attempt increments automatically via belt)
 
