@@ -64,14 +64,14 @@
 
 - `examples/skills/debug-flow/references/evidence-plan-protocol.md` (Task 21)
 - `examples/skills/debug-flow/references/fix-dispatch-strategy.md` (Task 21)
-- (conditional, if zero external references) `examples/skills/criteria/smoke-test.md` (Task 23)
-- (conditional, if zero external references) `examples/skills/criteria/test-review.md` (Task 23)
+- (conditional, if zero external references) `examples/criteria/smoke-test.md` (Task 23)
+- (conditional, if zero external references) `examples/criteria/test-review.md` (Task 23)
 
 ### Unchanged (intentional, documented in spec)
 
 - `examples/skills/debug-flow/criteria/fix-plan.md` — No modifications required
 - `examples/skills/debug-flow/belt.toml` — No modifications required
-- `examples/skills/criteria/execute.md`, `examples/skills/criteria/code-review.md` — Shared with feature-dev
+- `examples/criteria/execute.md`, `examples/criteria/code-review.md` — Shared with feature-dev
 
 ---
 
@@ -117,18 +117,18 @@ Expected: all commands exit 0, all tests pass, grep returns zero legacy-term mat
 
 ## Task List
 
+### Phase A: Pre-work investigation (Task 7 — **MUST run first**)
+
+- [ ] Task 7: Pre-work investigations (A.2–A.5 from spec: shared criteria references, fix-plan.md coverage, criteria N-way grep, agent existence). **A.5 agent existence is a hard gate — stop if missing**.
+
 ### Phase A: belt-core `Artifact.when` implementation (Tasks 1–6)
 
-- [ ] Task 1: Add `when: Option<String>` field to Artifact struct
-- [ ] Task 2: Expander retains `Artifact.when` through expansion
-- [ ] Task 3: `view.rs` filters `when=false` artifacts from status JSON
-- [ ] Task 4: ArtifactRef resolves to `None` when source `when=false`
-- [ ] Task 5: Lint warning for undefined arg reference in `Artifact.when`
+- [ ] Task 1: Add `when: Option<String>` field to Artifact struct (incl. expansion propagation assertion)
+- [ ] Task 2: Regression guard — verify expander's Clone-based propagation retains `Artifact.when`
+- [ ] Task 3: `view.rs` filters `when=false` artifacts from status JSON (`pub fn evaluate_when` + `active_produces`)
+- [ ] Task 4: ArtifactRef resolves to `None` when source `when=false` (on expanded phases)
+- [ ] Task 5: Lint warning for undefined arg reference in `Artifact.when` (via `LintDiagnostic + Severity::Warning`)
 - [ ] Task 6: Retrofit type-level `when` assertion in `feature_dev_refresh.rs`
-
-### Phase A: Pre-work investigation (Task 7)
-
-- [ ] Task 7: Pre-work investigations (A.2–A.5 from spec: shared criteria references, fix-plan.md coverage, criteria N-way grep, agent existence)
 
 ### Phase B: Criteria (Tasks 8–12)
 
@@ -183,6 +183,10 @@ From memory `project_review_skills_refresh_2026_04_15.md` — plan verbatim で 
 並行セッション branch-race (memory `project_parallel_session_worktree_isolation.md`):
 - subagent dispatch プロンプトに**絶対パスで worktree 指定**
 - subagent 側で `git branch --show-current` で main branch 確認
+
+### Deferred follow-up (not in scope)
+
+Spec Impact Analysis "Side Effect Risks" #1 notes that `deny_unknown_fields` audit across belt-core structs is a follow-up audit task — not addressed in this plan. After this PR merges, open a follow-up issue to grep belt-core for `#[derive(Deserialize)]` structs lacking `#[serde(deny_unknown_fields)]` and enumerate remaining silent-drop risks. This plan closes only the `Artifact.when` specific case.
 
 ---
 
@@ -330,19 +334,21 @@ git commit -m "feat(belt-core): add Artifact.when field"
 
 ---
 
-### Task 2: Expander retains `Artifact.when` through expansion
+### Task 2: Regression guard — expander's Clone-based propagation retains `Artifact.when`
+
+**Rationale:** The existing expander at `crates/belt-core/src/expander.rs` (lines ~95 / ~137) propagates produces via `phase.produces.clone()`. Because `Artifact` is `#[derive(Clone)]`, once Task 1 adds the `when` field, `Clone` auto-propagates it through expansion with no expander code change. This task adds a **regression guard test** (not a red-green TDD cycle) to lock the behavior, protecting against future refactors that might break the Clone propagation.
 
 **Files:**
-- Modify: `crates/belt-core/src/expander.rs` (or `src/expander/mod.rs` depending on current layout)
 - Modify: `crates/belt-core/tests/artifact_when_field.rs`
+- Create: `crates/belt-core/tests/fixtures/when_expander.yml`
 
-**Commit:** `feat(belt-core): expander retains Artifact.when`
+**Commit:** `test(belt-core): regression guard for Artifact.when propagation through expander`
 
-- [ ] **Step 1: Read current expander Artifact handling**
+- [ ] **Step 1: Read current expander**
 
-Read `crates/belt-core/src/expander.rs` (or the module file) to locate where `Artifact` is copied / transformed into `ExpandedPhase.produces`. Confirm current code does NOT forward the `when` field.
+Read `crates/belt-core/src/expander.rs` and confirm: (a) `expand_pipeline(pipeline_path: &Path) -> BeltResult<Vec<ExpandedPhase>>` signature (single-path argument, returns `Vec<ExpandedPhase>` — **not** `ExpandedPipeline` struct), (b) produces propagation uses wholesale `.clone()`.
 
-- [ ] **Step 2: Add failing test to `artifact_when_field.rs`**
+- [ ] **Step 2: Add regression guard test**
 
 Append to `crates/belt-core/tests/artifact_when_field.rs`:
 
@@ -350,7 +356,7 @@ Append to `crates/belt-core/tests/artifact_when_field.rs`:
 use belt_core::expander::expand_pipeline;
 
 #[test]
-fn expander_retains_artifact_when_field() {
+fn expander_retains_artifact_when_field_via_clone() {
     let yaml = r#"
 name: test-when-expander
 version: 1
@@ -368,36 +374,22 @@ phases:
         when: "args.e2e"
 "#;
     let fixture = write_fixture("when_expander.yml", yaml);
-    let pipeline = parse_pipeline(&fixture).expect("parse must succeed");
-    let expanded = expand_pipeline(&pipeline, fixture.parent().unwrap())
-        .expect("expansion must succeed");
+    let expanded = expand_pipeline(&fixture).expect("expansion must succeed");
     assert_eq!(
-        expanded.phases[0].produces[0].when,
+        expanded[0].produces[0].when,
         Some("args.e2e".to_string()),
-        "expander must retain Artifact.when"
+        "expander must retain Artifact.when via Clone derive"
     );
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [ ] **Step 3: Run test — expect PASS immediately**
 
-Run: `cargo test -p belt-core --test artifact_when_field -- expander_retains_artifact_when_field`
+Run: `cargo test -p belt-core --test artifact_when_field -- expander_retains_artifact_when_field_via_clone`
 
-Expected: FAIL — expanded artifact's `when` is None (or compile error if `ExpandedPhase.produces` uses a different type).
+Expected: **PASS** (Task 1's `Clone` derive auto-propagates the new field through expansion). If FAIL, investigate — it would indicate the expander diverged from Clone-based propagation and requires targeted fix.
 
-- [ ] **Step 4: Modify expander to copy `when`**
-
-In the expander source, locate the place where `Artifact` is converted / cloned into the expanded form. Add `when: src.when.clone()` (or equivalent) to the construction.
-
-If the expanded type is `Artifact` itself (likely), the fix is `pub when: src.when.clone()` already carried through `Clone` — verify the explicit constructor site and field forwarding.
-
-- [ ] **Step 5: Run test to verify it passes**
-
-Run: `cargo test -p belt-core --test artifact_when_field -- expander_retains_artifact_when_field`
-
-Expected: PASS.
-
-- [ ] **Step 6: Run clippy + fmt**
+- [ ] **Step 4: Run clippy + fmt**
 
 ```bash
 cargo fmt --package belt-core
@@ -406,11 +398,11 @@ cargo clippy --package belt-core -- -D warnings
 
 Expected: both exit 0.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add crates/belt-core/src/expander.rs crates/belt-core/tests/artifact_when_field.rs crates/belt-core/tests/fixtures/when_expander.yml
-git commit -m "feat(belt-core): expander retains Artifact.when"
+git add crates/belt-core/tests/artifact_when_field.rs crates/belt-core/tests/fixtures/when_expander.yml
+git commit -m "test(belt-core): regression guard for Artifact.when propagation through expander"
 ```
 
 ---
@@ -419,22 +411,24 @@ git commit -m "feat(belt-core): expander retains Artifact.when"
 
 **Files:**
 - Modify: `crates/belt-core/src/view.rs`
+- Modify: `crates/belt-core/src/engine.rs` (or equivalent status-assembly call site)
 - Modify: `crates/belt-core/tests/artifact_when_field.rs`
+- Create: `crates/belt-core/tests/fixtures/when_view.yml`
 
 **Commit:** `feat(belt-core): omit conditional artifacts from status when false`
 
-- [ ] **Step 1: Read current `view.rs` produce assembly**
+- [ ] **Step 1: Read current `view.rs` + status-assembly call sites**
 
-Read `crates/belt-core/src/view.rs` to locate the function that assembles the `artifacts` / `produces` section of the status JSON (likely `build_status` or similar). Confirm it currently iterates all `produces` without any `when` filtering.
+Read `crates/belt-core/src/view.rs` to locate `PhaseMetadata`, `build_status_view`, `resolve_produces` (or equivalent). Identify where `phase.produces` is iterated during status-JSON assembly.
+
+Read `crates/belt-core/src/engine.rs` (or module) to locate the caller (likely `enriched_status` around line 368) that supplies `RunState.args: HashMap<String, serde_json::Value>` to view. This is the integration point — `args` must be threaded into `resolve_produces` so filtering happens before `ResolvedArtifact` construction.
 
 - [ ] **Step 2: Add failing test to `artifact_when_field.rs`**
 
 Append:
 
 ```rust
-// Helper: evaluate Artifact.when against a given args map (true/false).
-// Expression grammar: `args.<flag>` only.
-// Test-only helper for runtime assertion; real impl lives in view.rs.
+use std::collections::HashMap;
 
 #[test]
 fn view_filters_when_false_artifacts_from_status() {
@@ -457,13 +451,12 @@ phases:
         path: "other/*.md"
 "#;
     let fixture = write_fixture("when_view.yml", yaml);
-    let pipeline = parse_pipeline(&fixture).expect("parse");
-    let expanded = belt_core::expander::expand_pipeline(&pipeline, fixture.parent().unwrap())
-        .expect("expand");
+    let expanded = belt_core::expander::expand_pipeline(&fixture).expect("expand");
 
     // args.e2e = false → conditional must be omitted
-    let args_false = vec![("e2e".to_string(), serde_json::Value::Bool(false))];
-    let produces_false = belt_core::view::active_produces(&expanded.phases[0], &args_false);
+    let mut args_false: HashMap<String, serde_json::Value> = HashMap::new();
+    args_false.insert("e2e".to_string(), serde_json::Value::Bool(false));
+    let produces_false = belt_core::view::active_produces(&expanded[0], &args_false);
     let names_false: Vec<&str> = produces_false.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(
         names_false, vec!["unconditional"],
@@ -471,10 +464,19 @@ phases:
     );
 
     // args.e2e = true → both present
-    let args_true = vec![("e2e".to_string(), serde_json::Value::Bool(true))];
-    let produces_true = belt_core::view::active_produces(&expanded.phases[0], &args_true);
+    let mut args_true: HashMap<String, serde_json::Value> = HashMap::new();
+    args_true.insert("e2e".to_string(), serde_json::Value::Bool(true));
+    let produces_true = belt_core::view::active_produces(&expanded[0], &args_true);
     let names_true: Vec<&str> = produces_true.iter().map(|a| a.name.as_str()).collect();
-    assert_eq!(names_true, vec!["conditional", "unconditional"]);
+    assert_eq!(names_true.len(), 2);
+    assert!(names_true.contains(&"conditional"));
+    assert!(names_true.contains(&"unconditional"));
+
+    // empty args map → conditional omitted (undefined flag → false)
+    let args_empty: HashMap<String, serde_json::Value> = HashMap::new();
+    let produces_empty = belt_core::view::active_produces(&expanded[0], &args_empty);
+    let names_empty: Vec<&str> = produces_empty.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(names_empty, vec!["unconditional"]);
 }
 ```
 
@@ -482,19 +484,39 @@ phases:
 
 Run: `cargo test -p belt-core --test artifact_when_field -- view_filters_when_false_artifacts_from_status`
 
-Expected: FAIL — `active_produces` function does not exist yet.
+Expected: FAIL — `active_produces` function does not exist yet (compile error).
 
-- [ ] **Step 4: Implement `active_produces` in `view.rs`**
+- [ ] **Step 4: Implement `evaluate_when` + `active_produces` in `view.rs`**
 
 Add to `crates/belt-core/src/view.rs`:
 
 ```rust
+use std::collections::HashMap;
+
+/// Evaluates an `Artifact.when` expression (grammar: `args.<flag>` only).
+/// Returns true when `when` is None. Returns false for unsupported expressions
+/// or undefined arg references.
+pub fn evaluate_when(
+    when: Option<&str>,
+    args: &HashMap<String, serde_json::Value>,
+) -> bool {
+    let Some(expr) = when else {
+        return true;
+    };
+    let expr = expr.trim();
+    let Some(arg_name) = expr.strip_prefix("args.") else {
+        return false;
+    };
+    args.get(arg_name)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// Returns the artifacts in `phase.produces` whose `when` expression evaluates
-/// to true (or whose `when` is None). Expressions are limited to
-/// `args.<flag>` boolean references; undefined flags evaluate as false.
+/// to true (or has no `when`).
 pub fn active_produces<'a>(
-    phase: &'a crate::model::Phase,
-    args: &[(String, serde_json::Value)],
+    phase: &'a crate::model::ExpandedPhase,
+    args: &HashMap<String, serde_json::Value>,
 ) -> Vec<&'a crate::model::Artifact> {
     phase
         .produces
@@ -502,48 +524,47 @@ pub fn active_produces<'a>(
         .filter(|artifact| evaluate_when(artifact.when.as_deref(), args))
         .collect()
 }
+```
 
-fn evaluate_when(when: Option<&str>, args: &[(String, serde_json::Value)]) -> bool {
-    let Some(expr) = when else {
-        return true;
-    };
-    let expr = expr.trim();
-    if let Some(arg_name) = expr.strip_prefix("args.") {
-        args.iter()
-            .find(|(name, _)| name == arg_name)
-            .and_then(|(_, value)| value.as_bool())
-            .unwrap_or(false)
-    } else {
-        false
-    }
+Ensure the `use` block includes any needed imports. If `ExpandedPhase` lives in a different module, adjust the import. If the existing `view.rs` `use` statements already bring in `HashMap` / `ExpandedPhase`, drop the local `use std::collections::HashMap;` at the top.
+
+- [ ] **Step 5: Wire `active_produces` into status assembly**
+
+In `view.rs`'s `resolve_produces` (or equivalent status-assembly function), change the signature to accept `args: &HashMap<String, serde_json::Value>` and call `active_produces(phase, args)` before iterating for `ResolvedArtifact` construction.
+
+In `crates/belt-core/src/engine.rs` `enriched_status` (around line 368), pass `&run_state.args` through to the updated `build_status_view` / `resolve_produces` function.
+
+Example shape (adjust to actual API):
+
+```rust
+// in view.rs
+pub fn resolve_produces(
+    produces: &[crate::model::Artifact],
+    phase_start: i64,
+    args: &HashMap<String, serde_json::Value>,
+) -> Vec<ResolvedArtifact> {
+    produces
+        .iter()
+        .filter(|a| evaluate_when(a.when.as_deref(), args))
+        .map(|a| resolve_one(a, phase_start))
+        .collect()
 }
 ```
 
-Ensure the `use` block includes any needed imports (check existing `view.rs` for `crate::model` path conventions).
-
-- [ ] **Step 5: Update status assembly to use `active_produces`**
-
-Locate the existing status JSON assembly in `view.rs`. Change the iteration over `phase.produces` to use `active_produces(phase, &args_vec)` where `args_vec` is the run's args. If the existing code does not have args available in that scope, thread it in from the calling context.
-
-- [ ] **Step 6: Run test to verify it passes**
-
-Run: `cargo test -p belt-core --test artifact_when_field -- view_filters_when_false_artifacts_from_status`
-
-Expected: PASS.
-
-Run existing tests to verify no regressions:
+- [ ] **Step 6: Run test + regression**
 
 ```bash
+cargo test -p belt-core --test artifact_when_field -- view_filters_when_false_artifacts_from_status
 cargo test -p belt-core
 ```
 
-Expected: all pass.
+Expected: all pass. If any existing test breaks due to the new `args` parameter, update call sites to thread args through.
 
 - [ ] **Step 7: Run clippy + fmt**
 
 ```bash
 cargo fmt --package belt-core
-cargo clippy --package belt-core -- -D warnings
+cargo clippy --workspace -- -D warnings
 ```
 
 Expected: both exit 0.
@@ -551,7 +572,7 @@ Expected: both exit 0.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/belt-core/src/view.rs crates/belt-core/tests/artifact_when_field.rs crates/belt-core/tests/fixtures/when_view.yml
+git add crates/belt-core/src/view.rs crates/belt-core/src/engine.rs crates/belt-core/tests/artifact_when_field.rs crates/belt-core/tests/fixtures/when_view.yml
 git commit -m "feat(belt-core): omit conditional artifacts from status when false"
 ```
 
@@ -562,12 +583,15 @@ git commit -m "feat(belt-core): omit conditional artifacts from status when fals
 **Files:**
 - Modify: `crates/belt-core/src/engine.rs` (or `src/engine/mod.rs`)
 - Modify: `crates/belt-core/tests/artifact_when_field.rs`
+- Create: `crates/belt-core/tests/fixtures/when_resolve.yml`
 
 **Commit:** `feat(belt-core): ArtifactRef resolves None for conditional source`
 
-- [ ] **Step 1: Read current ArtifactRef resolution**
+- [ ] **Step 1: Read existing consume resolution**
 
-Read `crates/belt-core/src/engine.rs` (or module) to locate the function that resolves `ArtifactRef::Named` / `Qualified` to a concrete artifact (likely `resolve_artifact` or during `next`/`status` assembly). Confirm there is no current `when` handling.
+Read `crates/belt-core/src/engine.rs` (or module). Locate the current consume resolution logic used by `set_resolved_consumes` / `enriched_status` — this is where an `ArtifactRef::Named("conditional")` is matched against earlier phases' produces. Confirm there is no `when` handling today.
+
+Note: `Engine` is a struct with methods (`pub struct Engine { belt_dir: PathBuf }` and its impl block). The existing pattern is to expose resolution as either (a) an `Engine` method, or (b) a free `pub fn` in `engine.rs` taking `&[ExpandedPhase]` / `&Vec<ExpandedPhase>`. Prefer **(b)** since this is a pure function over expanded phases + args, independent of `Engine` state.
 
 - [ ] **Step 2: Add failing test to `artifact_when_field.rs`**
 
@@ -598,12 +622,11 @@ phases:
       - conditional
 "#;
     let fixture = write_fixture("when_resolve.yml", yaml);
-    let pipeline = parse_pipeline(&fixture).expect("parse");
-    let expanded = belt_core::expander::expand_pipeline(&pipeline, fixture.parent().unwrap())
-        .expect("expand");
+    let expanded = belt_core::expander::expand_pipeline(&fixture).expect("expand");
 
     // args.e2e=false → resolve_artifact_ref must return None
-    let args_false = vec![("e2e".to_string(), serde_json::Value::Bool(false))];
+    let mut args_false: HashMap<String, serde_json::Value> = HashMap::new();
+    args_false.insert("e2e".to_string(), serde_json::Value::Bool(false));
     let resolved_false = belt_core::engine::resolve_artifact_ref(&expanded, "conditional", &args_false);
     assert!(
         resolved_false.is_none(),
@@ -611,7 +634,8 @@ phases:
     );
 
     // args.e2e=true → resolve_artifact_ref returns Some(...)
-    let args_true = vec![("e2e".to_string(), serde_json::Value::Bool(true))];
+    let mut args_true: HashMap<String, serde_json::Value> = HashMap::new();
+    args_true.insert("e2e".to_string(), serde_json::Value::Bool(true));
     let resolved_true = belt_core::engine::resolve_artifact_ref(&expanded, "conditional", &args_true);
     assert!(
         resolved_true.is_some(),
@@ -624,27 +648,29 @@ phases:
 
 Run: `cargo test -p belt-core --test artifact_when_field -- artifact_ref_returns_none_when_source_conditional_false`
 
-Expected: FAIL — function `resolve_artifact_ref` does not exist, or existing resolution returns Some regardless of when.
+Expected: FAIL — function `resolve_artifact_ref` does not exist.
 
 - [ ] **Step 4: Implement `resolve_artifact_ref` in `engine.rs`**
 
-Add (or modify existing resolution) in `crates/belt-core/src/engine.rs`:
+Add to `crates/belt-core/src/engine.rs`:
 
 ```rust
-/// Resolves an artifact name to its producing artifact in the pipeline. Returns
-/// `None` if the name is unknown, or if the producing phase's artifact has
-/// `when` evaluating to false under the given args.
+use std::collections::HashMap;
+
+/// Resolves an artifact name to its producing artifact in the expanded pipeline.
+/// Returns `None` if the name is unknown, or if the producing artifact has a
+/// `when` expression evaluating to false under the given args.
 ///
 /// Used by `belt-agent next` / `status` when assembling consumes resolution.
 pub fn resolve_artifact_ref<'a>(
-    pipeline: &'a crate::model::Pipeline,
+    phases: &'a [crate::model::ExpandedPhase],
     artifact_name: &str,
-    args: &[(String, serde_json::Value)],
+    args: &HashMap<String, serde_json::Value>,
 ) -> Option<&'a crate::model::Artifact> {
-    for phase in &pipeline.phases {
+    for phase in phases {
         for artifact in &phase.produces {
             if artifact.name == artifact_name {
-                if crate::view::evaluate_when_pub(artifact.when.as_deref(), args) {
+                if crate::view::evaluate_when(artifact.when.as_deref(), args) {
                     return Some(artifact);
                 }
                 return None;
@@ -655,11 +681,11 @@ pub fn resolve_artifact_ref<'a>(
 }
 ```
 
-Note: make `evaluate_when` in `view.rs` `pub` (rename to `evaluate_when_pub`) or move to a shared location (e.g., `src/expr.rs`) and re-export from both `view` and `engine`. Choose the approach that best fits existing module organization — confirm by reading current code.
+Note: `crate::view::evaluate_when` is defined as `pub` in Task 3. No rename needed.
 
 - [ ] **Step 5: Update call sites**
 
-Locate existing consume resolution sites that iterate `phase.produces` by name (typically in `engine.rs` or `view.rs` during status assembly). Replace with `resolve_artifact_ref(&pipeline, name, &args)` to ensure conditional sources resolve correctly.
+Locate existing consume resolution in `engine.rs` (specifically `set_resolved_consumes` / the helper that matches `consumes` artifact names against upstream phases' `produces`). Replace with `resolve_artifact_ref(&expanded_phases, name, &args)` so that a consume targeting a conditionally-skipped source yields `None` (propagating "not resolved" per spec Artifact.when Semantics #2).
 
 - [ ] **Step 6: Run test to verify it passes + regression**
 
@@ -674,7 +700,7 @@ Expected: all pass.
 
 ```bash
 cargo fmt --package belt-core
-cargo clippy --package belt-core -- -D warnings
+cargo clippy --workspace -- -D warnings
 ```
 
 Expected: both exit 0.
@@ -682,7 +708,7 @@ Expected: both exit 0.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/belt-core/src/engine.rs crates/belt-core/src/view.rs crates/belt-core/tests/artifact_when_field.rs crates/belt-core/tests/fixtures/when_resolve.yml
+git add crates/belt-core/src/engine.rs crates/belt-core/tests/artifact_when_field.rs crates/belt-core/tests/fixtures/when_resolve.yml
 git commit -m "feat(belt-core): ArtifactRef resolves None for conditional source"
 ```
 
@@ -693,19 +719,26 @@ git commit -m "feat(belt-core): ArtifactRef resolves None for conditional source
 **Files:**
 - Modify: `crates/belt-core/src/lint.rs`
 - Modify: `crates/belt-core/tests/artifact_when_field.rs`
+- Create: `crates/belt-core/tests/fixtures/when_lint.yml`
 
 **Commit:** `feat(belt-core): lint warning for undefined arg in Artifact.when`
 
-- [ ] **Step 1: Read current lint checks**
+- [ ] **Step 1: Read current lint API**
 
-Read `crates/belt-core/src/lint.rs`. Confirm 7 lint checks exist (duplicate IDs, regate, args, description, uses references) per CLAUDE.md. Locate where to add a new check for `Artifact.when` expression referencing undefined args.
+Read `crates/belt-core/src/lint.rs`. Confirm:
+- `pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>>`
+- `pub struct LintDiagnostic { pub severity: Severity, pub message: String }`
+- `pub enum Severity { Error, Warning }`
+- Existing checks use pattern: `diagnostics.push(LintDiagnostic { severity: Severity::Error, message: format!(...) });`
+
+Locate the main `lint_pipeline` function body where to wire a new check.
 
 - [ ] **Step 2: Add failing test to `artifact_when_field.rs`**
 
 Append:
 
 ```rust
-use belt_core::lint::lint_pipeline;
+use belt_core::lint::{lint_pipeline, Severity};
 
 #[test]
 fn lint_warns_undefined_arg_in_artifact_when() {
@@ -726,37 +759,35 @@ phases:
         when: "args.undefined_flag"
 "#;
     let fixture = write_fixture("when_lint.yml", yaml);
-    let result = lint_pipeline(&fixture);
-    let warnings = result.warnings();
-    let undefined_warning = warnings
+    let diagnostics = lint_pipeline(&fixture).expect("lint");
+    let undefined_warning = diagnostics
         .iter()
-        .find(|w| w.message().contains("undefined_flag"));
+        .find(|d| d.severity == Severity::Warning && d.message.contains("undefined_flag"));
     assert!(
         undefined_warning.is_some(),
-        "lint must warn on undefined arg reference in Artifact.when, got warnings: {:?}",
-        warnings
+        "lint must emit Warning for undefined arg reference in Artifact.when, got diagnostics: {diagnostics:?}"
     );
 }
 ```
-
-(Adjust `warnings()` / `message()` to match existing `LintResult` API — confirm while reading `lint.rs`.)
 
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `cargo test -p belt-core --test artifact_when_field -- lint_warns_undefined_arg_in_artifact_when`
 
-Expected: FAIL — no warning produced.
+Expected: FAIL — no Warning diagnostic produced.
 
 - [ ] **Step 4: Implement lint check**
 
-In `lint.rs`, add a new check function after the existing ones:
+In `lint.rs`, add a new check function (mirror the style of the existing `check_validate_file_refs` or similar):
 
 ```rust
-/// Check #8: Artifact.when references must be defined args.
-fn check_artifact_when_references(pipeline: &Pipeline) -> Vec<LintWarning> {
+/// Check: Artifact.when expressions must reference defined args.
+fn check_artifact_when_references(
+    pipeline: &crate::model::Pipeline,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
     let defined_args: std::collections::HashSet<&str> =
         pipeline.args.keys().map(String::as_str).collect();
-    let mut warnings = Vec::new();
     for phase in &pipeline.phases {
         for artifact in &phase.produces {
             let Some(expr) = artifact.when.as_deref() else {
@@ -764,31 +795,30 @@ fn check_artifact_when_references(pipeline: &Pipeline) -> Vec<LintWarning> {
             };
             let expr = expr.trim();
             let Some(arg_name) = expr.strip_prefix("args.") else {
-                warnings.push(LintWarning::new(
-                    format!(
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
                         "phase '{}' artifact '{}' has unsupported when expression '{}'; only `args.<flag>` is supported",
                         phase.id, artifact.name, expr
                     ),
-                ));
+                });
                 continue;
             };
             if !defined_args.contains(arg_name) {
-                warnings.push(LintWarning::new(
-                    format!(
+                diagnostics.push(LintDiagnostic {
+                    severity: Severity::Warning,
+                    message: format!(
                         "phase '{}' artifact '{}' references undefined arg '{}' in when clause",
                         phase.id, artifact.name, arg_name
                     ),
-                ));
+                });
             }
         }
     }
-    warnings
 }
 ```
 
-Wire this check into the main `lint_pipeline` function — append its results to the existing `LintResult`.
-
-(Adjust struct names / constructors per existing API; confirm by reading `lint.rs`.)
+Wire this into `lint_pipeline`: in the main body after existing checks run, call `check_artifact_when_references(&pipeline, &mut diagnostics);`. If existing checks use a different signature (e.g., returning `Vec<LintDiagnostic>` and the caller extends), match that convention.
 
 - [ ] **Step 5: Run test to verify it passes + regression**
 
@@ -803,7 +833,7 @@ Expected: all pass.
 
 ```bash
 cargo fmt --package belt-core
-cargo clippy --package belt-core -- -D warnings
+cargo clippy --workspace -- -D warnings
 ```
 
 Expected: both exit 0.
@@ -830,12 +860,14 @@ Read `crates/belt-core/tests/feature_dev_refresh.rs` around lines 81–130. Loca
 
 - [ ] **Step 2: Add type-level assertion**
 
-After the existing YAML-text assertion, add:
+First, read the existing helpers in `feature_dev_refresh.rs` (around lines 9–17) to confirm the actual helper name (likely `feature_dev_pipeline_path()` rather than `repo_root()`).
+
+Add the following as a NEW standalone test at the end of the file (after all existing tests):
 
 ```rust
 #[test]
 fn feature_dev_scenarios_artifact_has_typed_when_field() {
-    let pipeline_path = repo_root().join("examples/skills/feature-dev/pipeline.yml");
+    let pipeline_path = feature_dev_pipeline_path();
     let pipeline = belt_core::parser::parse_pipeline(&pipeline_path)
         .expect("feature-dev pipeline must parse");
     let test_scenarios_phase = pipeline
@@ -856,7 +888,7 @@ fn feature_dev_scenarios_artifact_has_typed_when_field() {
 }
 ```
 
-(Adjust `repo_root()` path if the existing test uses a different helper.)
+If the existing file uses a different helper name (e.g., `repo_root()` or a raw-path literal), replace `feature_dev_pipeline_path()` with the matching helper. Do NOT redefine a helper — use what exists.
 
 - [ ] **Step 3: Run test**
 
@@ -1021,9 +1053,9 @@ git commit -m "refactor(debug-flow): add RCA-09 for conditional rca_scenarios ar
 
 Read the file and confirm: 4 existing criteria (FIX-PLAN-REVIEW-01 through -04), frontmatter, `Observation Collection` section.
 
-- [ ] **Step 2: Write new content replacing entire file body**
+- [ ] **Step 2: Replace entire file with new content**
 
-Replace the criteria section (keep frontmatter intact) with:
+Overwrite `examples/skills/debug-flow/criteria/fix-plan-review.md` with the content below (frontmatter included — this supersedes any existing frontmatter):
 
 ```markdown
 ---
@@ -1977,13 +2009,14 @@ cargo run --bin belt -- lint examples/skills/debug-flow/pipeline.yml
 
 Expected: exit 0, no errors. If errors, inspect and fix — do NOT `--no-verify` commit.
 
-- [ ] **Step 4: Verify grep hygiene**
+- [ ] **Step 4: Verify grep hygiene (canonical patterns)**
 
 ```bash
-grep -n "iterations\|swarm\|ui\(:\|=\)" examples/skills/debug-flow/pipeline.yml
+grep -nE 'iterations|swarm|--smoke' examples/skills/debug-flow/pipeline.yml
+grep -nE '(^|[[:space:]])(ui)[=:]' examples/skills/debug-flow/pipeline.yml
 ```
 
-Expected: zero matches.
+Expected: zero matches from both.
 
 - [ ] **Step 5: Commit**
 
@@ -2208,8 +2241,8 @@ git commit -m "refactor(references): drop fix-dispatch-strategy reference from a
 ### Task 23: (conditional) Delete shared `criteria/smoke-test.md` and `criteria/test-review.md` if zero external references
 
 **Files:**
-- (Conditional) Delete: `examples/skills/criteria/smoke-test.md`
-- (Conditional) Delete: `examples/skills/criteria/test-review.md`
+- (Conditional) Delete: `examples/criteria/smoke-test.md`
+- (Conditional) Delete: `examples/criteria/test-review.md`
 
 **Commit (if executed):** `chore: drop unused shared smoke-test / test-review criteria`
 
@@ -2220,8 +2253,8 @@ Check the Task 7 investigation notes. If `smoke-test.md` / `test-review.md` had 
 - [ ] **Step 2 (if zero external references): Delete and verify**
 
 ```bash
-git rm examples/skills/criteria/smoke-test.md
-git rm examples/skills/criteria/test-review.md
+git rm examples/criteria/smoke-test.md
+git rm examples/criteria/test-review.md
 
 # Verify nothing else references them
 grep -rn "criteria/smoke-test\.md\|criteria/test-review\.md" examples/ 2>/dev/null | grep -v debug-flow
@@ -2269,11 +2302,12 @@ Create `crates/belt-core/tests/debug_flow_refresh.rs` with:
 //! - rca_scenarios.when = "args.e2e" (type-level, not just YAML text)
 //! - Dead letter references removed.
 
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 use belt_core::{
     expander::expand_pipeline,
-    model::{ArgType, Pipeline},
+    model::{ArgType, Invoker, Pipeline},
     parser::parse_pipeline,
 };
 
@@ -2288,9 +2322,12 @@ fn debug_flow_dir() -> PathBuf {
     repo_root().join("examples/skills/debug-flow")
 }
 
+fn debug_flow_pipeline_path() -> PathBuf {
+    debug_flow_dir().join("pipeline.yml")
+}
+
 fn debug_flow_pipeline() -> Pipeline {
-    let path = debug_flow_dir().join("pipeline.yml");
-    parse_pipeline(&path).expect("debug-flow pipeline.yml must parse")
+    parse_pipeline(&debug_flow_pipeline_path()).expect("debug-flow pipeline.yml must parse")
 }
 
 const EXPECTED_PHASES: &[&str] = &[
@@ -2338,33 +2375,38 @@ fn phase_count_and_order() {
 fn all_phases_use_skill_invoke() {
     let pipeline = debug_flow_pipeline();
     for phase in &pipeline.phases {
-        let skill_name = phase
+        let invoker = phase
             .invoke
             .as_ref()
-            .and_then(|inv| inv.skill.as_deref())
-            .unwrap_or_else(|| panic!("phase '{}' must use skill: invoke", phase.id));
-        assert!(
-            skill_name.starts_with('/'),
-            "phase '{}' skill name must start with '/', got '{skill_name}'",
-            phase.id
-        );
+            .unwrap_or_else(|| panic!("phase '{}' must have invoke", phase.id));
+        match invoker {
+            Invoker::Skill { skill, .. } => {
+                assert!(
+                    skill.starts_with('/'),
+                    "phase '{}' skill must start with '/', got '{skill}'",
+                    phase.id
+                );
+            }
+            _ => panic!(
+                "phase '{}' must use Invoker::Skill variant, got {invoker:?}",
+                phase.id
+            ),
+        }
     }
 }
 
 #[test]
 fn review_phases_pass_codex_only() {
     let pipeline = debug_flow_pipeline();
-    let review_phases = ["fix-plan-review", "code-review"];
     for phase in &pipeline.phases {
-        if !review_phases.contains(&phase.id.as_str()) {
+        if !matches!(phase.id.as_str(), "fix-plan-review" | "code-review") {
             continue;
         }
-        let args = phase
-            .invoke
-            .as_ref()
-            .and_then(|inv| inv.args.as_ref())
-            .unwrap_or_else(|| panic!("phase '{}' must have invoke.args", phase.id));
-        let keys: Vec<&str> = args.keys().map(String::as_str).collect();
+        let Some(Invoker::Skill { args, .. }) = phase.invoke.as_ref() else {
+            panic!("phase '{}' must use Invoker::Skill variant", phase.id);
+        };
+        let mut keys: Vec<&str> = args.keys().map(String::as_str).collect();
+        keys.sort();
         assert_eq!(keys, vec!["codex"], "phase '{}' must pass only codex", phase.id);
         assert_eq!(
             args.get("codex").and_then(|v| v.as_str()),
@@ -2379,19 +2421,19 @@ fn review_phases_pass_codex_only() {
 fn only_code_review_has_regate() {
     let pipeline = debug_flow_pipeline();
     for phase in &pipeline.phases {
-        match phase.id.as_str() {
-            "code-review" => {
-                assert_eq!(
-                    phase.regate.as_deref(),
-                    Some(&["execute".to_string()][..]),
-                    "code-review must regate [execute]"
-                );
-            }
-            _ => assert!(
-                phase.regate.is_none() || phase.regate.as_ref().unwrap().is_empty(),
-                "phase '{}' must not have regate",
-                phase.id
-            ),
+        if phase.id == "code-review" {
+            assert_eq!(
+                phase.regate,
+                vec!["execute".to_string()],
+                "code-review must have regate == [\"execute\"]"
+            );
+        } else {
+            assert!(
+                phase.regate.is_empty(),
+                "phase '{}' must have empty regate, got {:?}",
+                phase.id,
+                phase.regate
+            );
         }
     }
 }
@@ -2418,12 +2460,10 @@ fn rca_scenarios_when_is_typed() {
 
 #[test]
 fn rca_scenarios_filtered_when_e2e_false() {
-    let pipeline = debug_flow_pipeline();
-    let expanded = expand_pipeline(&pipeline, &debug_flow_dir())
-        .expect("expansion must succeed");
-    let args_false = vec![("e2e".to_string(), serde_json::Value::Bool(false))];
-    let rca_expanded = &expanded.phases[0];
-    let active = belt_core::view::active_produces(rca_expanded, &args_false);
+    let expanded = expand_pipeline(&debug_flow_pipeline_path()).expect("expansion must succeed");
+    let mut args_false: HashMap<String, serde_json::Value> = HashMap::new();
+    args_false.insert("e2e".to_string(), serde_json::Value::Bool(false));
+    let active = belt_core::view::active_produces(&expanded[0], &args_false);
     let names: Vec<&str> = active.iter().map(|a| a.name.as_str()).collect();
     assert!(
         !names.contains(&"rca_scenarios"),
@@ -2437,12 +2477,10 @@ fn rca_scenarios_filtered_when_e2e_false() {
 
 #[test]
 fn rca_scenarios_present_when_e2e_true() {
-    let pipeline = debug_flow_pipeline();
-    let expanded = expand_pipeline(&pipeline, &debug_flow_dir())
-        .expect("expansion must succeed");
-    let args_true = vec![("e2e".to_string(), serde_json::Value::Bool(true))];
-    let rca_expanded = &expanded.phases[0];
-    let active = belt_core::view::active_produces(rca_expanded, &args_true);
+    let expanded = expand_pipeline(&debug_flow_pipeline_path()).expect("expansion must succeed");
+    let mut args_true: HashMap<String, serde_json::Value> = HashMap::new();
+    args_true.insert("e2e".to_string(), serde_json::Value::Bool(true));
+    let active = belt_core::view::active_produces(&expanded[0], &args_true);
     let names: Vec<&str> = active.iter().map(|a| a.name.as_str()).collect();
     assert!(names.contains(&"rca_scenarios"));
     assert!(names.contains(&"rca_report"));
@@ -2503,11 +2541,13 @@ fn criteria_files_exist() {
         );
     }
 
-    let shared = repo_root().join("examples/skills/criteria");
+    // Shared criteria: pipeline.yml uses `../../criteria/` relative to
+    // `examples/skills/debug-flow/`, resolving to `examples/criteria/`.
+    let shared = repo_root().join("examples/criteria");
     for name in ["execute.md", "code-review.md"] {
         assert!(
             shared.join(name).exists(),
-            "shared criteria '{name}' must exist"
+            "shared criteria '{name}' must exist at examples/criteria/"
         );
     }
 }
@@ -2528,9 +2568,29 @@ fn skill_md_has_expected_sections() {
         );
     }
 }
+
+#[test]
+fn skill_md_declares_supplement_injection_per_phase() {
+    let skill_md = debug_flow_dir().join("SKILL.md");
+    let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
+    // Phases 1 (rca), 2 (fix-plan), 6 (monkey-test), 7 (dogfood), 8 (integrate)
+    // must each reference a specific supplement via INVOKE 1 in SKILL.md.
+    for supplement in [
+        "rca-supplement.md",
+        "fix-plan-supplement.md",
+        "monkey-test-supplement.md",
+        "dogfood-supplement.md",
+        "worktrunk-supplement.md",
+    ] {
+        assert!(
+            content.contains(supplement),
+            "SKILL.md must reference supplement '{supplement}'"
+        );
+    }
+}
 ```
 
-(Adjust if `Pipeline.args` / `Phase.invoke` / `InvokeSpec.args` / `Phase.regate` field names differ — confirm by reading `belt-core/src/model.rs`.)
+If any type-path mismatch appears at compile time (e.g., `Invoker` located in a submodule), adjust the `use` block by reading `crates/belt-core/src/model.rs` and mirroring the `model::*` re-exports used in existing `feature_dev_refresh.rs` / `review_skills_refresh.rs`.
 
 - [ ] **Step 3: Run test + regression**
 
@@ -2630,20 +2690,53 @@ cargo run --bin belt -- lint examples/skills/debug-flow/pipeline.yml
 
 Expected: all exit 0.
 
-- [ ] **Step 2: Grep hygiene checks**
+- [ ] **Step 2: Grep hygiene checks (canonical patterns)**
 
 ```bash
-grep -rn "iterations\|swarm\|ui\(:\|=\)\|--smoke" examples/skills/debug-flow/
+grep -rnE 'iterations|swarm|--smoke' examples/skills/debug-flow/
+grep -rnE '(^|[[:space:]])(ui)[=:]' examples/skills/debug-flow/
 grep -rn "consensus\|artifacts/reviews/" examples/skills/debug-flow/criteria/
 grep -rn "fix-dispatch-strategy" examples/references/
 grep -rn "evidence-plan-protocol" examples/skills/debug-flow/
 ```
 
-Expected: zero matches for all four.
+Expected: zero matches for all five.
 
-- [ ] **Step 3: Must-Verify Checklist from spec**
+- [ ] **Step 3: Runtime end-to-end verification (Must-Verify Checklist items #8-#9)**
 
-Re-check the Must-Verify Checklist in this plan's header section. Confirm each item checked.
+Run debug-flow pipeline with `--e2e=false`, confirm `rca_scenarios` omitted from status JSON:
+
+```bash
+cd /tmp
+rm -rf belt-verify-e2e-false
+mkdir -p belt-verify-e2e-false && cd belt-verify-e2e-false
+# Use absolute path to the belt repo pipeline.yml
+PIPELINE=/Users/nishikataseiichi/go/src/github.com/neko-neko/belt/examples/skills/debug-flow/pipeline.yml
+cargo run --manifest-path /Users/nishikataseiichi/go/src/github.com/neko-neko/belt/Cargo.toml --bin belt-agent -- init --pipeline "$PIPELINE" --args e2e=false
+RUN_ID=$(cargo run --manifest-path /Users/nishikataseiichi/go/src/github.com/neko-neko/belt/Cargo.toml --bin belt-agent -- latest-run-id)
+cargo run --manifest-path /Users/nishikataseiichi/go/src/github.com/neko-neko/belt/Cargo.toml --bin belt-agent -- status --run-id "$RUN_ID" | tee status-e2e-false.json
+grep -q "rca_scenarios" status-e2e-false.json && echo "FAIL: rca_scenarios must be omitted when --e2e=false" || echo "PASS"
+```
+
+Expected: "PASS" line. If `rca_scenarios` appears in the status JSON, Artifact.when filtering (Tasks 3–4) is broken.
+
+Repeat with `--e2e=true`, confirm `rca_scenarios` present:
+
+```bash
+cd /tmp && rm -rf belt-verify-e2e-true && mkdir belt-verify-e2e-true && cd belt-verify-e2e-true
+cargo run --manifest-path /Users/nishikataseiichi/go/src/github.com/neko-neko/belt/Cargo.toml --bin belt-agent -- init --pipeline "$PIPELINE" --args e2e=true
+RUN_ID=$(cargo run --manifest-path /Users/nishikataseiichi/go/src/github.com/neko-neko/belt/Cargo.toml --bin belt-agent -- latest-run-id)
+cargo run --manifest-path /Users/nishikataseiichi/go/src/github.com/neko-neko/belt/Cargo.toml --bin belt-agent -- status --run-id "$RUN_ID" | tee status-e2e-true.json
+grep -q "rca_scenarios" status-e2e-true.json && echo "PASS" || echo "FAIL: rca_scenarios must be present when --e2e=true"
+```
+
+Expected: "PASS" line.
+
+(Adjust the `belt-agent` subcommand names if they differ — use `belt-agent --help` to confirm. Minimum: `init --pipeline`, some way to retrieve latest run id, `status --run-id`.)
+
+- [ ] **Step 4: Must-Verify Checklist from spec**
+
+Re-check the Must-Verify Checklist in this plan's header section. Confirm each of 9 items checked.
 
 - [ ] **Step 4: (optional) Dogfood run**
 
