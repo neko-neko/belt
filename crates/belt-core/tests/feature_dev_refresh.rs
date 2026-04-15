@@ -1,4 +1,4 @@
-//! Integration tests for the refreshed feature-dev pipeline (8 phases).
+//! Integration tests for the refreshed feature-dev pipeline (9 phases).
 
 use std::path::PathBuf;
 
@@ -17,12 +17,13 @@ fn feature_dev_pipeline_path() -> PathBuf {
 }
 
 #[test]
-fn feature_dev_has_eight_phases() -> Result<(), BeltError> {
+fn feature_dev_has_nine_phases() -> Result<(), BeltError> {
     let pipeline = parse_pipeline(&feature_dev_pipeline_path())?;
 
     let expected: &[&str] = &[
         "design",
         "test-scenarios",
+        "spec-review",
         "plan",
         "execute",
         "code-review",

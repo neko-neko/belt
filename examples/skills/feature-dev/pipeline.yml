@@ -49,6 +49,19 @@ phases:
     confirm: true
     max_retries: 3
 
+  - id: spec-review
+    description: "Review test strategy (and scenarios if --e2e) via spec-review"
+    invoke:
+      skill: /spec-review
+      args:
+        codex: "args.codex"
+    consumes:
+      - test_strategy
+    validate: ./criteria/spec-review.md
+    regate: [test-scenarios]
+    confirm: true
+    max_retries: 3
+
   - id: plan
     description: "Generate implementation plan from design and test strategy"
     invoke:
