@@ -15,10 +15,6 @@ pub(crate) enum ResolveError {
         pipeline: String,
         branch: Option<String>,
     },
-    #[allow(
-        dead_code,
-        reason = "emitted by Task 15 (WorkspaceLatest resolver path)"
-    )]
     #[error("branch-aware URI requires git directory")]
     BranchAwareRequiresGit,
     #[error("resolved artifact missing: {path}")]
@@ -41,7 +37,16 @@ impl Resolver<'_> {
         match uri {
             BeltUri::Run { run_id, path } => self.resolve_run(run_id, path),
             BeltUri::Latest { pipeline, path } => self.resolve_latest(pipeline, path, None),
-            BeltUri::WorkspaceLatest { .. } => todo!("Task 15"),
+            BeltUri::WorkspaceLatest {
+                branch,
+                pipeline,
+                path,
+            } => {
+                if self.current_branch.is_none() {
+                    return Err(ResolveError::BranchAwareRequiresGit);
+                }
+                self.resolve_latest(pipeline, path, Some(branch))
+            }
         }
     }
 
@@ -362,5 +367,64 @@ mod tests {
         };
         let resolved = r.resolve(&uri).unwrap();
         assert!(resolved.ends_with("01947a01/notes/phase-review.md"));
+    }
+
+    #[test]
+    fn resolve_workspace_latest_uses_explicit_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        write_state(
+            &belt_dir,
+            "01947a00",
+            "feature-dev",
+            Some("main"),
+            "completed",
+        );
+        write_state(
+            &belt_dir,
+            "01947a01",
+            "feature-dev",
+            Some("develop"),
+            "completed",
+        );
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: Some("main".to_string()),
+        };
+        let uri = BeltUri::WorkspaceLatest {
+            branch: "develop".into(),
+            pipeline: "feature-dev".into(),
+            path: "notes/phase-review.md".into(),
+        };
+        let resolved = r.resolve(&uri).unwrap();
+        assert!(resolved.ends_with("01947a01/notes/phase-review.md"));
+    }
+
+    #[test]
+    fn resolve_workspace_latest_errors_on_non_git() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        write_state(
+            &belt_dir,
+            "01947a00",
+            "feature-dev",
+            Some("develop"),
+            "completed",
+        );
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None, // non-git
+        };
+        let uri = BeltUri::WorkspaceLatest {
+            branch: "develop".into(),
+            pipeline: "feature-dev".into(),
+            path: "notes/phase-review.md".into(),
+        };
+        assert!(matches!(
+            r.resolve(&uri),
+            Err(ResolveError::BranchAwareRequiresGit)
+        ));
     }
 }
