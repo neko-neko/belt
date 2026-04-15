@@ -1,167 +1,145 @@
 name: feature-dev
-description: "Quality-gated development orchestrator"
 version: 1
+description: "Quality-gated development pipeline (8 phases)"
+
 args:
-  e2e: { type: bool, default: false }
-  smoke: { type: bool, default: false }
-  doc: { type: bool, default: false }
-  codex: { type: bool, default: false }
-  ui: { type: bool, default: false }
-  iterations: { type: number, default: 3 }
-  swarm: { type: bool, default: false }
+  e2e:
+    type: bool
+    default: false
+    description: "Enable E2E testing phases (monkey-test, dogfood)"
+  codex:
+    type: bool
+    default: false
+    description: "Enable Codex parallel review in code-review"
 
 phases:
-  # ─── Design ───
   - id: design
-    description: "Create design spec via brainstorming"
+    description: "Generate design document via interactive brainstorming"
     invoke:
       skill: /brainstorming
-      args:
-        swarm: "args.swarm"
     produces:
       - name: design_doc
-        path: "docs/plans/*-design.md"
-        description: "Brainstormed design with requirements, impact scope, test perspectives"
+        path: "docs/features/*/design.md"
+        description: "Design document with explored context and test perspectives"
     gate:
-      - file_exists: "docs/plans/*-design.md"
+      - file_exists: "docs/features/*/design.md"
     validate: ./criteria/design.md
     confirm: true
     max_retries: 3
 
-  # ─── Spec Review ───
-  - id: spec-review
-    description: "Multi-perspective spec review via spec-review sub-pipeline"
+  - id: test-scenarios
+    description: "Design comprehensive test cases and agent-browser scenarios"
     invoke:
-      pipeline: ../spec-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
-        codex: "args.codex"
-        ui: "args.ui"
-        swarm: "args.swarm"
+      skill: /test-scenarios
+      args:
+        e2e: "args.e2e"
     consumes:
       - design_doc
-    validate: ./criteria/spec-review.md
+    produces:
+      - name: test_strategy
+        path: "docs/features/*/test-strategy.md"
+        description: "Human-readable test strategy (ISTQB/ISO 25010)"
+      - name: scenarios
+        path: "docs/features/*/scenarios.yml"
+        description: "Agent-browser replay scenarios (Given/When/Then YAML)"
+        when: "args.e2e"
+    gate:
+      - file_exists: "docs/features/*/test-strategy.md"
+    validate: ./criteria/test-scenarios.md
     confirm: true
     max_retries: 3
 
-  # ─── Plan ───
   - id: plan
-    description: "Create implementation plan and test cases"
+    description: "Generate implementation plan from design and test strategy"
     invoke:
       skill: /writing-plans
     consumes:
       - design_doc
+      - test_strategy
     produces:
       - name: plan_doc
-        path: "docs/plans/*-plan.md"
-        description: "Implementation plan with task breakdown and TDD steps"
-      - name: test_cases
-        path: "docs/plans/*-test-cases.md"
-        description: "Test case catalogue enumerated from the design"
+        path: "docs/features/*/plan.md"
+        description: "Task-level implementation plan (TDD)"
     gate:
-      - file_exists: "docs/plans/*-plan.md"
-      - file_exists: "docs/plans/*-test-cases.md"
+      - file_exists: "docs/features/*/plan.md"
     validate: ./criteria/plan.md
     confirm: true
     max_retries: 3
 
-  # ─── Plan Review ───
-  - id: plan-review
-    description: "Plan review via implementation-review sub-pipeline"
-    invoke:
-      pipeline: ../implementation-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
-        codex: "args.codex"
-        ui: "args.ui"
-        swarm: "args.swarm"
-    consumes:
-      - plan_doc
-      - test_cases
-    validate: ./criteria/plan-review.md
-    confirm: true
-    max_retries: 3
-
-  # ─── Execute ───
   - id: execute
-    description: "TDD implementation following the plan"
+    description: "Execute implementation plan via TDD subagents"
     invoke:
       skill: /subagent-driven-development
     consumes:
       - design_doc
       - plan_doc
-      - test_cases
     validate: ../../criteria/execute.md
     confirm: true
     max_retries: 3
 
-  # ─── Doc Audit (conditional) ───
-  - id: doc-audit
-    description: "4-layer document audit"
-    when: "args.doc"
-    invoke:
-      skill: /doc-audit
-    validate: ./criteria/doc-audit.md
-    confirm: true
-    max_retries: 3
-
-  # ─── Smoke Test (conditional) ───
-  - id: smoke-test
-    description: "Local smoke test with browser verification"
-    when: "args.smoke"
-    invoke:
-      skill: /smoke-test
-    produces:
-      - name: smoke_test_report
-        path: "smoke-test-report.md"
-        description: "Ad-hoc smoke test report with adversarial probes"
-    gate:
-      - file_exists: "smoke-test-report.md"
-    validate: ../../criteria/smoke-test.md
-    confirm: true
-    max_retries: 3
-
-  # ─── Code Review ───
   - id: code-review
-    description: "Multi-perspective code review via code-review sub-pipeline"
+    description: "Multi-perspective code review"
     invoke:
-      pipeline: ../code-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
+      skill: /code-review
+      args:
         codex: "args.codex"
-        swarm: "args.swarm"
     consumes:
       - design_doc
       - plan_doc
     validate: ../../criteria/code-review.md
-    regate: [execute, smoke-test, doc-audit]
-    confirm: true
-    max_retries: 3
-
-  # ─── Test Review (conditional) ───
-  - id: test-review
-    description: "Multi-perspective test review via test-review sub-pipeline"
-    when: "args.e2e"
-    invoke:
-      pipeline: ../test-review/pipeline.yml
-      with:
-        iterations: "args.iterations"
-        codex: "args.codex"
-        swarm: "args.swarm"
-    consumes:
-      - plan_doc
-      - test_cases
-    validate: ../../criteria/test-review.md
     regate: [execute]
     confirm: true
     max_retries: 3
 
-  # ─── Integrate ───
+  - id: monkey-test
+    description: "Replay pre-defined scenarios via agent-browser"
+    when: "args.e2e"
+    invoke:
+      skill: /monkey-test
+    consumes:
+      - design_doc
+      - test_strategy
+      - scenarios
+      - plan_doc
+    produces:
+      - name: monkey_test_report
+        path: "docs/features/*/monkey-test-report.md"
+      - name: monkey_test_results
+        path: "docs/features/*/monkey-test-results.json"
+    gate:
+      - file_exists: "docs/features/*/monkey-test-report.md"
+    validate: ./criteria/monkey-test.md
+    confirm: true
+    max_retries: 3
+
+  - id: dogfood
+    description: "Exploratory testing via agent-browser with feature context"
+    when: "args.e2e"
+    invoke:
+      skill: /dogfood
+    consumes:
+      - design_doc
+      - test_strategy
+      - scenarios
+      - monkey_test_report
+      - monkey_test_results
+      - plan_doc
+    produces:
+      - name: dogfood_report
+        path: "docs/features/*/dogfood-report/report.md"
+    gate:
+      - file_exists: "docs/features/*/dogfood-report/report.md"
+    validate: ./criteria/dogfood.md
+    confirm: true
+    max_retries: 3
+
   - id: integrate
-    description: "Merge, PR, or branch management"
+    description: "Integrate changes (user chooses: wt merge or gh pr create)"
     invoke:
       skill: /worktrunk
-    validate:
-      - "Integration method chosen and executed"
-      - "All pre-merge checks pass"
+    consumes:
+      - design_doc
+      - plan_doc
+    validate: ./criteria/integrate.md
     confirm: true
+    max_retries: 3
