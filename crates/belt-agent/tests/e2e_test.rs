@@ -580,3 +580,55 @@ fn e2e_branch_isolation_for_latest_uri() {
     let path = rc.values().next().unwrap().as_str().unwrap();
     assert!(path.contains(main_run), "should pick main run, got: {path}");
 }
+
+#[test]
+fn e2e_consumer_init_fails_when_no_completed_producer() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Only an in-progress producer.
+    let run = "01947a00-0000-7000-8000-000000000000";
+    let dir = tmp.path().join(".belt/runs").join(run);
+    std::fs::create_dir_all(dir.join("notes")).unwrap();
+    std::fs::write(dir.join("notes/phase-review.md"), "x").unwrap();
+    std::fs::write(
+        dir.join("state.json"),
+        format!(
+            r#"{{
+  "run_id": "{run}",
+  "pipeline": "chain-producer",
+  "pipeline_file": "/tmp/x.yml",
+  "version": 1,
+  "branch": null,
+  "args": {{}},
+  "current_phase": "review",
+  "completed_phases": [],
+  "skipped_phases": [],
+  "status": "in_progress",
+  "created_at": "2026-04-14T00:00:00Z",
+  "updated_at": "2026-04-14T00:00:00Z"
+}}"#
+        ),
+    )
+    .unwrap();
+
+    let consumer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("belt-core/tests/fixtures/chain-consumer.yml");
+    std::fs::copy(&consumer_src, tmp.path().join("chain-consumer.yml")).unwrap();
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .args(["init", "chain-consumer.yml"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "init should fail");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("no COMPLETED run"), "stderr: {stderr}");
+    // Adversarial probe: also assert the pipeline name appears so we know the
+    // failure came from the resolver (not a YAML parse error etc).
+    assert!(
+        stderr.contains("chain-producer"),
+        "expected resolver error about chain-producer; stderr: {stderr}"
+    );
+}
