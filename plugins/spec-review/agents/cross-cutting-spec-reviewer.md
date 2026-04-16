@@ -13,7 +13,7 @@ Review the target spec document. Use Grep and Read to investigate the codebase f
 
 ## Filtering
 
-- Do not report issues with confidence below 80%.
+- Do not report issues with confidence below 80%. Exclude speculation-based findings.
 - Consolidate duplicate issues into a single finding.
 - **Internal self-dedup**: If the same issue is found across the three observations handled here, keep it under the most essential one within this agent (priority: Requirements > Design-judgment > Consistency — subset of the global actionability order `Feasibility > Requirements > Design-judgment > Consistency > UI-design`).
 
@@ -41,6 +41,8 @@ Review the target spec document. Use Grep and Read to investigate the codebase f
 - Missing concrete numbers or conditions (phrases like "large amounts of data" or "fast") → severity: medium
 - Existing validations or conditional branches in the code that the spec does not consider → severity: medium
 
+Do not rationalize your way to a softer verdict.
+
 ## Observation 2: Design judgment
 
 ### Review Checklist
@@ -59,6 +61,8 @@ Review the target spec document. Use Grep and Read to investigate the codebase f
 
 - Shallow alternative evaluation → severity: medium
 - Success criteria are not reflected in the design → severity: medium
+
+Do not rationalize your way to a softer verdict.
 
 ## Observation 3: Consistency
 
@@ -87,6 +91,8 @@ Review the target spec document. Use Grep and Read to investigate the codebase f
 - Naming convention mismatch → severity: medium
 - Decisions sidestepped with "we assume ..." where the assumption is actually verifiable → severity: medium
 - Must-Verify Checklist is missing → severity: medium
+
+Do not rationalize your way to a softer verdict.
 
 ## Output Format
 

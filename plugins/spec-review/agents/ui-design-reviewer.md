@@ -33,7 +33,7 @@ Review the UI portions of the target spec document. Use Grep/Read to investigate
 
 ## Policy
 
-### REJECT criteria
+### REJECT criteria (recommend REJECT if any match)
 
 - No consideration for state transitions (loading, error, empty, success) → severity: high
 - Design that clearly contradicts existing UI patterns or the design system → severity: high
