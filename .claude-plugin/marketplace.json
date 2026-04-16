@@ -3,12 +3,12 @@
     "pluginRoot": "./plugins"
   },
   "plugins": [
-    { "name": "belt-agents",    "source": "belt-agents" },
-    { "name": "feature-dev",    "source": "feature-dev",    "skills": ["./skills/feature-dev"] },
-    { "name": "bug-fix",        "source": "bug-fix",        "skills": ["./skills/bug-fix"] },
-    { "name": "code-review",    "source": "code-review",    "skills": ["./skills/code-review"] },
-    { "name": "spec-review",    "source": "spec-review",    "skills": ["./skills/spec-review"] },
-    { "name": "monkey-test",    "source": "monkey-test",    "skills": ["./skills/monkey-test"] },
-    { "name": "test-scenarios", "source": "test-scenarios", "skills": ["./skills/test-scenarios"] }
+    { "name": "belt-agents",    "source": "./belt-agents" },
+    { "name": "feature-dev",    "source": "./feature-dev",    "skills": ["./skills/feature-dev"] },
+    { "name": "bug-fix",        "source": "./bug-fix",        "skills": ["./skills/bug-fix"] },
+    { "name": "code-review",    "source": "./code-review",    "skills": ["./skills/code-review"] },
+    { "name": "spec-review",    "source": "./spec-review",    "skills": ["./skills/spec-review"] },
+    { "name": "monkey-test",    "source": "./monkey-test",    "skills": ["./skills/monkey-test"] },
+    { "name": "test-scenarios", "source": "./test-scenarios", "skills": ["./skills/test-scenarios"] }
   ]
 }
