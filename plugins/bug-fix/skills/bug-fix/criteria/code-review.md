@@ -12,7 +12,7 @@ audit: required
 - **verification**:
   Read the review result file (`artifacts/reviews/code-review-review.json` or review log) and confirm execution records exist for all 7 perspectives (simplify, code-quality, code-security, code-performance, code-test, ai-antipattern, code-impact).
 - **pass_condition**: Execution records exist for all 7 perspectives. Recorded perspective count is 7
-- **fail_diagnosis_hint**: Identify the missing perspective and check the /code-review:code-review invocation options. Determine whether it was a missing perspective argument or a mid-execution interruption of the review agent
+- **fail_diagnosis_hint**: Identify the missing perspective and check the /code-review invocation options. Determine whether it was a missing perspective argument or a mid-execution interruption of the review agent
 - **depends_on_artifacts**: [artifacts/reviews/]
 
 ### CODE-REVIEW-02: All user-approved findings have been fixed
