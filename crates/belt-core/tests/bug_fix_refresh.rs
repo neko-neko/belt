@@ -289,7 +289,8 @@ fn skill_md_has_expected_sections() {
     let skill_md = bug_fix_dir().join("SKILL.md");
     let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
     for section in [
-        "## Phase-Specific Invocation Rules",
+        "## Supplement Loading",
+        "## Phase-specific Runtime Notes",
         "## Red Flags",
         "## References",
         "argument-hint:",
@@ -305,8 +306,8 @@ fn skill_md_has_expected_sections() {
 fn skill_md_declares_supplement_injection_per_phase() {
     let skill_md = bug_fix_dir().join("SKILL.md");
     let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
-    // Phases 1 (rca), 2 (fix-plan), 6 (monkey-test), 7 (dogfood), 8 (integrate)
-    // must each reference a specific supplement via INVOKE 1 in SKILL.md.
+    // rca, fix-plan, monkey-test, dogfood, and integrate phases must each
+    // reference a specific supplement inside SKILL.md's Supplement Loading table.
     for supplement in [
         "rca-supplement.md",
         "fix-plan-supplement.md",
