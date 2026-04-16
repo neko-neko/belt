@@ -25,8 +25,12 @@ phases:
         path: "docs/plans/*-rca-scenarios.yml"
         description: "Reproduction scenarios in Given/When/Then YAML for monkey-test replay"
         when: "args.e2e"
+      - name: rca_notes
+        path: ".belt/runs/{run_id}/notes/phase-rca.md"
+        description: "Phase narrative: decisions, concerns, directives, observations"
     gate:
       - file_exists: "docs/plans/*-rca-report.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-rca.md"
     validate: ./criteria/rca.md
     confirm: true
     max_retries: 3
@@ -37,12 +41,17 @@ phases:
       skill: /writing-plans
     consumes:
       - rca_report
+      - rca_notes
     produces:
       - name: fix_plan_doc
         path: "docs/plans/*-fix-plan.md"
         description: "Fix plan with RCA Fix Strategy → task mapping"
+      - name: fix_plan_notes
+        path: ".belt/runs/{run_id}/notes/phase-fix-plan.md"
+        description: "Phase narrative"
     gate:
       - file_exists: "docs/plans/*-fix-plan.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-fix-plan.md"
     validate: ./criteria/fix-plan.md
     confirm: true
     max_retries: 3
@@ -66,6 +75,14 @@ phases:
     consumes:
       - rca_report
       - fix_plan_doc
+      - rca_notes
+      - fix_plan_notes
+    produces:
+      - name: execute_notes
+        path: ".belt/runs/{run_id}/notes/phase-execute.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-execute.md"
     validate: ./criteria/execute.md
     confirm: true
     max_retries: 3
@@ -79,6 +96,15 @@ phases:
     consumes:
       - rca_report
       - fix_plan_doc
+      - rca_notes
+      - fix_plan_notes
+      - execute_notes
+    produces:
+      - name: code_review_notes
+        path: ".belt/runs/{run_id}/notes/phase-code-review.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-code-review.md"
     validate: ./criteria/code-review.md
     regate: [execute]
     confirm: true
@@ -93,13 +119,21 @@ phases:
       - rca_report
       - rca_scenarios
       - fix_plan_doc
+      - rca_notes
+      - fix_plan_notes
+      - execute_notes
+      - code_review_notes
     produces:
       - name: monkey_test_report
         path: "docs/plans/*-monkey-test-report.md"
       - name: monkey_test_results
         path: "docs/plans/*-monkey-test-results.json"
+      - name: monkey_test_notes
+        path: ".belt/runs/{run_id}/notes/phase-monkey-test.md"
+        description: "Phase narrative"
     gate:
       - file_exists: "docs/plans/*-monkey-test-report.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-monkey-test.md"
     validate: ./criteria/monkey-test.md
     confirm: true
     max_retries: 3
@@ -115,11 +149,20 @@ phases:
       - fix_plan_doc
       - monkey_test_report
       - monkey_test_results
+      - rca_notes
+      - fix_plan_notes
+      - execute_notes
+      - code_review_notes
+      - monkey_test_notes
     produces:
       - name: dogfood_report
         path: "docs/plans/*-dogfood-report/report.md"
+      - name: dogfood_notes
+        path: ".belt/runs/{run_id}/notes/phase-dogfood.md"
+        description: "Phase narrative"
     gate:
       - file_exists: "docs/plans/*-dogfood-report/report.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-dogfood.md"
     validate: ./criteria/dogfood.md
     confirm: true
     max_retries: 3

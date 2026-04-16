@@ -3,21 +3,27 @@
 //! Shape contract (spec docs/specs/2026-04-15-debug-flow-refresh-design.md):
 //! - args = { e2e: bool, codex: bool } only (iterations / swarm / ui / smoke removed)
 //! - 8 phases: rca → fix-plan → fix-plan-review → execute → code-review →
-//!             monkey-test → dogfood → integrate
+//!   monkey-test → dogfood → integrate
 //! - All phases use skill: invoke (no pipeline:)
 //! - Review phases (fix-plan-review, code-review) pass codex
 //! - code-review has regate: [execute]; no other phase has regate
 //! - Supplement injection for 5 phases (rca, fix-plan, monkey-test, dogfood, integrate)
 //! - criteria skill-local (6 files) + shared (execute.md, code-review.md)
-//! - rca_scenarios.when = "args.e2e" (type-level, not just YAML text)
+//! - `rca_scenarios.when` = "args.e2e" (type-level, not just YAML text)
 //! - Dead letter references removed.
+
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use belt_core::{
     expander::expand_pipeline,
-    model::{ArgType, Invoker, Pipeline},
+    model::{ArgType, Artifact, ArtifactRef, GateCheck, Invoker, Phase, Pipeline},
     parser::parse_pipeline,
 };
 
@@ -55,7 +61,7 @@ const EXPECTED_PHASES: &[&str] = &[
 fn args_are_e2e_and_codex_only() {
     let pipeline = bug_fix_pipeline();
     let mut keys: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
-    keys.sort();
+    keys.sort_unstable();
     assert_eq!(keys, vec!["codex", "e2e"]);
 
     for (name, def) in &pipeline.args {
@@ -119,7 +125,7 @@ fn review_phases_pass_codex_only() {
             panic!("phase '{}' must use Invoker::Skill variant", phase.id);
         };
         let mut keys: Vec<&str> = args.keys().map(String::as_str).collect();
-        keys.sort();
+        keys.sort_unstable();
         assert_eq!(
             keys,
             vec!["codex"],
@@ -310,5 +316,147 @@ fn skill_md_declares_supplement_injection_per_phase() {
             content.contains(supplement),
             "SKILL.md must reference supplement '{supplement}'"
         );
+    }
+}
+
+// --- narrative artifact shape (context reset) ---
+
+const BUG_FIX_NARRATIVE_PHASES: &[(&str, &str, &str)] = &[
+    ("rca", "rca_notes", ".belt/runs/{run_id}/notes/phase-rca.md"),
+    (
+        "fix-plan",
+        "fix_plan_notes",
+        ".belt/runs/{run_id}/notes/phase-fix-plan.md",
+    ),
+    (
+        "execute",
+        "execute_notes",
+        ".belt/runs/{run_id}/notes/phase-execute.md",
+    ),
+    (
+        "code-review",
+        "code_review_notes",
+        ".belt/runs/{run_id}/notes/phase-code-review.md",
+    ),
+    (
+        "monkey-test",
+        "monkey_test_notes",
+        ".belt/runs/{run_id}/notes/phase-monkey-test.md",
+    ),
+    (
+        "dogfood",
+        "dogfood_notes",
+        ".belt/runs/{run_id}/notes/phase-dogfood.md",
+    ),
+];
+
+fn find_phase<'a>(pipeline: &'a Pipeline, id: &str) -> &'a Phase {
+    pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == id)
+        .unwrap_or_else(|| panic!("phase '{id}' must exist"))
+}
+
+fn find_produce<'a>(phase: &'a Phase, name: &str) -> &'a Artifact {
+    phase
+        .produces
+        .iter()
+        .find(|a| a.name == name)
+        .unwrap_or_else(|| panic!("phase '{}' must produce '{name}'", phase.id))
+}
+
+fn has_file_exists_gate(phase: &Phase, path: &str) -> bool {
+    phase
+        .gate
+        .iter()
+        .any(|g| matches!(g, GateCheck::FileExists { file_exists } if file_exists == path))
+}
+
+fn has_named_consume(phase: &Phase, name: &str) -> bool {
+    phase
+        .consumes
+        .iter()
+        .any(|r| matches!(r, ArtifactRef::Named(n) if n == name))
+}
+
+#[test]
+fn bug_fix_narrative_phases_produce_notes() {
+    let pipeline = bug_fix_pipeline();
+    for (phase_id, artifact_name, path) in BUG_FIX_NARRATIVE_PHASES {
+        let phase = find_phase(&pipeline, phase_id);
+        let note = find_produce(phase, artifact_name);
+        assert_eq!(note.path, *path, "phase '{phase_id}' note path mismatch");
+    }
+}
+
+#[test]
+fn bug_fix_narrative_phases_gate_notes() {
+    let pipeline = bug_fix_pipeline();
+    for (phase_id, _, path) in BUG_FIX_NARRATIVE_PHASES {
+        let phase = find_phase(&pipeline, phase_id);
+        assert!(
+            has_file_exists_gate(phase, path),
+            "phase '{phase_id}' must gate on file_exists: '{path}'"
+        );
+    }
+}
+
+#[test]
+fn bug_fix_narrative_accumulating_consumes() {
+    let pipeline = bug_fix_pipeline();
+
+    let expected_consumes: &[(&str, &[&str])] = &[
+        ("rca", &[]),
+        ("fix-plan", &["rca_notes"]),
+        ("execute", &["rca_notes", "fix_plan_notes"]),
+        (
+            "code-review",
+            &["rca_notes", "fix_plan_notes", "execute_notes"],
+        ),
+        (
+            "monkey-test",
+            &[
+                "rca_notes",
+                "fix_plan_notes",
+                "execute_notes",
+                "code_review_notes",
+            ],
+        ),
+        (
+            "dogfood",
+            &[
+                "rca_notes",
+                "fix_plan_notes",
+                "execute_notes",
+                "code_review_notes",
+                "monkey_test_notes",
+            ],
+        ),
+    ];
+
+    for (phase_id, names) in expected_consumes {
+        let phase = find_phase(&pipeline, phase_id);
+        for name in *names {
+            assert!(
+                has_named_consume(phase, name),
+                "phase '{phase_id}' must consume '{name}'"
+            );
+        }
+    }
+}
+
+#[test]
+fn bug_fix_non_narrative_phases_have_no_notes() {
+    let pipeline = bug_fix_pipeline();
+    for phase_id in ["fix-plan-review", "integrate"] {
+        let phase = find_phase(&pipeline, phase_id);
+        for artifact in &phase.produces {
+            assert!(
+                !artifact.path.starts_with(".belt/runs/"),
+                "phase '{phase_id}' must not produce belt notes, got '{}'",
+                artifact.path
+            );
+        }
     }
 }
