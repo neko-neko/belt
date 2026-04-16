@@ -1,3 +1,11 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::doc_lazy_continuation,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use belt_core::lint::{Severity, lint_pipeline};
 use std::io::Write;
 use tempfile::TempDir;
@@ -186,14 +194,14 @@ phases:
     let path = write_yaml(
         &dir,
         "pipeline.yml",
-        r#"
+        r"
 name: good-invoke-pipeline
 version: 1
 phases:
   - id: s
     invoke:
       pipeline: ./sub.yml
-"#,
+",
     );
 
     let diagnostics = lint_pipeline(&path).expect("lint should succeed");
@@ -216,14 +224,14 @@ fn lint_detects_invoke_skill_without_description() {
     let path = write_yaml(
         &dir,
         "pipeline.yml",
-        r#"
+        r"
 name: invoke-skill-no-desc
 version: 1
 phases:
   - id: review
     invoke:
       skill: /code-review
-"#,
+",
     );
 
     let diagnostics = lint_pipeline(&path).expect("lint should succeed");
@@ -658,14 +666,14 @@ fn lint_accepts_phase_with_only_confirm() {
     let path = write_yaml(
         &dir,
         "pipeline.yml",
-        r#"
+        r"
 name: t
 version: 1
 phases:
   - id: p
     description: p
     confirm: true
-"#,
+",
     );
 
     let diagnostics = lint_pipeline(&path).expect("lint should succeed");
@@ -819,14 +827,14 @@ phases:
 /// Lint should produce a targeted diagnostic pointing to the migration.
 #[test]
 fn lint_rejects_invoke_agent_key() {
-    let yaml = r#"
+    let yaml = r"
 name: p
 version: 1
 phases:
   - id: x
     invoke:
       agent: foo
-"#;
+";
     let result = belt_core::lint::lint_raw_pipeline_yaml(yaml);
     let err = result.expect_err("lint must reject invoke.agent");
     let message = format!("{err}");
@@ -839,7 +847,7 @@ phases:
 
 #[test]
 fn lint_rejects_invoke_agents_key() {
-    let yaml = r#"
+    let yaml = r"
 name: p
 version: 1
 phases:
@@ -847,7 +855,7 @@ phases:
     invoke:
       agents:
         - foo
-"#;
+";
     let result = belt_core::lint::lint_raw_pipeline_yaml(yaml);
     let err = result.expect_err("lint must reject invoke.agents");
     let message = format!("{err}");
@@ -859,7 +867,7 @@ phases:
 
 #[test]
 fn lint_rejects_invoke_iterations_key() {
-    let yaml = r#"
+    let yaml = r"
 name: p
 version: 1
 phases:
@@ -867,7 +875,7 @@ phases:
     invoke:
       skill: /x
       iterations: 3
-"#;
+";
     let result = belt_core::lint::lint_raw_pipeline_yaml(yaml);
     let err = result.expect_err("lint must reject invoke.iterations");
     let message = format!("{err}");
@@ -877,20 +885,20 @@ phases:
     );
 }
 
-/// CLI-path regression: lint_pipeline (the entry point called by `belt lint`)
+/// CLI-path regression: `lint_pipeline` (the entry point called by `belt lint`)
 /// must surface the migration-hint diagnostic for invoke.agent, not the
 /// generic serde untagged-enum error.
 #[test]
 fn lint_pipeline_surfaces_invoke_agent_migration_hint() {
     use std::io::Write;
-    let yaml = r#"
+    let yaml = r"
 name: p
 version: 1
 phases:
   - id: x
     invoke:
       agent: foo
-"#;
+";
     let mut tmp = tempfile::NamedTempFile::new().expect("tempfile");
     tmp.write_all(yaml.as_bytes()).expect("write");
     let result = belt_core::lint::lint_pipeline(tmp.path());

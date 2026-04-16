@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::match_wildcard_for_single_variants,
+    clippy::default_trait_access,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use belt_core::model::{
     ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, Pipeline, RunState,
     RunStatus, SubPipeline, ValidationSource,
@@ -32,7 +41,7 @@ phases:
     }
 }
 
-/// Parse a phase with ALL fields populated: when, confirm, max_retries, config,
+/// Parse a phase with ALL fields populated: when, confirm, `max_retries`, config,
 /// produces, multiple gate variants, validate, regate.
 #[test]
 fn parse_phase_all_fields() {
@@ -328,7 +337,7 @@ phases:
     }
 }
 
-/// Adding timeout to Cmd does not affect other GateCheck variants.
+/// Adding timeout to Cmd does not affect other `GateCheck` variants.
 #[test]
 fn cmd_timeout_does_not_affect_other_variants() {
     let yaml = r#"
@@ -356,7 +365,7 @@ phases:
     }
 }
 
-/// RunState deserialisation without `regate_passed` defaults to empty HashMap
+/// `RunState` deserialisation without `regate_passed` defaults to empty `HashMap`
 /// (backward compatibility with existing state.json files).
 #[test]
 fn run_state_regate_passed_defaults_to_empty() {
@@ -382,7 +391,7 @@ fn run_state_regate_passed_defaults_to_empty() {
     );
 }
 
-/// RunState round-trips `regate_passed` through serialization.
+/// `RunState` round-trips `regate_passed` through serialization.
 #[test]
 fn run_state_regate_passed_round_trip() {
     use std::collections::HashMap;
@@ -491,14 +500,14 @@ phases:
 /// Top-level scalar starting with `./` is treated as a file reference.
 #[test]
 fn parse_validate_scalar_shorthand_relative_file() {
-    let yaml = r#"
+    let yaml = r"
 name: t
 version: 1
 phases:
   - id: p
     description: p
     validate: ./criteria/p.md
-"#;
+";
     let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
     assert_eq!(pipeline.phases[0].validate.len(), 1);
     match &pipeline.phases[0].validate[0] {
@@ -510,14 +519,14 @@ phases:
 /// Top-level scalar starting with `/` is treated as a file reference.
 #[test]
 fn parse_validate_scalar_shorthand_absolute_file() {
-    let yaml = r#"
+    let yaml = r"
 name: t
 version: 1
 phases:
   - id: p
     description: p
     validate: /abs/path/criteria.md
-"#;
+";
     let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
     match &pipeline.phases[0].validate[0] {
         ValidationSource::File { file } => assert_eq!(file, "/abs/path/criteria.md"),
@@ -590,14 +599,14 @@ phases:
 /// Empty list is accepted (existing behavior, no change).
 #[test]
 fn parse_validate_empty_list_still_parses() {
-    let yaml = r#"
+    let yaml = r"
 name: t
 version: 1
 phases:
   - id: p
     description: p
     validate: []
-"#;
+";
     let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
     assert_eq!(pipeline.phases[0].validate.len(), 0);
 }
@@ -846,10 +855,10 @@ fn artifact_ref_named_still_works() {
 
 #[test]
 fn artifact_ref_qualified_still_works() {
-    let yaml = r#"
+    let yaml = r"
 - name: notes
   from: review
-"#;
+";
     let refs: Vec<ArtifactRef> = serde_saphyr::from_str(yaml).unwrap();
     matches!(refs[0], ArtifactRef::Qualified { .. });
 }
@@ -937,14 +946,14 @@ fn run_state_deserializes_legacy_without_new_fields() {
 /// no longer a valid `Invoker` variant and must fail YAML deserialisation.
 #[test]
 fn invoker_agent_variant_is_rejected() {
-    let yaml = r#"
+    let yaml = r"
 name: p
 version: 1
 phases:
   - id: x
     invoke:
       agent: some-agent
-"#;
+";
     let result: Result<Pipeline, _> = serde_saphyr::from_str(yaml);
     assert!(
         result.is_err(),
@@ -955,7 +964,7 @@ phases:
 /// After the 2026-04-16 refactor, `invoke.agents:` is no longer valid.
 #[test]
 fn invoker_agents_variant_is_rejected() {
-    let yaml = r#"
+    let yaml = r"
 name: p
 version: 1
 phases:
@@ -964,7 +973,7 @@ phases:
       agents:
         - a
         - b
-"#;
+";
     let result: Result<Pipeline, _> = serde_saphyr::from_str(yaml);
     assert!(
         result.is_err(),

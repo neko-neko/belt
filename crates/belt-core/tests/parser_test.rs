@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use belt_core::error::BeltError;
 use belt_core::parser::{parse_gate_definition, parse_pipeline};
 use std::io::Write;
@@ -61,7 +68,7 @@ fn parse_nonexistent_file_returns_error() {
 }
 
 /// BELT-32 integration: a complete pipeline exercising Invoker, Artifact,
-/// ArtifactRef, and ValidationSource together. Verifies parse + lint-clean
+/// `ArtifactRef`, and `ValidationSource` together. Verifies parse + lint-clean
 /// on a valid example and parses round-trip correctly.
 #[test]
 fn belt32_full_pipeline_with_all_new_types() {

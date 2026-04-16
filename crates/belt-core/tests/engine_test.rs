@@ -1,10 +1,18 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unnecessary_get_then_check,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use belt_core::engine::Engine;
 use belt_core::error::BeltError;
 use std::collections::HashMap;
 use std::io::Write;
 use tempfile::TempDir;
 
-/// Helper: resolve a fixture file path relative to CARGO_MANIFEST_DIR.
+/// Helper: resolve a fixture file path relative to `CARGO_MANIFEST_DIR`.
 fn fixture_path(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -1886,9 +1894,9 @@ phases:
 // BELT-32 Plan B Task 2: phase_start_times lifecycle
 // ---------------------------------------------------------------------------
 
-/// phase_start_times is set when step() first enters a phase.
+/// `phase_start_times` is set when `step()` first enters a phase.
 /// It is not touched by retries within the same phase.
-/// regate does not modify any phase's phase_start_times.
+/// regate does not modify any phase's `phase_start_times`.
 #[test]
 fn phase_start_times_is_set_on_entry_not_updated_on_retry() {
     let dir = TempDir::new().expect("tempdir");
@@ -1980,7 +1988,7 @@ phases:
     );
 }
 
-/// phase_start_times uses UTC and serialises round-trip via state.json.
+/// `phase_start_times` uses UTC and serialises round-trip via state.json.
 #[test]
 fn phase_start_times_round_trips_through_state_json() {
     let dir = TempDir::new().expect("tempdir");
@@ -1988,13 +1996,13 @@ fn phase_start_times_round_trips_through_state_json() {
     let pipeline_path = write_yaml(
         &dir,
         "pipeline.yml",
-        r#"
+        r"
 name: t
 version: 1
 phases:
   - id: only
     description: only phase
-"#,
+",
     );
 
     let engine = Engine::new(&belt_dir);

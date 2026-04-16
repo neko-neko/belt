@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use belt_core::config::{parse_config, resolve_pipeline_path};
 use belt_core::error::BeltError;
 use std::io::Write;

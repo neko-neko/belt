@@ -13,8 +13,10 @@
 //! - Dead letter references removed.
 
 #![allow(
+    clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
+    clippy::match_wildcard_for_single_variants,
     reason = "integration test: panic-on-mismatch is the intended assertion style"
 )]
 

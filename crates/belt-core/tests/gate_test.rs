@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use std::fs;
 
 use belt_core::gate::{all_passed, execute_gate, execute_gates};
@@ -78,7 +85,7 @@ fn file_exists_gate_fail() {
     );
 }
 
-/// `has_output: true` with a file in output_dir -> gate passes.
+/// `has_output: true` with a file in `output_dir` -> gate passes.
 #[test]
 fn has_output_gate_pass() {
     let work = tempfile::tempdir().expect("tempdir");
@@ -97,7 +104,7 @@ fn has_output_gate_pass() {
     );
 }
 
-/// `has_output: true` with an empty output_dir -> gate fails.
+/// `has_output: true` with an empty `output_dir` -> gate fails.
 #[test]
 fn has_output_gate_fail_empty_dir() {
     let work = tempfile::tempdir().expect("tempdir");
@@ -115,7 +122,7 @@ fn has_output_gate_fail_empty_dir() {
     );
 }
 
-/// GateResult for non-cmd gates has timed_out = false.
+/// `GateResult` for non-cmd gates has `timed_out` = false.
 #[test]
 fn gate_result_timed_out_default_false() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -127,7 +134,7 @@ fn gate_result_timed_out_default_false() {
     assert!(!result.timed_out);
 }
 
-/// GateResult.timed_out serializes to JSON correctly.
+/// `GateResult.timed_out` serializes to JSON correctly.
 #[test]
 fn gate_result_timed_out_serializes() {
     let result = belt_core::gate::GateResult {
@@ -182,7 +189,7 @@ fn cmd_with_timeout_zero_passes() {
     assert!(!result.timed_out);
 }
 
-/// cmd exceeds timeout — killed, timed_out = true.
+/// cmd exceeds timeout — killed, `timed_out` = true.
 #[test]
 fn cmd_timeout_kills_hanging_process() {
     let check = GateCheck::Cmd {
@@ -200,7 +207,7 @@ fn cmd_timeout_kills_hanging_process() {
     );
 }
 
-/// Timeout duration_ms reflects the timeout value.
+/// Timeout `duration_ms` reflects the timeout value.
 #[test]
 fn cmd_timeout_duration_reflects_timeout() {
     let check = GateCheck::Cmd {
@@ -291,7 +298,7 @@ fn all_passed_integration() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join("hello.txt"), "content").expect("write");
 
-    let checks = vec![
+    let checks = [
         GateCheck::Cmd {
             cmd: "true".to_owned(),
             timeout: 1800,
@@ -357,7 +364,7 @@ fn execute_gates_all_pass_with_timeout() {
     assert!(all_passed(&results));
 }
 
-/// GateResult round-trips through JSON serialization.
+/// `GateResult` round-trips through JSON serialization.
 #[test]
 fn gate_result_deserialize_round_trip() {
     let original = belt_core::gate::GateResult {
@@ -376,7 +383,7 @@ fn gate_result_deserialize_round_trip() {
     assert!(!restored.timed_out);
 }
 
-/// GateResult without timed_out field deserializes with default false.
+/// `GateResult` without `timed_out` field deserializes with default false.
 #[test]
 fn gate_result_deserialize_missing_timed_out() {
     let json = r#"{"check_type":"cmd","passed":true,"detail":null,"duration_ms":100}"#;

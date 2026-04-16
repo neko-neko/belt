@@ -1,3 +1,11 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::similar_names,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use belt_core::engine::Engine;
 use belt_core::model::{Artifact, Invoker, RunState, RunStatus};
 use belt_core::view::{PhaseMetadata, PhaseState, PipelineStatus, build_status_view};
@@ -460,7 +468,7 @@ fn engine_enriched_status_pipeline_not_found() {
 
 // --- BELT-30: verify_checks / regate_checks in status ---
 
-/// status includes verify_checks when verify file exists.
+/// status includes `verify_checks` when verify file exists.
 #[test]
 fn status_includes_verify_checks() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -482,7 +490,7 @@ fn status_includes_verify_checks() {
     assert!(checks[0].passed);
 }
 
-/// status returns verify_checks = None when no verify file.
+/// status returns `verify_checks` = None when no verify file.
 #[test]
 fn status_verify_checks_none_when_no_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -495,7 +503,7 @@ fn status_verify_checks_none_when_no_file() {
     assert!(view.phases[0].verify_checks.is_none());
 }
 
-/// status returns verify_checks = None on corrupt file (graceful degradation).
+/// status returns `verify_checks` = None on corrupt file (graceful degradation).
 #[test]
 fn status_verify_checks_none_on_corrupt_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -528,7 +536,7 @@ fn status_verify_checks_sub_pipeline_phase() {
     assert!(!view.phases[0].verify_checks.as_ref().unwrap()[0].passed);
 }
 
-/// status includes regate_checks when regate file exists.
+/// status includes `regate_checks` when regate file exists.
 #[test]
 fn status_includes_regate_checks() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -548,7 +556,7 @@ fn status_includes_regate_checks() {
     assert!(targets["collect"]["passed"].as_bool().unwrap());
 }
 
-/// status returns regate_checks = None when no regate file.
+/// status returns `regate_checks` = None when no regate file.
 #[test]
 fn status_regate_checks_none_when_no_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -561,7 +569,7 @@ fn status_regate_checks_none_when_no_file() {
     assert!(view.phases[0].regate_checks.is_none());
 }
 
-/// status returns regate_checks = None on corrupt file.
+/// status returns `regate_checks` = None on corrupt file.
 #[test]
 fn status_regate_checks_none_on_corrupt_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -598,7 +606,7 @@ fn engine_enriched_status_output_files_visible() {
 
 // --- BELT-32: PhaseView invoke / produces / consumes serialization ---
 
-/// PhaseView serializes `invoke` as a nested JSON object when present.
+/// `PhaseView` serializes `invoke` as a nested JSON object when present.
 #[test]
 fn phase_view_serializes_invoke_skill() {
     let state = RunState {
@@ -878,7 +886,7 @@ fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
     );
 }
 
-/// Concrete (non-glob) path uses std::fs::metadata directly.
+/// Concrete (non-glob) path uses `std::fs::metadata` directly.
 #[test]
 fn concrete_path_skips_filter() {
     let temp = tempfile::tempdir().expect("tempdir");

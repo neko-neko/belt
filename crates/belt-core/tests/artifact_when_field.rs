@@ -2,6 +2,13 @@
 //!
 //! Spec: `docs/specs/2026-04-15-debug-flow-refresh-design.md` ("Artifact.when Semantics").
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
