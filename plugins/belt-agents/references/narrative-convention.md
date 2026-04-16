@@ -1,10 +1,10 @@
 # Narrative Note Convention
 
-Phase-scoped narrative note の規約。`feature-dev` / `bug-fix` の narrative-producing phase から produce される。belt は content を parse しないため、本 convention は SKILL 層の責務。
+Convention for phase-scoped narrative notes produced by narrative-producing phases in `feature-dev` and `bug-fix`. belt does not parse note content, so this convention is owned by the SKILL layer.
 
 ## Purpose
 
-User が `/clear` で session context をリセットした後、narrative note を読むことで各 phase の判断・懸念・指示・観察を復元できるようにする。domain artifact（`design.md` / `plan.md` / `rca-report.md` 等）が **何を作ったか** を記録するのに対し、narrative note は **なぜそう判断したか / 何が未解決か / 次 phase が守るべき前提は何か** を記録する。
+After the user resets session context with `/clear`, reading the narrative note restores each phase's decisions, concerns, directives, and observations. Domain artifacts (`design.md`, `plan.md`, `rca-report.md`, etc.) record **what was produced**, while narrative notes record **why the call was made, what remains unresolved, and what the next phase must assume**.
 
 ## Path
 
@@ -12,9 +12,9 @@ User が `/clear` で session context をリセットした後、narrative note 
 .belt/runs/{run_id}/notes/phase-{phase_id}.md
 ```
 
-- `{run_id}` は belt-core が template 展開する（Engine が init 時に `<run_dir>/notes/` directory を作成）
-- `{phase_id}` は pipeline.yml の `phases[].id` と同一（hyphen 保持: `monkey-test` → `phase-monkey-test.md`）
-- Domain artifact (`docs/features/*`, `docs/plans/*`) とは別 directory
+- `{run_id}` is template-expanded by belt-core (the Engine creates `<run_dir>/notes/` during init).
+- `{phase_id}` matches `phases[].id` in `pipeline.yml` (hyphens preserved: `monkey-test` → `phase-monkey-test.md`).
+- Placed under a directory separate from domain artifacts (`docs/features/*`, `docs/plans/*`).
 
 ## File Schema
 
@@ -26,49 +26,49 @@ run_id: <run_id>
 
 ## Decisions
 
-<この phase で確定した設計判断・方針>
+<design decisions and directions settled in this phase>
 
 ## Concerns
 
-<未解決の懸念・リスク・下流で注意すべき事項>
+<unresolved concerns, risks, and items downstream phases should watch>
 
 ## Directives
 
-<次以降の phase への指示・前提条件>
+<instructions and preconditions for subsequent phases>
 
 ## Observations
 
-<事実記録・探索で判明した事項・テスト結果など>
+<factual records, findings from exploration, test results, and so on>
 ```
 
 ## Rules
 
-1. **Frontmatter は必須 2 field のみ**: `phase`, `run_id`。belt は parse しないが、下流 consumer (skill / LLM) が出自を追跡できるようにする。`run_id` は `belt-agent step` / `belt-agent status` 出力の `run_id` 値を LLM が書き写す
-2. **4 section は全て必須**: `## Decisions` / `## Concerns` / `## Directives` / `## Observations`。空でも heading のみ残すこと（下流 consumer が section 欠落で混乱しないため）
-3. **Section 順序は固定**: Decisions → Concerns → Directives → Observations
-4. **各 section は簡潔に**: `/clear` 後の LLM が判断を再構成できる最低限の情報を含む。Domain artifact に書いた内容の複写は避ける（path 参照で十分）
-5. **Code block / link は自由**: Markdown 規約内であれば自由。ただし冗長な再説明は避ける
+1. **Frontmatter is limited to two required fields**: `phase` and `run_id`. belt does not parse them, but downstream consumers (skill / LLM) can track origin. The LLM copies the `run_id` value from `belt-agent step` / `belt-agent status` output.
+2. **All four sections are required**: `## Decisions` / `## Concerns` / `## Directives` / `## Observations`. Keep the heading even when empty (so downstream consumers are not confused by a missing section).
+3. **Section order is fixed**: Decisions → Concerns → Directives → Observations.
+4. **Keep each section concise**: Include the minimum information an LLM needs after `/clear` to reconstruct the decisions. Avoid copying content that is already in a domain artifact (a path reference is enough).
+5. **Code blocks and links are free to use**: Anything within Markdown convention is acceptable, but avoid redundant re-explanation.
 
-## Section 別記入指針
+## Per-Section Guidance
 
 ### Decisions
-- 何を決めたか。代替案を捨てた理由
-- 下流 phase が「なぜその選択か」を問う時に答えになる情報
-- 例: "NoSQL 候補を捨てて PostgreSQL 採用。理由: 既存 schema migration infra を流用できるため"
+- What was decided, and why alternatives were dropped.
+- The information that answers "why this choice?" when a downstream phase asks.
+- Example: "Dropped NoSQL candidates and adopted PostgreSQL. Reason: the existing schema-migration infra can be reused."
 
 ### Concerns
-- 未解決の risk / 仮定 / 検証不足事項
-- 下流が注意すべき時限爆弾
-- 例: "monkey-test で E2E 未検証。dogfood 時に手動確認が必須"
+- Unresolved risks, assumptions, and unverified items.
+- Time bombs downstream phases should watch for.
+- Example: "E2E was not exercised in monkey-test. Manual confirmation is required during dogfood."
 
 ### Directives
-- 次以降の phase が守るべき制約・前提
-- 例: "plan phase で task granularity を 30 分以下に保つこと（design で合意）"
+- Constraints and preconditions subsequent phases must honor.
+- Example: "In the plan phase, keep task granularity to 30 minutes or less (agreed during design)."
 
 ### Observations
-- 探索で判明した事実（特に domain artifact に書ききれないもの）
-- 将来の調査で有用な context
-- 例: "既存 `FooService` は actually Bar interface を実装していない（lint warn を確認）"
+- Facts discovered during exploration (especially those that do not fit in a domain artifact).
+- Context useful for future investigation.
+- Example: "The existing `FooService` does not actually implement the Bar interface (confirmed via a lint warning)."
 
 ## Example: feature-dev design phase
 
@@ -80,20 +80,20 @@ run_id: 01947abc-1234-7890-def0-123456789abc
 
 ## Decisions
 
-- Context reset mechanism は既存 belt-core narrative 機構 (2026-04-14 spec) を再利用する。belt-core への新規追加はしない
-- narrative note は 6 phases のみで produce（軽量 phase は除外、user 合意済み）
+- Reuse the existing belt-core narrative mechanism (2026-04-14 spec) for the context-reset capability; do not add new code to belt-core.
+- Produce narrative notes only for six phases (lightweight phases excluded, per user agreement).
 
 ## Concerns
 
-- `/clear` は user 手動操作に依存。SKILL.md に "reset するタイミングの目安" を記述しない限り、note が参照されない可能性あり
+- `/clear` depends on manual user action. Without documenting "when to reset" in SKILL.md, the notes may never be consulted.
 
 ## Directives
 
-- plan phase: 実装タスクは 30 分以下の粒度に保つこと
-- execute phase: narrative の Decisions を commit message に引用しないこと（noise になる）
+- plan phase: keep implementation tasks at a granularity of 30 minutes or less.
+- execute phase: do not quote the narrative's Decisions into commit messages (it becomes noise).
 
 ## Observations
 
-- narrative-convention.md は `plugins/belt-agents/references/` に既存 reference と並列配置
-- plugin 移行で criteria は各 plugin に per-plugin 化済み（parity test で drift 検出）
+- `narrative-convention.md` sits alongside existing references under `plugins/belt-agents/references/`.
+- Criteria have been made per-plugin during the plugin migration (parity test detects drift).
 ```
