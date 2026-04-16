@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "belt-agents",
-      "description": "Base analysis agents for belt-based quality-gated development pipelines (phase-auditor, code-explorer, code-architect, impact-analyzer, feature-implementer)",
+      "description": "Base analysis agents + Belt Protocol skill for belt-based quality-gated development pipelines (phase-auditor, code-explorer, code-architect, impact-analyzer, feature-implementer)",
       "source": "./plugins/belt-agents",
       "category": "development"
     },
