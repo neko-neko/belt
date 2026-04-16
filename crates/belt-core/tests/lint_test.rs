@@ -814,3 +814,65 @@ phases:
         "expected a Warning diagnostic mentioning 'not protected by gate', got: {diags:?}"
     );
 }
+
+/// After 2026-04-16, pipeline.yml authors must not use `invoke.agent:`.
+/// Lint should produce a targeted diagnostic pointing to the migration.
+#[test]
+fn lint_rejects_invoke_agent_key() {
+    let yaml = r#"
+name: p
+version: 1
+phases:
+  - id: x
+    invoke:
+      agent: foo
+"#;
+    let result = belt_core::lint::lint_raw_pipeline_yaml(yaml);
+    let err = result.expect_err("lint must reject invoke.agent");
+    let message = format!("{err}");
+    assert!(
+        message.contains("invoke.agent")
+            && (message.contains("no longer supported") || message.contains("removed")),
+        "lint message must mention invoke.agent removal; got: {message}"
+    );
+}
+
+#[test]
+fn lint_rejects_invoke_agents_key() {
+    let yaml = r#"
+name: p
+version: 1
+phases:
+  - id: x
+    invoke:
+      agents:
+        - foo
+"#;
+    let result = belt_core::lint::lint_raw_pipeline_yaml(yaml);
+    let err = result.expect_err("lint must reject invoke.agents");
+    let message = format!("{err}");
+    assert!(
+        message.contains("invoke.agents"),
+        "lint message must mention invoke.agents removal; got: {message}"
+    );
+}
+
+#[test]
+fn lint_rejects_invoke_iterations_key() {
+    let yaml = r#"
+name: p
+version: 1
+phases:
+  - id: x
+    invoke:
+      skill: /x
+      iterations: 3
+"#;
+    let result = belt_core::lint::lint_raw_pipeline_yaml(yaml);
+    let err = result.expect_err("lint must reject invoke.iterations");
+    let message = format!("{err}");
+    assert!(
+        message.contains("iterations"),
+        "lint message must mention iterations removal; got: {message}"
+    );
+}

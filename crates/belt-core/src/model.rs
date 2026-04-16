@@ -219,58 +219,25 @@ pub enum ArtifactRef {
     },
 }
 
-/// Number of iterations for an `Invoker::Agents` invocation.
-///
-/// Accepts either a literal integer (`iterations: 3`) or a template
-/// string referencing pipeline args (`iterations: "args.iterations"`).
-/// Template resolution is performed by the skill orchestrator at
-/// dispatch time, not at parse time. The default is `Literal(0)` so
-/// that omitting the field is identical to legacy `iterations: 0`.
-///
-/// Variant ordering for serde-saphyr untagged enum disambiguation:
-/// `Literal` (YAML integer) is listed before `Template` (YAML string) so
-/// numeric literals are not coerced into strings. This mirrors the
-/// `GateCheck` ordering lesson (see `docs/specs` Known Risks).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-pub enum IterationsSpec {
-    Literal(u32),
-    Template(String),
-}
-
-impl Default for IterationsSpec {
-    fn default() -> Self {
-        Self::Literal(0)
-    }
-}
-
 /// Typed invocation target for a phase. Parallel to the existing `GateCheck`
 /// untagged enum: belt-core models the invocation shape but the LLM
-/// orchestrator is responsible for actually dispatching the skill, agent, or
+/// orchestrator is responsible for actually dispatching the skill or
 /// sub-pipeline at runtime.
 ///
 /// Variant ordering for serde-saphyr untagged enum disambiguation:
-/// `Skill` (field: `skill`) → `Agent` (field: `agent`) → `Agents` (field:
-/// `agents`) → `Pipeline` (field: `pipeline`). Each variant has a unique
-/// required discriminating field, so ordering is defensive rather than
-/// strictly necessary.
+/// `Skill` (field: `skill`) → `Pipeline` (field: `pipeline`). Each variant
+/// has a unique required discriminating field.
+///
+/// The `Agent` / `Agents` variants and associated `IterationsSpec` type
+/// were removed on 2026-04-16 (see `docs/specs/2026-04-16-review-skills-
+/// subagent-boundary-design.md`) to close agent-dispatch concepts into the
+/// skill layer. `pipeline.yml` emits of `invoke.agent:` or `invoke.agents:`
+/// are now YAML parse errors and are additionally flagged by lint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Invoker {
     Skill {
         skill: String,
-        #[serde(default)]
-        args: HashMap<String, serde_json::Value>,
-    },
-    Agent {
-        agent: String,
-        #[serde(default)]
-        args: HashMap<String, serde_json::Value>,
-    },
-    Agents {
-        agents: Vec<String>,
-        #[serde(default)]
-        iterations: IterationsSpec,
         #[serde(default)]
         args: HashMap<String, serde_json::Value>,
     },

@@ -1,6 +1,6 @@
 use belt_core::model::{
-    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, IterationsSpec, Pipeline,
-    RunState, RunStatus, SubPipeline, ValidationSource,
+    ArgType, Artifact, ArtifactRef, GateCheck, GateDefinition, Invoker, Pipeline, RunState,
+    RunStatus, SubPipeline, ValidationSource,
 };
 use belt_core::uri::BeltUri;
 
@@ -780,64 +780,6 @@ phases:
     }
 }
 
-/// Parse a phase with `invoke: { agent: "phase-auditor" }`.
-#[test]
-fn parse_invoke_agent_variant() {
-    let yaml = r#"
-name: t
-version: 1
-phases:
-  - id: audit
-    description: "Audit"
-    invoke:
-      agent: phase-auditor
-"#;
-    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
-    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
-        Invoker::Agent { agent, args } => {
-            assert_eq!(agent, "phase-auditor");
-            assert!(args.is_empty());
-        }
-        other => panic!("expected Agent, got {other:?}"),
-    }
-}
-
-/// Parse a phase with `invoke: { agents: [a, b], iterations: 3 }`.
-#[test]
-fn parse_invoke_agents_variant() {
-    let yaml = r#"
-name: t
-version: 1
-phases:
-  - id: review
-    description: "Review"
-    invoke:
-      agents:
-        - spec-review-requirements
-        - spec-review-consistency
-      iterations: 3
-      args:
-        codex: true
-"#;
-    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
-    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
-        Invoker::Agents {
-            agents,
-            iterations,
-            args,
-        } => {
-            assert_eq!(agents.len(), 2);
-            assert_eq!(agents[0], "spec-review-requirements");
-            assert_eq!(*iterations, IterationsSpec::Literal(3));
-            assert_eq!(
-                args.get("codex").and_then(serde_json::Value::as_bool),
-                Some(true)
-            );
-        }
-        other => panic!("expected Agents, got {other:?}"),
-    }
-}
-
 /// Parse a phase with `invoke: { pipeline: "./sub.yml" }`.
 #[test]
 fn parse_invoke_pipeline_variant() {
@@ -877,120 +819,6 @@ phases:
 "#;
     let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
     assert!(pipeline.phases[0].invoke.is_none());
-}
-
-/// Adversarial: a phase invoke that has both `skill` and `agent` (should
-/// prefer the first matching variant — Skill). This is malformed YAML but
-/// should pick Skill deterministically.
-#[test]
-fn parse_invoke_variant_order_is_deterministic() {
-    let yaml = r#"
-name: t
-version: 1
-phases:
-  - id: p
-    description: "p"
-    invoke:
-      skill: /foo
-      agent: bar
-"#;
-    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
-    // With Skill variant declared first, serde-saphyr should match Skill.
-    // `agent` becomes an extra key and is either ignored or included in args.
-    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
-        Invoker::Skill { skill, .. } => assert_eq!(skill, "/foo"),
-        other => panic!(
-            "expected Skill variant (declared first), got {other:?}; \
-             variant ordering may not be deterministic"
-        ),
-    }
-}
-
-/// `iterations: 3` (YAML integer) parses as `IterationsSpec::Literal(3)`.
-#[test]
-fn parse_invoke_agents_iterations_literal() {
-    let yaml = r#"
-name: t
-version: 1
-phases:
-  - id: review
-    description: "Review"
-    invoke:
-      agents: [a, b]
-      iterations: 5
-"#;
-    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
-    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
-        Invoker::Agents { iterations, .. } => {
-            assert_eq!(*iterations, IterationsSpec::Literal(5));
-        }
-        other => panic!("expected Agents, got {other:?}"),
-    }
-}
-
-/// `iterations: "args.iterations"` (YAML string) parses as `IterationsSpec::Template`.
-#[test]
-fn parse_invoke_agents_iterations_template() {
-    let yaml = r#"
-name: t
-version: 1
-phases:
-  - id: review
-    description: "Review"
-    invoke:
-      agents: [a, b]
-      iterations: "args.iterations"
-"#;
-    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
-    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
-        Invoker::Agents { iterations, .. } => {
-            assert_eq!(
-                *iterations,
-                IterationsSpec::Template("args.iterations".to_string())
-            );
-        }
-        other => panic!("expected Agents, got {other:?}"),
-    }
-}
-
-/// `iterations:` omitted defaults to `IterationsSpec::Literal(0)`.
-#[test]
-fn parse_invoke_agents_iterations_omitted_defaults_to_literal_zero() {
-    let yaml = r#"
-name: t
-version: 1
-phases:
-  - id: review
-    description: "Review"
-    invoke:
-      agents: [a]
-"#;
-    let pipeline: Pipeline = serde_saphyr::from_str(yaml).expect("should parse");
-    match pipeline.phases[0].invoke.as_ref().expect("invoke present") {
-        Invoker::Agents { iterations, .. } => {
-            assert_eq!(*iterations, IterationsSpec::Literal(0));
-        }
-        other => panic!("expected Agents, got {other:?}"),
-    }
-}
-
-/// JSON serialization round-trip for both variants.
-#[test]
-fn iterations_spec_json_roundtrip() {
-    let literal = IterationsSpec::Literal(7);
-    let json = serde_json::to_string(&literal).unwrap();
-    assert_eq!(json, "7");
-    let back: IterationsSpec = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, IterationsSpec::Literal(7));
-
-    let template = IterationsSpec::Template("args.iterations".to_string());
-    let json = serde_json::to_string(&template).unwrap();
-    assert_eq!(json, "\"args.iterations\"");
-    let back: IterationsSpec = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        back,
-        IterationsSpec::Template("args.iterations".to_string())
-    );
 }
 
 #[test]
@@ -1103,4 +931,43 @@ fn run_state_deserializes_legacy_without_new_fields() {
     assert_eq!(decoded.branch, None);
     assert!(decoded.resolved_consumes.is_empty());
     assert_eq!(decoded.status, RunStatus::InProgress);
+}
+
+/// After the 2026-04-16 subagent-boundary refactor, `invoke.agent:` is
+/// no longer a valid `Invoker` variant and must fail YAML deserialisation.
+#[test]
+fn invoker_agent_variant_is_rejected() {
+    let yaml = r#"
+name: p
+version: 1
+phases:
+  - id: x
+    invoke:
+      agent: some-agent
+"#;
+    let result: Result<Pipeline, _> = serde_saphyr::from_str(yaml);
+    assert!(
+        result.is_err(),
+        "parsing invoke.agent must fail after Agent variant removal"
+    );
+}
+
+/// After the 2026-04-16 refactor, `invoke.agents:` is no longer valid.
+#[test]
+fn invoker_agents_variant_is_rejected() {
+    let yaml = r#"
+name: p
+version: 1
+phases:
+  - id: x
+    invoke:
+      agents:
+        - a
+        - b
+"#;
+    let result: Result<Pipeline, _> = serde_saphyr::from_str(yaml);
+    assert!(
+        result.is_err(),
+        "parsing invoke.agents must fail after Agents variant removal"
+    );
 }

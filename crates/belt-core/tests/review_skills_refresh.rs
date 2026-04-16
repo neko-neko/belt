@@ -1,15 +1,21 @@
-//! Integration tests locking the refreshed review-skill pipelines
-//! (/code-review, /spec-review).
+//! Integration tests locking the 2026-04-16 review-skills subagent-boundary
+//! refactor (/code-review, /spec-review).
 //!
 //! Shape contract:
-//! - args = { codex: bool } only (no iterations, swarm, ui)
-//! - phases = [review, fix], review.invoke.agents = [<plugin>:<agent>]
-//! - consolidated agent files exist in plugins/<plugin>/agents/;
-//!   legacy per-observation files are removed.
+//! - plugins/<plugin>/skills/<plugin>/pipeline.yml is DELETED
+//! - plugins/<plugin>/skills/<plugin>/belt.toml is DELETED
+//! - plugins/<plugin>/agents/<single>.md is DELETED (code-reviewer / spec-reviewer)
+//! - New per-observation agent files exist in plugins/<plugin>/agents/
+//! - Parent SKILL.md references parallel Task dispatch and cross-agent merge
+//! - Legacy per-observation agent files (from the pre-2026-04-15 era) remain
+//!   absent (locked by the untouched LEGACY list below).
+
+#![allow(
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
 
 use std::path::PathBuf;
-
-use belt_core::{error::BeltError, model::ArgType, parser::parse_pipeline};
 
 fn repo_root() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -18,130 +24,122 @@ fn repo_root() -> PathBuf {
     path
 }
 
-fn pipeline_path(skill: &str) -> PathBuf {
-    repo_root().join(format!("plugins/{skill}/skills/{skill}/pipeline.yml"))
-}
-
-/// (skill, namespaced agent ref in pipeline YAML, bare agent file name, label)
-const REVIEW_SKILLS: &[(&str, &str, &str, &str)] = &[
+/// (plugin, expected agent file basenames after refactor)
+const REVIEW_PLUGINS: &[(&str, &[&str])] = &[
     (
         "code-review",
-        "code-review:code-reviewer",
-        "code-reviewer",
-        "code-review",
+        &[
+            "security-reviewer",
+            "test-reviewer",
+            "ai-antipattern-reviewer",
+            "cross-cutting-reviewer",
+        ],
     ),
     (
         "spec-review",
-        "spec-review:spec-reviewer",
-        "spec-reviewer",
-        "spec-review",
+        &[
+            "feasibility-reviewer",
+            "ui-design-reviewer",
+            "cross-cutting-spec-reviewer",
+        ],
     ),
 ];
 
 #[test]
-fn review_skills_args_are_codex_only() -> Result<(), BeltError> {
-    for (skill, _agent_ref, _agent_file, _label) in REVIEW_SKILLS {
-        let pipeline = parse_pipeline(&pipeline_path(skill))?;
-        let mut names: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
-        names.sort_unstable();
-        assert_eq!(
-            names,
-            vec!["codex"],
-            "{skill} args must be exactly {{codex}}"
-        );
-        let codex = pipeline
-            .args
-            .get("codex")
-            .ok_or_else(|| BeltError::InvalidPipeline {
-                message: format!("{skill} codex arg missing"),
-            })?;
-        assert!(
-            matches!(codex.arg_type, ArgType::Bool),
-            "{skill} codex arg must be bool"
-        );
-        assert_eq!(
-            codex.default.as_ref().and_then(serde_json::Value::as_bool),
-            Some(false),
-            "{skill} codex default must be false"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn review_skills_have_two_phases_review_then_fix() -> Result<(), BeltError> {
-    for (skill, _agent_ref, _agent_file, _label) in REVIEW_SKILLS {
-        let pipeline = parse_pipeline(&pipeline_path(skill))?;
-        let ids: Vec<&str> = pipeline.phases.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            vec!["review", "fix"],
-            "{skill} phases must be [review, fix]"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn review_skills_invoke_single_consolidated_agent() -> Result<(), BeltError> {
-    // belt-core's typed Invoker model may not expose `agents` directly; assert
-    // by parsing the raw YAML.
-    for (skill, agent_ref, _agent_file, _label) in REVIEW_SKILLS {
-        let yaml = std::fs::read_to_string(pipeline_path(skill))?;
-        let doc: serde_json::Value =
-            serde_saphyr::from_str(&yaml).map_err(|e| BeltError::YamlParse {
-                message: e.to_string(),
-                src: Some(yaml.clone()),
-            })?;
-        let review_phase = doc
-            .get("phases")
-            .and_then(serde_json::Value::as_array)
-            .and_then(|phases| {
-                phases
-                    .iter()
-                    .find(|p| p.get("id").and_then(serde_json::Value::as_str) == Some("review"))
-            })
-            .ok_or_else(|| BeltError::InvalidPipeline {
-                message: format!("{skill} review phase missing"),
-            })?;
-        let agents = review_phase
-            .get("invoke")
-            .and_then(|i| i.get("agents"))
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| BeltError::InvalidPipeline {
-                message: format!("{skill} review.invoke.agents missing"),
-            })?;
-        let agent_list: Vec<&str> = agents
-            .iter()
-            .filter_map(serde_json::Value::as_str)
-            .collect();
-        assert_eq!(
-            agent_list,
-            vec![*agent_ref],
-            "{skill} review.invoke.agents must be [{agent_ref}]"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn review_skills_consolidated_agent_files_exist() {
-    for (_skill, _agent_ref, agent_file, label) in REVIEW_SKILLS {
+fn review_plugins_pipeline_yml_is_deleted() {
+    for (plugin, _agents) in REVIEW_PLUGINS {
         let path = repo_root()
             .join("plugins")
-            .join(label)
-            .join("agents")
-            .join(format!("{agent_file}.md"));
+            .join(plugin)
+            .join("skills")
+            .join(plugin)
+            .join("pipeline.yml");
         assert!(
-            path.exists(),
-            "consolidated agent file must exist: {}",
+            !path.exists(),
+            "pipeline.yml must be deleted for {plugin}: {}",
             path.display()
         );
     }
 }
 
 #[test]
-fn legacy_review_agent_files_are_removed() {
+fn review_plugins_belt_toml_is_deleted() {
+    for (plugin, _agents) in REVIEW_PLUGINS {
+        let path = repo_root()
+            .join("plugins")
+            .join(plugin)
+            .join("skills")
+            .join(plugin)
+            .join("belt.toml");
+        assert!(
+            !path.exists(),
+            "belt.toml must be deleted for {plugin}: {}",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn review_plugins_legacy_consolidated_agent_is_deleted() {
+    const LEGACY_CONSOLIDATED: &[(&str, &str)] = &[
+        ("code-review", "code-reviewer"),
+        ("spec-review", "spec-reviewer"),
+    ];
+    for (plugin, legacy) in LEGACY_CONSOLIDATED {
+        let path = repo_root()
+            .join("plugins")
+            .join(plugin)
+            .join("agents")
+            .join(format!("{legacy}.md"));
+        assert!(
+            !path.exists(),
+            "legacy consolidated agent must be deleted: {}",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn review_plugins_new_observation_agents_exist() {
+    for (plugin, agents) in REVIEW_PLUGINS {
+        for agent in *agents {
+            let path = repo_root()
+                .join("plugins")
+                .join(plugin)
+                .join("agents")
+                .join(format!("{agent}.md"));
+            assert!(
+                path.exists(),
+                "new observation agent file must exist: {}",
+                path.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn review_plugins_parent_skill_md_references_parallel_dispatch() {
+    for (plugin, _agents) in REVIEW_PLUGINS {
+        let path = repo_root()
+            .join("plugins")
+            .join(plugin)
+            .join("skills")
+            .join(plugin)
+            .join("SKILL.md");
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        assert!(
+            content.contains("findings-") && content.contains("Task"),
+            "{plugin} SKILL.md must describe parallel Task dispatch with findings-*.json: {}",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn legacy_per_observation_review_agent_files_are_removed() {
+    // Untouched from 2026-04-15 refresh — locks the previous invariant that
+    // the pre-refresh per-observation agent bundle is gone.
     const LEGACY: &[&str] = &[
         "code-review-quality",
         "code-review-security",
@@ -167,7 +165,7 @@ fn legacy_review_agent_files_are_removed() {
         let path = agents_dir.join(format!("{name}.md"));
         assert!(
             !path.exists(),
-            "legacy agent file must be deleted: {}",
+            "legacy agent file must remain deleted: {}",
             path.display()
         );
     }

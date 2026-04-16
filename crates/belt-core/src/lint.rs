@@ -1,4 +1,4 @@
-use crate::error::BeltResult;
+use crate::error::{BeltError, BeltResult};
 use crate::expander::expand_pipeline;
 use crate::model::{ArtifactRef, GateCheck, Invoker, Pipeline, ValidationSource};
 use crate::parser::parse_pipeline;
@@ -85,9 +85,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
 
     // Check: leaf phase must have description.
     // A phase is a leaf unless it delegates to a sub-pipeline via
-    // `invoke: { pipeline: ... }`. Other `Invoker` variants (`Skill`, `Agent`,
-    // `Agents`) execute at the current phase and still need a human-readable
-    // description for `belt-agent status` / `belt-agent next` output.
+    // `invoke: { pipeline: ... }`. The `Skill` variant executes at the current
+    // phase and still needs a human-readable description for `belt-agent
+    // status` / `belt-agent next` output.
     for phase in &pipeline.phases {
         let delegates_to_sub_pipeline = matches!(phase.invoke, Some(Invoker::Pipeline { .. }));
         if !delegates_to_sub_pipeline && phase.description.is_none() {
@@ -150,6 +150,78 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     Ok(diagnostics)
 }
 
+/// Raw YAML lint — detects obsolete `invoke.agent` / `invoke.agents` /
+/// `invoke.iterations` keys that were removed on 2026-04-16.
+///
+/// This supplements the `Invoker` enum's parse-time rejection by producing
+/// a targeted, human-readable diagnostic with a migration hint before the
+/// generic "variant did not match any" serde error surfaces.
+///
+/// Invariants:
+/// - If the YAML is malformed, returns `Ok(())` so that the typed parser
+///   (or `lint_pipeline`'s phase 1) can produce its own diagnostic rather
+///   than emitting a misleading "agent key found" message when the real
+///   problem is unrelated YAML syntax.
+/// - Only phases whose `invoke:` is a mapping are inspected; scalar or
+///   sequence forms are deliberately ignored because they cannot carry the
+///   offending keys.
+///
+/// # Errors
+///
+/// Returns `BeltError::InvalidPipeline` with a migration hint when any
+/// phase's `invoke:` contains `agent`, `agents`, or `iterations`.
+pub fn lint_raw_pipeline_yaml(yaml: &str) -> Result<(), BeltError> {
+    // Parse to serde_json::Value first; if the YAML is malformed, fall
+    // through and let the typed parser handle it.
+    let doc: serde_json::Value = match serde_saphyr::from_str(yaml) {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+
+    let Some(phases) = doc.get("phases").and_then(|p| p.as_array()) else {
+        return Ok(());
+    };
+
+    for (idx, phase) in phases.iter().enumerate() {
+        let Some(invoke) = phase.get("invoke") else {
+            continue;
+        };
+        let phase_id = phase
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<unnamed>");
+        if invoke.get("agent").is_some() {
+            return Err(BeltError::InvalidPipeline {
+                message: format!(
+                    "phase[{idx}] '{phase_id}': `invoke.agent` is no longer supported \
+                     (removed 2026-04-16). Use `invoke.skill: /<plugin>:<skill-name>` \
+                     where the skill forks a subagent via `context: fork` + `agent:`."
+                ),
+            });
+        }
+        if invoke.get("agents").is_some() {
+            return Err(BeltError::InvalidPipeline {
+                message: format!(
+                    "phase[{idx}] '{phase_id}': `invoke.agents` is no longer supported \
+                     (removed 2026-04-16). Dispatch subagents from inside a parent \
+                     skill via Task tool, and reference the skill from \
+                     `invoke.skill: /<plugin>:<skill-name>`."
+                ),
+            });
+        }
+        if invoke.get("iterations").is_some() {
+            return Err(BeltError::InvalidPipeline {
+                message: format!(
+                    "phase[{idx}] '{phase_id}': `invoke.iterations` is no longer supported \
+                     (removed 2026-04-16 together with `invoke.agents`). N-way voting \
+                     is not part of the belt pipeline surface."
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Reject phases that have no action, no verification, and no interaction.
 /// A phase must do at least one of: invoke something, run a gate, declare
 /// a validate criterion, or require confirmation. Completely empty phases
@@ -191,8 +263,7 @@ fn check_gate_uses_exist(
 }
 
 /// Verify that every `phase.invoke.pipeline` reference points to an existing
-/// file on disk. Other `Invoker` variants (`Skill`, `Agent`, `Agents`) are not
-/// path-like and are checked elsewhere.
+/// file on disk. The `Skill` variant is not path-like and is checked elsewhere.
 fn check_invoke_pipeline_exists(
     pipeline: &Pipeline,
     base_dir: &Path,

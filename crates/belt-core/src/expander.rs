@@ -188,31 +188,6 @@ fn substitute_in_value_map(
     }
 }
 
-/// Substitute an `IterationsSpec::Template("args.<name>")` using `with_map`.
-/// Number values become `IterationsSpec::Literal(v as u32)`. Non-template
-/// strings become `IterationsSpec::Template(s)`. Non-convertible values
-/// (bool, null, array, object, non-integer number, out-of-range integer)
-/// leave the original Template intact.
-fn substitute_iterations_spec(
-    spec: &mut crate::model::IterationsSpec,
-    with_map: &std::collections::HashMap<String, serde_json::Value>,
-) {
-    let crate::model::IterationsSpec::Template(template) = spec else {
-        return;
-    };
-    let Some(replacement) = substitute_arg_in_value(template, with_map) else {
-        return;
-    };
-    *spec = match replacement {
-        serde_json::Value::Number(n) => match n.as_u64().and_then(|v| u32::try_from(v).ok()) {
-            Some(v) => crate::model::IterationsSpec::Literal(v),
-            None => crate::model::IterationsSpec::Template(template.clone()),
-        },
-        serde_json::Value::String(s) => crate::model::IterationsSpec::Template(s),
-        _ => crate::model::IterationsSpec::Template(template.clone()),
-    };
-}
-
 /// Apply `with_map` substitution to every rewrite-eligible field of an
 /// `Invoker`. Called once per sub-phase after clone.
 fn substitute_in_invoker(
@@ -221,13 +196,7 @@ fn substitute_in_invoker(
 ) {
     use crate::model::Invoker;
     match invoker {
-        Invoker::Skill { args, .. } | Invoker::Agent { args, .. } => {
-            substitute_in_value_map(args, with_map);
-        }
-        Invoker::Agents {
-            iterations, args, ..
-        } => {
-            substitute_iterations_spec(iterations, with_map);
+        Invoker::Skill { args, .. } => {
             substitute_in_value_map(args, with_map);
         }
         Invoker::Pipeline {
@@ -597,95 +566,6 @@ mod tests {
         assert_eq!(out[0].config.get("k4"), Some(&json!(42)));
     }
 
-    fn mk_leaf_with_agents_iter(
-        id: &str,
-        iterations: crate::model::IterationsSpec,
-    ) -> crate::model::Phase {
-        let mut p = mk_leaf_phase(id, None);
-        p.invoke = Some(crate::model::Invoker::Agents {
-            agents: vec!["a".into()],
-            iterations,
-            args: HashMap::new(),
-        });
-        p
-    }
-
-    #[test]
-    fn iterations_template_rewritten_to_literal_u32() {
-        use crate::model::IterationsSpec;
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_agents_iter(
-            "leaf",
-            IterationsSpec::Template("args.count".into()),
-        )]);
-        let w = mk_with(&[("count", json!(5))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
-            Some(crate::model::Invoker::Agents { iterations, .. }) => {
-                assert_eq!(iterations, &IterationsSpec::Literal(5));
-            }
-            _ => panic!("expected Agents invoke"),
-        }
-    }
-
-    #[test]
-    fn iterations_template_rewritten_to_new_template() {
-        use crate::model::IterationsSpec;
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_agents_iter(
-            "leaf",
-            IterationsSpec::Template("args.count".into()),
-        )]);
-        let w = mk_with(&[("count", json!("args.iterations"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
-            Some(crate::model::Invoker::Agents { iterations, .. }) => {
-                assert_eq!(
-                    iterations,
-                    &IterationsSpec::Template("args.iterations".into())
-                );
-            }
-            _ => panic!("expected Agents invoke"),
-        }
-    }
-
-    #[test]
-    fn iterations_template_unchanged_when_with_value_not_convertible() {
-        use crate::model::IterationsSpec;
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_agents_iter(
-            "leaf",
-            IterationsSpec::Template("args.count".into()),
-        )]);
-        // Bool is not a valid iteration count.
-        let w = mk_with(&[("count", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
-            Some(crate::model::Invoker::Agents { iterations, .. }) => {
-                assert_eq!(iterations, &IterationsSpec::Template("args.count".into()));
-            }
-            _ => panic!("expected Agents invoke"),
-        }
-    }
-
-    #[test]
-    fn iterations_literal_untouched() {
-        use crate::model::IterationsSpec;
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_agents_iter(
-            "leaf",
-            IterationsSpec::Literal(9),
-        )]);
-        let w = mk_with(&[("count", json!(5))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
-            Some(crate::model::Invoker::Agents { iterations, .. }) => {
-                assert_eq!(iterations, &IterationsSpec::Literal(9));
-            }
-            _ => panic!("expected Agents invoke"),
-        }
-    }
-
     #[test]
     fn invoker_skill_args_rewritten() {
         use crate::model::Invoker;
@@ -703,49 +583,6 @@ mod tests {
                 assert_eq!(args.get("k"), Some(&json!(42)));
             }
             _ => panic!("expected Skill invoke"),
-        }
-    }
-
-    #[test]
-    fn invoker_agent_args_rewritten() {
-        use crate::model::Invoker;
-        let parent = mk_parent_phase();
-        let mut leaf = mk_leaf_phase("leaf", None);
-        leaf.invoke = Some(Invoker::Agent {
-            agent: "ag".into(),
-            args: [("k".to_string(), json!("args.flag"))]
-                .into_iter()
-                .collect(),
-        });
-        let sub = mk_sub(vec![leaf]);
-        let w = mk_with(&[("flag", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
-            Some(Invoker::Agent { args, .. }) => {
-                assert_eq!(args.get("k"), Some(&json!(true)));
-            }
-            _ => panic!("expected Agent invoke"),
-        }
-    }
-
-    #[test]
-    fn invoker_agents_args_rewritten() {
-        use crate::model::{Invoker, IterationsSpec};
-        let parent = mk_parent_phase();
-        let mut leaf = mk_leaf_phase("leaf", None);
-        leaf.invoke = Some(Invoker::Agents {
-            agents: vec!["a".into()],
-            iterations: IterationsSpec::default(),
-            args: [("k".to_string(), json!("args.x"))].into_iter().collect(),
-        });
-        let sub = mk_sub(vec![leaf]);
-        let w = mk_with(&[("x", json!("hello"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
-            Some(Invoker::Agents { args, .. }) => {
-                assert_eq!(args.get("k"), Some(&json!("hello")));
-            }
-            _ => panic!("expected Agents invoke"),
         }
     }
 
