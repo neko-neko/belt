@@ -411,7 +411,7 @@ Expected: `feature_dev_narrative_phases_produce_notes` / `feature_dev_narrative_
   - id: code-review
     description: "Multi-perspective code review"
     invoke:
-      skill: /code-review
+      skill: /code-review:code-review
       args:
         codex: "args.codex"
     consumes:
@@ -439,7 +439,7 @@ Expected: `feature_dev_narrative_phases_produce_notes` / `feature_dev_narrative_
     description: "Replay pre-defined scenarios via agent-browser"
     when: "args.e2e"
     invoke:
-      skill: /monkey-test
+      skill: /monkey-test:monkey-test
     consumes:
       - design_doc
       - test_strategy
@@ -767,7 +767,7 @@ Expected: 新規 3 test が FAIL、`bug_fix_non_narrative_phases_have_no_notes` 
   - id: code-review
     description: "Multi-perspective code review"
     invoke:
-      skill: /code-review
+      skill: /code-review:code-review
       args:
         codex: "args.codex"
     consumes:
@@ -795,7 +795,7 @@ Expected: 新規 3 test が FAIL、`bug_fix_non_narrative_phases_have_no_notes` 
     description: "Replay reproduction scenarios via agent-browser"
     when: "args.e2e"
     invoke:
-      skill: /monkey-test
+      skill: /monkey-test:monkey-test
     consumes:
       - rca_report
       - rca_scenarios

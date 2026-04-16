@@ -2,6 +2,7 @@
 
 #![allow(
     clippy::expect_used,
+    clippy::panic,
     reason = "integration test: panic-on-mismatch is the intended assertion style"
 )]
 
@@ -273,7 +274,7 @@ fn find_phase<'a>(pipeline: &'a belt_core::model::Pipeline, id: &str) -> &'a Pha
         .phases
         .iter()
         .find(|p| p.id == id)
-        .expect("phase must exist")
+        .unwrap_or_else(|| panic!("phase '{id}' must exist"))
 }
 
 fn find_produce<'a>(phase: &'a Phase, name: &str) -> &'a Artifact {
@@ -281,7 +282,7 @@ fn find_produce<'a>(phase: &'a Phase, name: &str) -> &'a Artifact {
         .produces
         .iter()
         .find(|a| a.name == name)
-        .expect("phase must produce named artifact")
+        .unwrap_or_else(|| panic!("phase '{}' must produce '{name}'", phase.id))
 }
 
 fn has_file_exists_gate(phase: &Phase, path: &str) -> bool {
