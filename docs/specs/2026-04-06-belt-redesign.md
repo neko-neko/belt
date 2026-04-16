@@ -617,3 +617,13 @@ feature-dev を例にした概算:
 | パイプライン定義 | LLM コンテキスト内 | belt YAML (コンテキスト外) |
 
 **推定コンテキスト削減: ~80%**
+
+## Revision: 2026-04-16 — Invoker partial revert
+
+The `Invoker::Agent` and `Invoker::Agents` variants and the `IterationsSpec` type introduced with BELT-32 (first-class Invoker) have been removed. The Invoker enum now contains only `Skill` and `Pipeline` variants.
+
+The rest of BELT-32 — Invoker as a first-class typed field, Artifact types (`produces` / `consumes`), and the produces/consumes resolution machinery — is retained.
+
+Agent dispatch is now exclusively a skill-layer concern: a parent skill (such as `/code-review`) uses the Task tool to launch observation subagents, or wraps `context: fork` + `agent:` in a child skill. `pipeline.yml` files no longer reference agents directly.
+
+See: `docs/specs/2026-04-16-review-skills-subagent-boundary-design.md`

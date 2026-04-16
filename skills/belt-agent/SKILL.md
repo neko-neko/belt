@@ -48,14 +48,14 @@ verify (if gates) → regate (if targets) → step → next → ... → complete
 
 ## Reading `phase.invoke`
 
-Every phase returned by `next` may carry an `invoke` field with one of four variants. Read the variant and take the matching action.
+Every phase returned by `next` may carry an `invoke` field with one of two variants. Read the variant and take the matching action.
 
 | Variant | Shape | Orchestrator action |
 |---------|-------|---------------------|
 | `skill` | `{ skill: "/name", args: { ... } }` | Invoke the Claude Code slash-command skill named in `invoke.skill`, passing `invoke.args` as parameters. |
-| `agent` | `{ agent: "name", args: { ... } }` | Dispatch a single subagent via the `Agent` tool with `subagent_type: <name>`. Pass `invoke.args` as context. |
-| `agents` | `{ agents: ["a", "b", ...], iterations: N, args: { ... } }` | Dispatch each named subagent in parallel. If `iterations > 1`, run N rounds for voting. `invoke.args` carries run-time qualifiers (`ui_agent`, `codex`, `swarm`, etc.). |
 | `pipeline` | `{ pipeline: "./path.yml", with: { ... } }` | Initialise a nested `belt-agent` run on the referenced sub-pipeline. Pass `with` as args. Treat the nested run as a black-box until it reports `completed`. |
+
+> **Note (2026-04-16):** The `agent` and `agents` variants were removed. Agent dispatch is now a skill-layer concern: a parent skill uses the Task tool internally (or wraps `context: fork` + `agent:` in a child skill) to launch subagents, and `pipeline.yml` references only `invoke.skill`. See `docs/specs/2026-04-16-review-skills-subagent-boundary-design.md`.
 
 **`pipeline` invoke — `with` template resolution.** When a `with` entry's value is a string of the form `"args.X"` (literal prefix `args.` followed by a single arg identifier — no nested dotted paths), resolve it against the parent run's `args` before calling `belt-agent init --arg X=<value>`. Literal values (bool, number, non-template string) are passed through verbatim. If `args.X` is absent in the parent, omit the `--arg` instead of passing `null`; the sub-pipeline's declared default applies.
 
@@ -169,6 +169,8 @@ Use `status` for context recovery or progress checks.
 `config` is an opaque map that belt passes through without interpretation. It is retained for phase-specific flags that are orthogonal to invocation identity.
 
 Phase-level invocation identity moved to the typed `invoke:` field; do not use `config.skill`, `config.agents`, `config.criteria`, `config.audit`, or `config.reference` — these have been replaced by `invoke:`, `produces:`, `consumes:`, and file-reference `validate:` respectively.
+
+As of 2026-04-16, `invoke.agents` and `invoke.iterations` are permanently removed from the Invoker schema (partial revert of BELT-32). Agent dispatch and iteration loops are skill-layer concerns; `pipeline.yml` now references only `invoke.skill` or `invoke.pipeline`.
 
 Remaining `config` keys are skill-specific flags (e.g., `codex: true`, `ui: true`, pipeline-specific arguments). Unknown keys MAY be ignored.
 
