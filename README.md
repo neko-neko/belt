@@ -172,13 +172,13 @@ use them:
 
 | Dependency | Source | Required by |
 |---|---|---|
-| `/brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) | feature-dev Phase 1 |
-| `/writing-plans` | obra/superpowers | feature-dev Phase 4, bug-fix Phase 2 |
-| `/subagent-driven-development` | obra/superpowers | feature-dev Phase 5, bug-fix Phase 4 |
-| `/systematic-debugging` | obra/superpowers | bug-fix Phase 1 |
-| `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | feature-dev Phase 9, bug-fix Phase 8 (integrate) |
-| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | monkey-test (always), feature-dev Phase 7, bug-fix Phase 6 (when `--e2e`) |
-| `/dogfood` | vercel-labs/agent-browser | feature-dev Phase 8, bug-fix Phase 7 (when `--e2e`) |
+| `/brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) | feature-dev `design` |
+| `/writing-plans` | obra/superpowers | feature-dev `plan`, bug-fix `fix-plan` |
+| `/subagent-driven-development` | obra/superpowers | feature-dev `execute`, bug-fix `execute` |
+| `/systematic-debugging` | obra/superpowers | bug-fix `rca` |
+| `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | feature-dev `integrate`, bug-fix `integrate` |
+| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | monkey-test plugin (always), feature-dev `monkey-test` phase, bug-fix `monkey-test` phase (when `--e2e`) |
+| `/dogfood` | vercel-labs/agent-browser | feature-dev `dogfood`, bug-fix `dogfood` (when `--e2e`) |
 
 ### Install
 
