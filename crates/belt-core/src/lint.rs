@@ -1,6 +1,7 @@
 use crate::error::{BeltError, BeltResult};
 use crate::expander::expand_pipeline;
 use crate::model::{ArtifactRef, GateCheck, Invoker, Pipeline, ValidationSource};
+use crate::parser::parse_pipeline_from_str;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -34,13 +35,10 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // variant of untagged enum Invoker") instead of the migration hint.
     // The string is reused below for typed deserialisation so this is a
     // single read.
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => {
-            return Err(BeltError::FileNotFound {
-                path: path.display().to_string(),
-            });
-        }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Err(BeltError::FileNotFound {
+            path: path.display().to_string(),
+        });
     };
 
     // Raw-YAML obsolete-key lint: short-circuits with an Error diagnostic
@@ -56,13 +54,15 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
         return Ok(diagnostics);
     }
 
-    // Phase 1: Parse (reuse the already-read content)
-    let pipeline: Pipeline = match serde_saphyr::from_str(&content) {
+    // Phase 1: Parse (shared deserialization helper — keeps `BeltError::
+    // YamlParse` wrapping and any future parser preflight logic unified
+    // between file-path and in-memory entry points).
+    let pipeline = match parse_pipeline_from_str(&content) {
         Ok(p) => p,
         Err(e) => {
             diagnostics.push(LintDiagnostic {
                 severity: Severity::Error,
-                message: format!("parse error: YAML parse error: {e}"),
+                message: format!("parse error: {e}"),
             });
             return Ok(diagnostics);
         }
@@ -199,6 +199,26 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
 /// Returns `BeltError::InvalidPipeline` with a migration hint when any
 /// phase's `invoke:` contains `agent`, `agents`, or `iterations`.
 pub fn lint_raw_pipeline_yaml(yaml: &str) -> Result<(), BeltError> {
+    /// Obsolete `invoke.*` keys removed on 2026-04-16, paired with the
+    /// migration hint surfaced after the common "no longer supported" prefix.
+    /// Add future retirements here rather than duplicating the match arm.
+    const OBSOLETE_INVOKE_KEYS: &[(&str, &str)] = &[
+        (
+            "agent",
+            "Use `invoke.skill: /<plugin>:<skill-name>` where the skill forks a subagent \
+             via `context: fork` + `agent:`.",
+        ),
+        (
+            "agents",
+            "Dispatch subagents from inside a parent skill via Task tool, and reference \
+             the skill from `invoke.skill: /<plugin>:<skill-name>`.",
+        ),
+        (
+            "iterations",
+            "N-way voting is not part of the belt pipeline surface.",
+        ),
+    ];
+
     // Parse to serde_json::Value first; if the YAML is malformed, fall
     // through and let the typed parser handle it.
     let doc: serde_json::Value = match serde_saphyr::from_str(yaml) {
@@ -218,33 +238,15 @@ pub fn lint_raw_pipeline_yaml(yaml: &str) -> Result<(), BeltError> {
             .get("id")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("<unnamed>");
-        if invoke.get("agent").is_some() {
-            return Err(BeltError::InvalidPipeline {
-                message: format!(
-                    "phase[{idx}] '{phase_id}': `invoke.agent` is no longer supported \
-                     (removed 2026-04-16). Use `invoke.skill: /<plugin>:<skill-name>` \
-                     where the skill forks a subagent via `context: fork` + `agent:`."
-                ),
-            });
-        }
-        if invoke.get("agents").is_some() {
-            return Err(BeltError::InvalidPipeline {
-                message: format!(
-                    "phase[{idx}] '{phase_id}': `invoke.agents` is no longer supported \
-                     (removed 2026-04-16). Dispatch subagents from inside a parent \
-                     skill via Task tool, and reference the skill from \
-                     `invoke.skill: /<plugin>:<skill-name>`."
-                ),
-            });
-        }
-        if invoke.get("iterations").is_some() {
-            return Err(BeltError::InvalidPipeline {
-                message: format!(
-                    "phase[{idx}] '{phase_id}': `invoke.iterations` is no longer supported \
-                     (removed 2026-04-16 together with `invoke.agents`). N-way voting \
-                     is not part of the belt pipeline surface."
-                ),
-            });
+        for (key, hint) in OBSOLETE_INVOKE_KEYS {
+            if invoke.get(*key).is_some() {
+                return Err(BeltError::InvalidPipeline {
+                    message: format!(
+                        "phase[{idx}] '{phase_id}': `invoke.{key}` is no longer supported \
+                         (removed 2026-04-16). {hint}"
+                    ),
+                });
+            }
         }
     }
     Ok(())

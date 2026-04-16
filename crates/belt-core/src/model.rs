@@ -226,7 +226,8 @@ pub enum ArtifactRef {
 ///
 /// Variant ordering for serde-saphyr untagged enum disambiguation:
 /// `Skill` (field: `skill`) → `Pipeline` (field: `pipeline`). Each variant
-/// has a unique required discriminating field.
+/// has a unique required discriminating field, so ordering is defensive
+/// rather than strictly necessary.
 ///
 /// The `Agent` / `Agents` variants and associated `IterationsSpec` type
 /// were removed on 2026-04-16 (see `docs/specs/2026-04-16-review-skills-
