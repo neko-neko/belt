@@ -1,24 +1,53 @@
 ---
 name: spec-review
 description: >-
-  Reviews a spec across five dimensions: requirements, design judgment,
-  feasibility, consistency, and UI. Use when a design doc needs
-  multi-perspective critique before implementation, with findings driving a
-  grill-me dialogue.
+  Multi-perspective spec review with parallel observation subagents.
+  Dispatches feasibility, ui-design, and cross-cutting-spec reviewers in
+  parallel; merges findings with severity-first + actionability-priority
+  dedup. Findings in requirements/design-judgment with high/medium severity
+  enter a grill-me dialogue; everything else uses selection triage.
+  --codex adds an adversarial pass via /codex:rescue.
 argument-hint: "[--codex]"
 ---
 
 # Spec Review
 
-Multi-perspective spec review with grill-me dialogue on design-critical findings and direct selection on the rest.
+Parent dispatcher for parallel multi-observation spec review with grill-me dialogue on design-critical findings. This skill runs in the main context (no `context: fork`) because grill-me dialogue requires user interaction.
 
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only spec-review-specific concerns (triage, grill-me dialogue, selection, verify).
+## Scope
+
+Locate the target spec document (most recent `*-design.md` under `docs/`, or user-supplied path).
+
+## Parallel Dispatch
+
+Dispatch observation agents in parallel via the Agent (Task) tool. Send all Task calls in **one single message**:
+
+- `Task(subagent_type: spec-review:feasibility-reviewer, prompt: <spec path + path to write findings-feasibility.json>)`
+- `Task(subagent_type: spec-review:ui-design-reviewer, prompt: <spec path + path to write findings-ui-design.json>)` — agent will early-exit with zero findings if spec has no UI content
+- `Task(subagent_type: spec-review:cross-cutting-spec-reviewer, prompt: <spec path + path to write findings-cross-cutting-spec.json>)`
+
+If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the spec, expected findings format, and output path `.belt/runs/<run_id>/review/findings-codex.json`.
+
+Announce each dispatched agent before sending.
+
+## Merge + Cross-agent Dedup
+
+After all agents complete:
+
+1. Read each `findings-<observation>.json` file under `.belt/runs/<run_id>/review/`.
+2. Determine same-issue candidates using `section` overlap + description vocabulary (LLM judgment).
+3. Apply dedup rule:
+   - **Severity-first**: keep highest severity.
+   - **Tie-break — observation priority (actionability order)**:
+     `Feasibility > Requirements > Design-judgment > Consistency > UI-design`
+   - **Codex findings are NOT deduplicated** (same as code-review).
+4. Write `.belt/runs/<run_id>/review/findings.json` (cap 20 findings).
 
 ## Triage
 
-After the reviewer agent returns findings, the orchestrator partitions them:
+After merge, partition findings:
 
-- **Grill-me group**: findings where `observation` ∈ {`requirements`, `design-judgment`} AND `severity` ∈ {`high`, `medium`}
+- **Grill-me group**: `observation ∈ {requirements, design-judgment}` AND `severity ∈ {high, medium}`
 - **Selection group**: everything else (feasibility, consistency, ui-design, low-severity, codex)
 
 Process grill-me group first, then selection group.
@@ -56,7 +85,11 @@ After the loop, every grill-group finding has `resolution ∈ {accept, reject, a
 
 ## Selection Group
 
-Present the selection-group findings as a numbered list sorted by severity descending. User picks by number which to fix.
+Present selection-group findings as a numbered list sorted by severity descending. User picks by number which to fix.
+
+## Fix apply
+
+For each accepted / selected finding, apply the suggestion via Edit tool on the target spec document.
 
 ## Verify (after fix)
 
@@ -69,12 +102,16 @@ Present the selection-group findings as a numbered list sorted by severity desce
 **Never:**
 - Modify spec without user approval of findings
 - Change files outside the review target
-- Omit or filter findings before presenting to user
+- Omit or filter findings before presenting to user (except via the dedup rule)
 - Ask a user question that could be answered by inspecting the codebase
 - Present multiple grill-group findings simultaneously
+- Read other agents' `findings-*.json` from inside any observation agent
 
 **Always:**
-- Announce the reviewer agent being dispatched (and Codex, if `--codex`)
+- Announce each dispatched agent (and Codex, if `--codex`)
+- Dispatch observation agents in a single parallel batch
+- Apply the dedup rule deterministically
+- Preserve Codex findings (no dedup into other observations)
 - Provide a recommended answer with every grill-me question
 - Explore the codebase before asking user questions
 - Honor the user's "enough / move on" signal without pushback
