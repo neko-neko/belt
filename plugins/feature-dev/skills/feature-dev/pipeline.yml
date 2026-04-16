@@ -21,8 +21,12 @@ phases:
       - name: design_doc
         path: "docs/features/*/design.md"
         description: "Design document with explored context and test perspectives"
+      - name: design_notes
+        path: ".belt/runs/{run_id}/notes/phase-design.md"
+        description: "Phase narrative: decisions, concerns, directives, observations"
     gate:
       - file_exists: "docs/features/*/design.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-design.md"
     validate: ./criteria/design.md
     confirm: true
     max_retries: 3
@@ -69,12 +73,17 @@ phases:
     consumes:
       - design_doc
       - test_strategy
+      - design_notes
     produces:
       - name: plan_doc
         path: "docs/features/*/plan.md"
         description: "Task-level implementation plan (TDD)"
+      - name: plan_notes
+        path: ".belt/runs/{run_id}/notes/phase-plan.md"
+        description: "Phase narrative"
     gate:
       - file_exists: "docs/features/*/plan.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-plan.md"
     validate: ./criteria/plan.md
     confirm: true
     max_retries: 3
@@ -86,6 +95,14 @@ phases:
     consumes:
       - design_doc
       - plan_doc
+      - design_notes
+      - plan_notes
+    produces:
+      - name: execute_notes
+        path: ".belt/runs/{run_id}/notes/phase-execute.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-execute.md"
     validate: ./criteria/execute.md
     confirm: true
     max_retries: 3
@@ -93,12 +110,21 @@ phases:
   - id: code-review
     description: "Multi-perspective code review"
     invoke:
-      skill: /code-review:code-review
+      skill: /code-review
       args:
         codex: "args.codex"
     consumes:
       - design_doc
       - plan_doc
+      - design_notes
+      - plan_notes
+      - execute_notes
+    produces:
+      - name: code_review_notes
+        path: ".belt/runs/{run_id}/notes/phase-code-review.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-code-review.md"
     validate: ./criteria/code-review.md
     regate: [execute]
     confirm: true
@@ -108,19 +134,27 @@ phases:
     description: "Replay pre-defined scenarios via agent-browser"
     when: "args.e2e"
     invoke:
-      skill: /monkey-test:monkey-test
+      skill: /monkey-test
     consumes:
       - design_doc
       - test_strategy
       - scenarios
       - plan_doc
+      - design_notes
+      - plan_notes
+      - execute_notes
+      - code_review_notes
     produces:
       - name: monkey_test_report
         path: "docs/features/*/monkey-test-report.md"
       - name: monkey_test_results
         path: "docs/features/*/monkey-test-results.json"
+      - name: monkey_test_notes
+        path: ".belt/runs/{run_id}/notes/phase-monkey-test.md"
+        description: "Phase narrative"
     gate:
       - file_exists: "docs/features/*/monkey-test-report.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-monkey-test.md"
     validate: ./criteria/monkey-test.md
     confirm: true
     max_retries: 3
@@ -137,11 +171,20 @@ phases:
       - monkey_test_report
       - monkey_test_results
       - plan_doc
+      - design_notes
+      - plan_notes
+      - execute_notes
+      - code_review_notes
+      - monkey_test_notes
     produces:
       - name: dogfood_report
         path: "docs/features/*/dogfood-report/report.md"
+      - name: dogfood_notes
+        path: ".belt/runs/{run_id}/notes/phase-dogfood.md"
+        description: "Phase narrative"
     gate:
       - file_exists: "docs/features/*/dogfood-report/report.md"
+      - file_exists: ".belt/runs/{run_id}/notes/phase-dogfood.md"
     validate: ./criteria/dogfood.md
     confirm: true
     max_retries: 3
