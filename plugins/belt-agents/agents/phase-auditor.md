@@ -64,11 +64,11 @@ Read the done-criteria file. Parse frontmatter for `max_retries`.
 Merge Universal Criteria (from file) + Evidence-derived criteria (from Evidence Plan for matching activity_type). Evidence-derived criteria are all severity: blocker, verify_type: automated.
 
 ### Step 2b: Deferred Impact Verification
-Evidence Plan に E-DEFERRED-IMPACT が有効で、かつ review-fix アクティビティの場合:
-1. レビュー結果から deferred な impact findings を抽出する
-2. E-DEFERRED-IMPACT の claimed ファイルを読み取る
-3. 各延期 finding について、検証結果が「不一致」であれば severity: blocker の動的基準として追加する
-4. claimed ファイルが存在しない場合、blocker FAIL（collection 漏れ）として報告する
+When E-DEFERRED-IMPACT is enabled in the Evidence Plan and the activity is review-fix:
+1. Extract the deferred impact findings from the review results.
+2. Read the file claimed by E-DEFERRED-IMPACT.
+3. For each deferred finding, if the verification result does not match, add it as a dynamic severity: blocker criterion.
+4. If the claimed file does not exist, report a blocker FAIL (missed collection).
 
 ### Step 3: Evaluate Each Criterion
 For each criterion:
@@ -102,17 +102,17 @@ If a criterion has been `persisting` for 2 consecutive attempts with the same ro
 
 ### Step 6.5: Observation Collection
 
-Verdict 出力時に `observations[]` を必ず含めること。以下のルールに従う:
+Always include `observations[]` in the verdict output, following these rules:
 
-1. **PASS だが懸念あり**: `criteria_results[].status` が PASS でも、diagnosis に改善余地がある場合 → `observations[]` に記録
-2. **FAIL → Fix → PASS**: 修正で PASS になったが根本的な設計懸念が残る場合 → observation として残す
+1. **PASS with concerns**: If `criteria_results[].status` is PASS but the diagnosis notes room for improvement, record it in `observations[]`.
+2. **FAIL → Fix → PASS**: If a fix resulted in PASS but a fundamental design concern remains, keep it as an observation.
 3. **severity**:
-   - `quality`: 動作するが品質上の改善余地（テスト薄い、カバー間接的）
-   - `warning`: 下流フェーズで問題化するリスク（トレーサビリティ弱い、境界条件未検証）
-4. `observations` が空の場合は `"observations": []`（フィールド常時出力）
-5. フェーズあたり最大5件。超過時は severity: warning を quality より優先して保持
+   - `quality`: Works but has room for improvement (thin tests, indirect coverage).
+   - `warning`: Risk that will surface in downstream phases (weak traceability, unverified boundary conditions).
+4. When there are no observations, emit `"observations": []` — always include the field.
+5. Maximum five per phase. When over the limit, keep severity: warning entries in preference to quality entries.
 
-オーケストレーターがこの `observations` を `project-state.json` の `phase_observations[]` に蓄積する。phase-auditor 自身は project-state.json を直接書き換えない。
+The orchestrator accumulates `observations` into `phase_observations[]` in `project-state.json`. The phase-auditor itself never writes to `project-state.json` directly.
 
 ## Output Protocol
 
@@ -188,7 +188,7 @@ Return a single JSON object:
 - `PASS`: All `blocker` criteria have status `PASS`. Quality failures are recorded in `quality_warnings` but do NOT affect verdict.
 - `FAIL`: Any `blocker` criterion has status `FAIL`.
 - `PARTIAL` is not allowed in this schema unless the caller explicitly extends it. If the environment prevents execution, record that limitation in `diagnosis` / `evidence` and fail the affected blocker criterion unless the done-criteria explicitly permits claimed-only evidence.
-- `observations`: verdict に影響しない。PASS/FAIL いずれの場合も、品質所見があれば記録する。
+- `observations`: Do not affect the verdict. Record quality observations regardless of PASS or FAIL.
 
 ## Tool Access
 

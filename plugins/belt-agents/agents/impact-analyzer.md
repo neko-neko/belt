@@ -73,10 +73,10 @@ For the change target:
 
 ## Tool Usage
 
-- **LSP**: シンボル参照・定義元追跡（利用可能な場合優先）
-- **Grep**: 関数名・クラス名・変数名の参照箇所検索
-- **Read**: 呼び出し元のコンテキスト理解
-- **Glob**: 関連ファイルのパターン検索
+- **LSP**: Symbol references and definition lookup (prefer when available).
+- **Grep**: Search for function, class, and variable name references.
+- **Read**: Understand caller context.
+- **Glob**: Pattern search for related files.
 
 ## Output Format
 
