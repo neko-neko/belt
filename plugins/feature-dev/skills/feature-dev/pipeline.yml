@@ -110,7 +110,7 @@ phases:
   - id: code-review
     description: "Multi-perspective code review"
     invoke:
-      skill: /code-review
+      skill: /code-review:code-review
       args:
         codex: "args.codex"
     consumes:
@@ -134,7 +134,7 @@ phases:
     description: "Replay pre-defined scenarios via agent-browser"
     when: "args.e2e"
     invoke:
-      skill: /monkey-test
+      skill: /monkey-test:monkey-test
     consumes:
       - design_doc
       - test_strategy
