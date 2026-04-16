@@ -134,8 +134,8 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agents` | Base layer: 5 analysis agents (phase-auditor, code-explorer, code-architect, impact-analyzer, feature-implementer) + references |
-| `feature-dev` | 9-phase development pipeline (design → review → plan → execute → review → e2e → integrate) |
-| `bug-fix` | 8-phase debugging pipeline (rca → fix-plan → review → execute → review → e2e → integrate) |
+| `feature-dev` | 9-phase development pipeline (design → test-scenarios → spec-review → plan → execute → code-review → monkey-test → dogfood → integrate) |
+| `bug-fix` | 8-phase debugging pipeline (rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate) |
 | `code-review` | Multi-perspective code review (7 observations: quality / security / perf / test / ai-antipattern / impact / simplification) |
 | `spec-review` | Multi-perspective spec review (5 observations: requirements / design-judgment / feasibility / consistency / ui-design) |
 | `monkey-test` | Scripted E2E regression via agent-browser (Given/When/Then replay) |
