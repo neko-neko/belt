@@ -22,8 +22,9 @@ Review the diff to identify:
 
 ## Filtering
 
-- Do not report issues with confidence below 80%.
+- Do not report issues with confidence below 80%. Exclude speculation-based findings.
 - When the same pattern appears in multiple locations, consolidate into one finding with the occurrence count and a representative location.
+- Do not report stylistic preferences or subjective "this looks nicer" opinions. Only report project convention violations.
 
 ## Review Checklist
 
