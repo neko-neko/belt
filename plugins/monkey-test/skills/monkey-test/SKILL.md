@@ -1,10 +1,9 @@
 ---
 name: monkey-test
 description: >-
-  Replay pre-defined Given/When/Then scenarios via agent-browser. Designed for
-  feature-dev Phase 6. Consumes scenarios.yml and produces a human-readable
-  report plus machine-readable results.json. Reads design.md, test-strategy.md,
-  and plan.md as hints to resolve ambiguity and decide SKIP verdicts.
+  Replays Given/When/Then scenarios via agent-browser and emits human- plus
+  machine-readable reports. Use when running scripted E2E regression on a web
+  UI with pre-defined scenarios.
 allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*)
 user-invocable: true
 ---

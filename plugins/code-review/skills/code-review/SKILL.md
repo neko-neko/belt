@@ -1,9 +1,9 @@
 ---
 name: code-review
 description: >-
-  Multi-perspective code review via a single consolidated reviewer subagent.
-  7 observations: quality, security, performance, test, ai-antipattern, impact,
-  simplification. Diff-scoped. Optional Codex adversarial pass.
+  Reviews a diff across seven dimensions: quality, security, performance, tests,
+  AI anti-patterns, impact, and simplification. Use when code changes need
+  multi-perspective critique before merging. --codex adds an adversarial pass.
 argument-hint: "[--codex]"
 ---
 

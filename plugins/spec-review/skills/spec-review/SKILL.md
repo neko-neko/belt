@@ -1,9 +1,10 @@
 ---
 name: spec-review
 description: >-
-  Multi-perspective spec review via a single consolidated reviewer subagent.
-  5 observations: requirements, design-judgment, feasibility, consistency,
-  ui-design. Review → grill-me dialogue → selection → fix.
+  Reviews a spec across five dimensions: requirements, design judgment,
+  feasibility, consistency, and UI. Use when a design doc needs
+  multi-perspective critique before implementation, with findings driving a
+  grill-me dialogue.
 argument-hint: "[--codex]"
 ---
 

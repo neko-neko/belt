@@ -1,10 +1,9 @@
 ---
 name: test-scenarios
 description: >-
-  Generate a comprehensive test strategy (ISTQB test-design techniques + ISO 25010
-  quality characteristics) plus, when `--e2e` is true, an agent-browser-replayable
-  scenarios.yml in Given/When/Then YAML. Designed for feature-dev Phase 2. Reads a
-  design document and outputs artifacts under docs/features/<topic>/.
+  Generates an ISTQB + ISO 25010 test strategy, plus an agent-browser-replayable
+  Given/When/Then scenarios.yml when --e2e is set. Use when a feature design
+  needs a test plan or replayable E2E scenarios.
 user-invocable: true
 ---
 

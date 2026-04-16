@@ -1,8 +1,9 @@
 ---
 name: code-architect
 description: >-
-  既存アーキテクチャのパターン・規約・設計判断を抽出し、再利用候補と設計上の制約を
-  要約して返す。feature-dev Phase 1 の並列探索で使用。
+  Extracts architectural patterns, conventions, and design decisions from an
+  existing codebase. Use during parallel design exploration to inform a new
+  feature's architecture.
 memory: project
 effort: max
 ---

@@ -1,9 +1,10 @@
 ---
 name: bug-fix
 description: >-
-  Quality-gated debugging pipeline (8 phases). rca → fix-plan → plan-review →
-  execute → code-review → monkey-test (E2E scripted) → dogfood (E2E exploratory)
-  → integrate. --e2e enables monkey-test and dogfood.
+  Runs a quality-gated debugging pipeline with root-cause analysis, fix planning,
+  code review, and regression verification. Use when a bug needs structured
+  diagnosis and verified repair. --e2e adds browser-based regression tests;
+  --codex enables adversarial review.
 user-invocable: true
 argument-hint: "[--e2e] [--codex]"
 ---
@@ -11,6 +12,14 @@ argument-hint: "[--e2e] [--codex]"
 # bug-fix
 
 Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
+
+## Pipeline Overview
+
+```
+rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate
+```
+
+`monkey-test` and `dogfood` run only when `--e2e` is set.
 
 ## Args
 

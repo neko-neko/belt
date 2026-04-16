@@ -1,10 +1,10 @@
 ---
 name: feature-dev
 description: >-
-  Quality-gated development pipeline (9 phases). Design → test scenarios →
-  spec review → plan → execute → code review → monkey test (E2E scripted) →
-  dogfood (E2E exploratory) → integrate. Web UI testing phases are conditional
-  on --e2e.
+  Runs a quality-gated feature-development pipeline spanning design, test
+  strategy, spec review, implementation, and regression verification. Use when
+  building a new feature that needs a structured design-to-integration flow.
+  --e2e enables browser-based verification; --codex enables adversarial review.
 user-invocable: true
 argument-hint: "[--e2e] [--codex]"
 ---
@@ -12,6 +12,14 @@ argument-hint: "[--e2e] [--codex]"
 # feature-dev
 
 Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
+
+## Pipeline Overview
+
+```
+design → test-scenarios → spec-review → plan → execute → code-review → monkey-test → dogfood → integrate
+```
+
+`monkey-test` and `dogfood` run only when `--e2e` is set.
 
 ## Args
 

@@ -1,8 +1,9 @@
 ---
 name: code-explorer
 description: >-
-  指定された機能/領域のコードフローを entry point からデータ層まで完全にトレースし、
-  依存関係・パターン・制約を要約して返す。feature-dev Phase 1 の並列探索で使用。
+  Traces code flow end-to-end from entry point to data layer, summarizing
+  dependencies, patterns, and constraints. Use during parallel design
+  exploration to understand an existing feature.
 memory: project
 effort: max
 ---

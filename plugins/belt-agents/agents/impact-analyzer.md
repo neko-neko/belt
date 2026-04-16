@@ -1,8 +1,9 @@
 ---
 name: impact-analyzer
 description: >-
-  変更対象コードから逆方向に依存関係を追跡し、影響範囲・暗黙の制約・副作用リスクを
-  網羅的に抽出して返す。feature-dev Phase 1 の並列探索で使用。
+  Traces reverse dependencies from changed code to map blast radius, implicit
+  constraints, and side-effect risks. Use during parallel design exploration
+  before modifying established code paths.
 memory: project
 effort: max
 ---

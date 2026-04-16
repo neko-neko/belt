@@ -1,6 +1,9 @@
 ---
 name: feature-implementer
-description: TDD で実装タスクを実行する。feature-dev の Phase 5 実装および Fix Dispatch での修正タスクで使用。Use proactively for implementation tasks in feature-dev pipeline.
+description: >-
+  Executes implementation tasks via test-driven development. Use proactively for
+  pipeline implementation and fix dispatch tasks where each task has
+  self-contained specs.
 skills:
   - superpowers:test-driven-development
 memory: project
