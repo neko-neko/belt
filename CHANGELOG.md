@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.0] - 2026-04-17
+
 ### Added
 - Initial public release of belt workflow engine for LLM-driven Agent Skills.
 - `belt lint` CLI: static validator for belt YAML pipelines. Detects duplicate phase IDs, unknown `regate` targets, undefined args in `when:`, missing descriptions, unresolvable `uses:` / `invoke.pipeline:` references, artifact flow violations, and sub-pipeline expansion failures.
@@ -24,3 +26,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- next-url -->
 [Unreleased]: https://github.com/neko-neko/belt/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/neko-neko/belt/releases/tag/v0.1.0
