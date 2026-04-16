@@ -80,6 +80,19 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 - **INVOKE 2**: Prompt user for mode (A: `wt merge` / B: `gh pr create`) and
   execute accordingly via `/worktrunk`.
 
+## Narrative Notes
+
+以下 6 phase は `/clear` 後の context 復元のため narrative note を produce する (`.belt/runs/{run_id}/notes/phase-<id>.md`):
+
+- **design** / **plan** / **execute** / **code-review**
+- **monkey-test** (`--e2e`) / **dogfood** (`--e2e`)
+
+各 note は 4 section (`## Decisions` / `## Concerns` / `## Directives` / `## Observations`) と minimal frontmatter (`phase`, `run_id`) を含む。
+
+規約詳細: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
+
+`/clear` 自体は user 判断（Claude Code runtime 制約で自動化不可）。重い phase 完了直後（例: design / execute / code-review 後）に context が膨れた場合の選択肢として narrative を活用できる。
+
 ## Red Flags
 
 - **Never skip the Phase 1 supplement load**: parallel exploration and the
@@ -89,6 +102,7 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
   `references/*-supplement.md`.
 - **Never hand-edit files under `docs/features/<topic>/`**: they are
   phase-produced; manual edits break belt's phase-start mtime filter.
+- **Never leave narrative note 4 sections blank**: gate は file_exists のみで空 section も通過するが、下流 consume で context 復元不能になる。最低限 `(none)` placeholder を置き、heading は必ず保持。
 
 ## References
 
@@ -98,3 +112,4 @@ Belt pipeline for quality-gated development. 9 phases driven by belt-agent.
 - `./references/monkey-test-supplement.md` — Phase 7 context injection
 - `./references/dogfood-supplement.md` — Phase 8 overrides and context injection
 - `./references/worktrunk-supplement.md` — Phase 9 A/B choice logic
+- `plugins/belt-agents/references/narrative-convention.md` — narrative note schema (shared with bug-fix)
