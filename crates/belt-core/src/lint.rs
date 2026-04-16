@@ -1,7 +1,6 @@
 use crate::error::{BeltError, BeltResult};
 use crate::expander::expand_pipeline;
 use crate::model::{ArtifactRef, GateCheck, Invoker, Pipeline, ValidationSource};
-use crate::parser::parse_pipeline;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -28,13 +27,42 @@ pub struct LintDiagnostic {
 pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     let mut diagnostics = Vec::new();
 
-    // Phase 1: Parse
-    let pipeline = match parse_pipeline(path) {
+    // Phase 0: Read the YAML source once, then run the raw-YAML lint for
+    // obsolete `invoke.agent` / `invoke.agents` / `invoke.iterations` keys
+    // BEFORE feeding the typed parser. Without this ordering the user sees
+    // the cryptic serde untagged-enum error (e.g. "data did not match any
+    // variant of untagged enum Invoker") instead of the migration hint.
+    // The string is reused below for typed deserialisation so this is a
+    // single read.
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => {
+            return Err(BeltError::FileNotFound {
+                path: path.display().to_string(),
+            });
+        }
+    };
+
+    // Raw-YAML obsolete-key lint: short-circuits with an Error diagnostic
+    // so the migration hint is the first thing the user sees. Further
+    // structural lints do not run because the typed parser would fail
+    // anyway, and re-reporting the serde error on top of the hint would
+    // only add noise.
+    if let Err(e) = lint_raw_pipeline_yaml(&content) {
+        diagnostics.push(LintDiagnostic {
+            severity: Severity::Error,
+            message: e.to_string(),
+        });
+        return Ok(diagnostics);
+    }
+
+    // Phase 1: Parse (reuse the already-read content)
+    let pipeline: Pipeline = match serde_saphyr::from_str(&content) {
         Ok(p) => p,
         Err(e) => {
             diagnostics.push(LintDiagnostic {
                 severity: Severity::Error,
-                message: format!("parse error: {e}"),
+                message: format!("parse error: YAML parse error: {e}"),
             });
             return Ok(diagnostics);
         }

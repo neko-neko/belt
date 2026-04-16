@@ -876,3 +876,34 @@ phases:
         "lint message must mention iterations removal; got: {message}"
     );
 }
+
+/// CLI-path regression: lint_pipeline (the entry point called by `belt lint`)
+/// must surface the migration-hint diagnostic for invoke.agent, not the
+/// generic serde untagged-enum error.
+#[test]
+fn lint_pipeline_surfaces_invoke_agent_migration_hint() {
+    use std::io::Write;
+    let yaml = r#"
+name: p
+version: 1
+phases:
+  - id: x
+    invoke:
+      agent: foo
+"#;
+    let mut tmp = tempfile::NamedTempFile::new().expect("tempfile");
+    tmp.write_all(yaml.as_bytes()).expect("write");
+    let result = belt_core::lint::lint_pipeline(tmp.path());
+    // Adjust assertion to match the actual return shape: either an Err
+    // whose Display contains "invoke.agent" + "no longer supported", OR
+    // a diagnostic collection containing an Error-severity entry with
+    // that message.
+    let rendered = match result {
+        Err(e) => format!("{e}"),
+        Ok(diagnostics) => format!("{diagnostics:?}"),
+    };
+    assert!(
+        rendered.contains("invoke.agent") && rendered.contains("no longer supported"),
+        "lint_pipeline must surface the raw-YAML migration hint; got: {rendered}"
+    );
+}
