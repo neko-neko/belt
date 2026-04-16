@@ -2,5 +2,5 @@
   "name": "feature-dev",
   "description": "Quality-gated 9-phase development pipeline (design → test-scenarios → spec-review → plan → execute → code-review → monkey-test → dogfood → integrate)",
   "version": "0.1.0",
-  "author": "neko-neko"
+  "author": { "name": "neko-neko" }
 }

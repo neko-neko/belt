@@ -2,5 +2,5 @@
   "name": "code-review",
   "description": "Multi-perspective code review (7 observations: quality, security, performance, test, ai-antipattern, impact, simplification) via consolidated code-reviewer agent",
   "version": "0.1.0",
-  "author": "neko-neko"
+  "author": { "name": "neko-neko" }
 }
