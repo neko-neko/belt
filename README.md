@@ -17,6 +17,9 @@ Pipelines are statically linted with `belt lint` before any LLM run, so
 structural errors — missing phase IDs, invalid gate checks, broken `uses:`
 references — never reach execution.
 
+When context grows polluted, a fresh agent can resume from a prior run's
+gated outputs without inheriting its trial-and-error trace.
+
 ## Example
 
 ```yaml
@@ -119,6 +122,39 @@ directories — enough for a new LLM session to resume work without prior contex
   ]
 }
 ```
+
+## Continuity
+
+Long LLM sessions accumulate context that pollutes reasoning. Even with
+summary compaction, prior failed attempts bias the next try. Sometimes you
+want a fresh agent that has seen only what matters — not a long-memory one
+that has seen everything.
+
+belt enables this in three layers:
+
+- **Per-command neutrality** — every `belt-agent` call works from a cold
+  start. No conversation history is required; the run state on disk is the
+  source of truth.
+- **Narrative artifacts** — phase outputs are deterministic files protected
+  by gates, not LLM memory. A new session reads them; it does not
+  reconstruct them.
+- **Cross-run inheritance** — `belt-agent init --inherits-from <run_id>`
+  lets a new run consume a prior run's artifacts via `belt://` URIs:
+  - `belt://latest/<pipeline>/<path>` — most recent COMPLETED run on the
+    current branch
+  - `belt://workspace/<branch>/latest/<pipeline>/<path>` — branch-scoped
+    variant
+  - `belt://run/<run_id>/<path>` — explicit run reference
+
+A typical use case: a long bug investigation produces `rca.md` and stops.
+A fresh agent later picks up the conclusions without inheriting the
+original trial-and-error trace:
+
+```
+belt-agent init bug-fix.yml --inherits-from <prior-run-id>
+```
+
+This is `/clear` that keeps the conclusions.
 
 ## Key Concepts
 
