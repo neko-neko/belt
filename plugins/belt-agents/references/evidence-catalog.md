@@ -1,218 +1,218 @@
 ---
 name: evidence-catalog
-description: エビデンスカタログ。Audit Agent が Evidence Plan 生成時に参照する全エビデンス種別と適用条件の定義。
+description: Evidence catalog. Defines all evidence types and applicability conditions that the Audit Agent references when generating an Evidence Plan.
 ---
 
 # Evidence Catalog
 
-Evidence Plan 生成時に Audit Agent が参照するカタログ。各エビデンスの適用条件は observable な事実（glob/grep で検証可能）に基づく。
+Catalog referenced by the Audit Agent during Evidence Plan generation. Each evidence item's applicability is based on observable facts (verifiable with glob/grep).
 
 ## Activity Types
 
 | Activity | Description |
 |----------|------------|
-| implementation | コード実装を行うステップ |
-| investigation | 根本原因の調査・仮説検証を行うステップ |
-| smoke-test | 動作確認を行うステップ |
-| review-fix | レビュー指摘の修正を行うステップ |
-| test-fix | テスト追加/修正を行うステップ |
-| doc-maintenance | ドキュメントの監査・更新を行うステップ |
-| integration | コードの統合を行うステップ |
+| implementation | A step that performs code implementation |
+| investigation | A step that investigates root causes or tests hypotheses |
+| smoke-test | A step that confirms runtime behavior |
+| review-fix | A step that addresses review findings |
+| test-fix | A step that adds or modifies tests |
+| doc-maintenance | A step that audits or updates documentation |
+| integration | A step that integrates code |
 
 ## Evidence Layers
 
-- **Claimed (Layer 1)**: Executor が収集・保存するファイル。「こうなりました」の記録。
-- **Verified (Layer 2)**: Audit Agent が独立に確認する検証。「本当にそうなっているか」の検証。
+- **Claimed (Layer 1)**: Files the Executor collects and stores — "this is what happened" records.
+- **Verified (Layer 2)**: Independent checks performed by the Audit Agent — "does it really hold" verification.
 
-## Universal（全プロジェクト共通）
+## Universal (common to all projects)
 
-Universal エビデンスは `condition: always` であり、全プロジェクトで収集可能であることを前提とする。テストフレームワーク未構成（E-TEST）やビルドシステム不在（E-BUILD）等で収集不能な場合、Audit Agent はその項目を blocker FAIL として扱う。
+Universal evidence is `condition: always` and is assumed collectable across all projects. When collection is impossible (for example, no test framework configured for E-TEST or no build system for E-BUILD), the Audit Agent treats that item as a blocker FAIL.
 
-### E-TEST: テスト実行ログ
+### E-TEST: Test execution log
 - **applies_to**: [implementation, investigation, review-fix, test-fix]
 - **condition**: always
 - **claimed**: `artifacts/test-results/phase-{N}-test.log`
-- **verified**: テストコマンドを自ら再実行し、結果を照合
+- **verified**: Re-run the test command independently and compare results.
 - **required_capabilities**: [bash]
-- **collection**: テスト実行コマンドの stdout/stderr をファイルにリダイレクト
+- **collection**: Redirect the test command's stdout/stderr to the file.
 
-### E-BUILD: ビルドログ
+### E-BUILD: Build log
 - **applies_to**: [implementation]
 - **condition**: always
 - **claimed**: `artifacts/build/phase-{N}-build.log`
-- **verified**: ビルドコマンドを自ら再実行し exit code 0 を確認
+- **verified**: Re-run the build command independently and confirm exit code 0.
 - **required_capabilities**: [bash]
-- **collection**: ビルドコマンドの stdout/stderr をファイルにリダイレクト
+- **collection**: Redirect the build command's stdout/stderr to the file.
 
-### E-LINT: lint/型チェックログ
+### E-LINT: Lint / type-check log
 - **applies_to**: [implementation, review-fix]
 - **condition**: always
 - **claimed**: `artifacts/lint/phase-{N}-lint.log`
-- **verified**: linter を自ら再実行し結果を照合
+- **verified**: Re-run the linter independently and compare results.
 - **required_capabilities**: [bash]
-- **collection**: linter の stdout/stderr をファイルにリダイレクト
+- **collection**: Redirect the linter's stdout/stderr to the file.
 
-### E-REVIEW: レビュー結果
+### E-REVIEW: Review results
 - **applies_to**: [review-fix, test-fix]
 - **condition**: always
 - **claimed**: `artifacts/reviews/phase-{N}-review.json`
-- **verified**: N/A（レビュー結果自体の再実行は非現実的）
+- **verified**: N/A (re-running a review is impractical).
 - **required_capabilities**: []
-- **collection**: レビューエージェントの出力を JSON に集約して保存
+- **collection**: Aggregate review agent output into JSON and save.
 
-### E-DIFF: git diff スナップショット
+### E-DIFF: git diff snapshot
 - **applies_to**: [implementation, investigation, review-fix, test-fix]
 - **condition**: always
 - **claimed**: `artifacts/diff/phase-{N}.diff`
-- **verified**: `git diff` を自ら再取得し一致を確認
+- **verified**: Re-obtain `git diff` independently and confirm it matches.
 - **required_capabilities**: [bash]
 - **collection**: `git diff > artifacts/diff/phase-{N}.diff`
 
-### E-TRACE: トレーサビリティマトリクス
+### E-TRACE: Traceability matrix
 - **applies_to**: [implementation, investigation]
 - **condition**: always
 - **claimed**: `artifacts/traceability/phase-{N}-trace.md`
-- **verified**: 設計書要件と実装ファイルの対応を独立に検証
+- **verified**: Independently verify that spec requirements map to implementation files.
 - **required_capabilities**: [bash]
-- **collection**: 設計書の要件リストと実装ファイルの対応表を生成
+- **collection**: Generate a mapping table between the spec's requirement list and implementation files.
 
-## Conditional（プロジェクト特性で有効化）
+## Conditional (enabled based on project characteristics)
 
-### E-SCREENSHOT: 画面スクリーンショット
+### E-SCREENSHOT: Screen screenshots
 - **applies_to**: [smoke-test]
 - **condition**:
   - require_all:
-    - `glob("**/*.{html,jsx,tsx,vue,svelte}")` の結果が1件以上
-    - 設計書に「画面」「ページ」「UI」「コンポーネント」のいずれかの記述がある
+    - `glob("**/*.{html,jsx,tsx,vue,svelte}")` returns 1 or more matches
+    - The spec mentions any of "screen", "page", "UI", or "component"
 - **claimed**: `artifacts/smoke-test/screenshots/{screen}_{state}.png`
-- **verified**: 同じ URL にブラウザでアクセスしページが表示されるか確認
+- **verified**: Access the same URL in a browser and confirm the page renders.
 - **required_capabilities**: [browser-automation]
 - **variants**: [desktop, mobile]
 - **if_unavailable**: skip_with_warning
-- **collection**: ブラウザ自動化ツールでスクリーンショットを撮影
+- **collection**: Capture screenshots using a browser-automation tool.
 
-### E-SCREENSHOT-MOBILE: モバイルスクリーンショット
+### E-SCREENSHOT-MOBILE: Mobile screenshots
 - **applies_to**: [smoke-test]
 - **condition**:
   - require_all:
-    - E-SCREENSHOT が有効
-    - 設計書に「responsive」「モバイル」「mobile」のいずれかの記述がある
+    - E-SCREENSHOT is enabled
+    - The spec mentions "responsive" or "mobile"
 - **claimed**: `artifacts/smoke-test/screenshots/{screen}_{state}_mobile.png`
-- **verified**: モバイルビューポート（≤428px幅）でアクセスし表示確認
+- **verified**: Access with a mobile viewport (≤428px wide) and confirm rendering.
 - **required_capabilities**: [browser-automation]
 - **if_unavailable**: skip_with_warning
-- **collection**: モバイルビューポートでスクリーンショットを撮影
+- **collection**: Capture screenshots using a mobile viewport.
 
-### E-API-LOG: API レスポンスログ
+### E-API-LOG: API response log
 - **applies_to**: [implementation, investigation, smoke-test]
 - **condition**:
-  - `grep -r "router\|app\.\(get\|post\|put\|delete\)\|@app\.route\|@router" **/*.{ts,js,py,go,rb}` の結果が1件以上
+  - `grep -r "router\|app\.\(get\|post\|put\|delete\)\|@app\.route\|@router" **/*.{ts,js,py,go,rb}` returns 1 or more matches
 - **claimed**: `artifacts/api/phase-{N}-api.log`
-- **verified**: エンドポイントに HTTP リクエストを送信しレスポンスを確認
+- **verified**: Send an HTTP request to the endpoint and confirm the response.
 - **required_capabilities**: [bash]
 - **if_unavailable**: skip_with_warning
-- **collection**: curl/httpie でエンドポイントを叩き結果をログに保存
+- **collection**: Hit the endpoint with curl or httpie and save the result to the log.
 
-### E-MIGRATION: DB マイグレーションログ
+### E-MIGRATION: DB migration log
 - **applies_to**: [implementation]
 - **condition**:
-  - `glob("**/migrations/**/*")` または `glob("**/migrate/**/*")` の結果が1件以上
+  - `glob("**/migrations/**/*")` or `glob("**/migrate/**/*")` returns 1 or more matches
 - **claimed**: `artifacts/migration/phase-{N}-migration.log`
-- **verified**: DB に接続しマイグレーション対象のテーブル/カラムが存在するか確認
+- **verified**: Connect to the DB and confirm that the migration's target tables/columns exist.
 - **required_capabilities**: [database-access]
 - **if_unavailable**: manual_fallback
-- **collection**: マイグレーションコマンドの出力をログに保存
+- **collection**: Save the migration command's output to the log.
 
-### E-PERF: パフォーマンスメトリクス
+### E-PERF: Performance metrics
 - **applies_to**: [smoke-test]
 - **condition**:
-  - 設計書に「性能」「パフォーマンス」「performance」「latency」「throughput」のいずれかの記述がある
+  - The spec mentions any of "performance", "latency", or "throughput"
 - **claimed**: `artifacts/perf/phase-{N}-perf.log`
-- **verified**: 負荷テストを自ら再実行し結果を照合
+- **verified**: Re-run the load test independently and compare results.
 - **required_capabilities**: [bash]
 - **if_unavailable**: skip_with_warning
-- **collection**: 負荷テストツールの出力をログに保存
+- **collection**: Save the load-testing tool's output to the log.
 
-### E-CONSOLE: ブラウザコンソールログ
+### E-CONSOLE: Browser console log
 - **applies_to**: [smoke-test]
 - **condition**:
-  - E-SCREENSHOT が有効
+  - E-SCREENSHOT is enabled
 - **claimed**: `artifacts/smoke-test/console.log`
-- **verified**: ページアクセス時のコンソール出力を取得し error レベルがないか確認
+- **verified**: Capture console output during page access and confirm no error-level entries.
 - **required_capabilities**: [browser-automation]
 - **if_unavailable**: skip_with_warning
-- **collection**: ブラウザ自動化ツールでコンソールログをキャプチャ
+- **collection**: Capture console logs using a browser-automation tool.
 
-### E-DEFERRED-IMPACT: 延期 impact findings の実害検証
+### E-DEFERRED-IMPACT: Deferred impact findings — actual harm verification
 - **applies_to**: [review-fix]
 - **condition**:
   - require_all:
-    - レビュー結果（`artifacts/reviews/phase-{N}-review.json`）に category: code-impact かつ user_decision: deferred の findings が1件以上存在
+    - The review result (`artifacts/reviews/phase-{N}-review.json`) contains 1 or more findings with category: code-impact and user_decision: deferred
 - **claimed**: `artifacts/reviews/phase-{N}-deferred-impact-verification.md`
-- **verified**: 延期 findings で指摘されたコンシューマを実際に操作し、不整合がないか確認
+- **verified**: Actually exercise the consumer named by each deferred finding and confirm no inconsistency.
 - **required_capabilities**: [bash, browser-automation]
 - **if_unavailable**: manual_fallback
-- **collection**: 延期した impact findings それぞれについて、(1) 指摘内容の要約、(2) 対となるコンシューマで同一指標を取得した結果、(3) 整合性の判定（一致/不一致）を記録
+- **collection**: For each deferred impact finding, record (1) a summary of the finding, (2) the result of obtaining the same metric from the paired consumer, and (3) the consistency verdict (match / mismatch).
 
-## Doc Maintenance（doc-audit 固有）
+## Doc Maintenance (specific to doc-audit)
 
-### E-DOC-REPORT: doc-audit 統合レポート
+### E-DOC-REPORT: doc-audit integrated report
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/doc-audit/phase-{N}-report.json`
-- **verified**: レポート JSON の構造検証（必須フィールド: categories, findings, summary）
+- **verified**: Structural validation of the report JSON (required fields: categories, findings, summary).
 - **required_capabilities**: [bash]
-- **collection**: doc-audit スキルの統合レポート出力を JSON として保存
+- **collection**: Save the doc-audit skill's integrated report output as JSON.
 
-### E-DOC-DIFF: ドキュメント変更 diff
+### E-DOC-DIFF: Documentation change diff
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/diff/phase-{N}-doc.diff`
-- **verified**: `git diff` を自ら再取得し、md ファイルの変更が含まれていることを確認
+- **verified**: Re-obtain `git diff` independently and confirm that .md file changes are included.
 - **required_capabilities**: [bash]
 - **collection**: `git diff -- '*.md' > artifacts/diff/phase-{N}-doc.diff`
 
-### E-DOC-SCRIPT: doc-audit.sh 実行ログ
+### E-DOC-SCRIPT: doc-audit.sh execution log
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/doc-audit/phase-{N}-script-output.json`
-- **verified**: doc-audit.sh を自ら再実行し結果を照合
+- **verified**: Re-run doc-audit.sh independently and compare results.
 - **required_capabilities**: [bash]
 - **collection**: `doc-audit.sh --full --json > artifacts/doc-audit/phase-{N}-script-output.json`
 
-### E-DOC-CHECK: doc-check 実行ログ
+### E-DOC-CHECK: doc-check execution log
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/doc-audit/phase-{N}-doc-check.log`
-- **verified**: doc-check の終了コードを確認（0 = 影響なし、またはユーザー承認済み）
+- **verified**: Confirm the doc-check exit code (0 = no impact, or user-approved).
 - **required_capabilities**: [bash]
-- **collection**: doc-check 実行の stdout/stderr をファイルにリダイレクト
+- **collection**: Redirect doc-check's stdout/stderr to the file.
 
-### E-DOC-EXPLORATION: 探索エージェント結果
+### E-DOC-EXPLORATION: Exploration agent results
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/doc-audit/phase-{N}-exploration.json`
-- **verified**: N/A（エージェント出力の再実行は非現実的）
+- **verified**: N/A (re-running agent output is impractical).
 - **required_capabilities**: []
-- **collection**: 探索エージェント（code-explorer, code-architect, impact-analyzer）の統合出力を JSON に集約
+- **collection**: Aggregate the integrated output of exploration agents (code-explorer, code-architect, impact-analyzer) as JSON.
 
-### E-DOC-FINDINGS: finding 処理記録
+### E-DOC-FINDINGS: Finding handling records
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/doc-audit/phase-{N}-findings.json`
-- **verified**: 各 finding の status が有効値（fixed, skipped, deleted, linked, updated）であり、skipped にはユーザー承認記録があることを確認
+- **verified**: Confirm each finding's status is a valid value (fixed, skipped, deleted, linked, updated) and that skipped entries carry a user-approval record.
 - **required_capabilities**: [bash]
-- **collection**: 各 finding の処理結果（status, user_decision）を JSON 配列として保存
+- **collection**: Save each finding's processing result (status, user_decision) as a JSON array.
 
-### E-DOC-VERIFY: ドキュメント整合性検証結果
+### E-DOC-VERIFY: Documentation consistency verification result
 - **applies_to**: [doc-maintenance]
 - **condition**: always
 - **claimed**: `artifacts/doc-audit/phase-{N}-verify.json`
-- **verified**: doc-audit.sh を再実行し、broken_deps=0, dead_links=0 を確認
+- **verified**: Re-run doc-audit.sh and confirm broken_deps=0 and dead_links=0.
 - **required_capabilities**: [bash]
-- **collection**: 修正後の doc-audit.sh 再実行結果を JSON として保存
+- **collection**: Save the post-fix doc-audit.sh re-run result as JSON.
 
 ## if_unavailable Policies
 
-- **skip_with_warning**: エビデンスを除外し、ユーザーに警告。verdict に影響しない
-- **manual_fallback**: ユーザーに手動収集を依頼。PAUSE してユーザーがエビデンスを提供するのを待つ
+- **skip_with_warning**: Exclude the evidence and warn the user. Does not affect the verdict.
+- **manual_fallback**: Ask the user to collect it manually. PAUSE and wait for the user to provide the evidence.
