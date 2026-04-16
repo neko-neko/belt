@@ -90,16 +90,16 @@ design → test-scenarios → spec-review → plan → execute → code-review �
 
 ## Narrative Notes
 
-以下 6 phase は `/clear` 後の context 復元のため narrative note を produce する (`.belt/runs/{run_id}/notes/phase-<id>.md`):
+The following six phases produce a narrative note so context can be restored after `/clear` (`.belt/runs/{run_id}/notes/phase-<id>.md`):
 
 - **design** / **plan** / **execute** / **code-review**
 - **monkey-test** (`--e2e`) / **dogfood** (`--e2e`)
 
-各 note は 4 section (`## Decisions` / `## Concerns` / `## Directives` / `## Observations`) と minimal frontmatter (`phase`, `run_id`) を含む。
+Each note contains four sections (`## Decisions` / `## Concerns` / `## Directives` / `## Observations`) and minimal frontmatter (`phase`, `run_id`).
 
-規約詳細: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
+Full convention: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
 
-`/clear` 自体は user 判断（Claude Code runtime 制約で自動化不可）。重い phase 完了直後（例: design / execute / code-review 後）に context が膨れた場合の選択肢として narrative を活用できる。
+`/clear` itself is the user's call — Claude Code runtime constraints prevent automation. Use narrative notes as an option when context has grown large after a heavy phase (for example, right after design, execute, or code-review).
 
 ## Red Flags
 
@@ -110,7 +110,7 @@ design → test-scenarios → spec-review → plan → execute → code-review �
   `references/*-supplement.md`.
 - **Never hand-edit files under `docs/features/<topic>/`**: they are
   phase-produced; manual edits break belt's phase-start mtime filter.
-- **Never leave narrative note 4 sections blank**: gate は file_exists のみで空 section も通過するが、下流 consume で context 復元不能になる。最低限 `(none)` placeholder を置き、heading は必ず保持。
+- **Never leave the narrative note's four sections blank**: the gate is `file_exists` only and empty sections still pass, but downstream consumers cannot restore context. Use at least `(none)` as a placeholder and always keep the heading.
 
 ## References
 

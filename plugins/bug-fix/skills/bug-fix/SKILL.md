@@ -46,9 +46,10 @@ rca → fix-plan → fix-plan-review → execute → code-review → monkey-test
 
 - **INVOKE**: Skill tool `/spec-review:spec-review` with `codex` passed through.
 - No supplement required; the skill is self-contained.
-- Note: spec-review を fix-plan レビューに流用する。`design-judgment` 観点の
-  grill-me は原則発動しない (設計判断は rca / fix-plan で決定済みのため)。
-  発動した場合は上流 (rca / fix-plan) の見直しサインとして扱う。
+- Note: spec-review is reused for fix-plan review. The grill-me prompt under
+  the `design-judgment` observation does not fire by default (design decisions
+  are already settled in rca / fix-plan). If it does fire, treat it as a signal
+  that upstream phases (rca / fix-plan) need to be revisited.
 
 ### Phase 4: execute
 
@@ -80,32 +81,32 @@ rca → fix-plan → fix-plan-review → execute → code-review → monkey-test
 
 ## Narrative Notes
 
-以下 6 phase は `/clear` 後の context 復元のため narrative note を produce する (`.belt/runs/{run_id}/notes/phase-<id>.md`):
+The following six phases produce a narrative note so context can be restored after `/clear` (`.belt/runs/{run_id}/notes/phase-<id>.md`):
 
 - **rca** / **fix-plan** / **execute** / **code-review**
 - **monkey-test** (`--e2e`) / **dogfood** (`--e2e`)
 
-各 note は 4 section (`## Decisions` / `## Concerns` / `## Directives` / `## Observations`) と minimal frontmatter (`phase`, `run_id`) を含む。
+Each note contains four sections (`## Decisions` / `## Concerns` / `## Directives` / `## Observations`) and minimal frontmatter (`phase`, `run_id`).
 
-規約詳細: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
+Full convention: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
 
-`/clear` 自体は user 判断（Claude Code runtime 制約で自動化不可）。重い phase 完了直後（例: rca / execute 後）に context が膨れた場合の選択肢として narrative を活用できる。
+`/clear` itself is the user's call — Claude Code runtime constraints prevent automation. Use narrative notes as an option when context has grown large after a heavy phase (for example, right after rca or execute).
 
 ## Red Flags
 
 - **Never skip Phase 1 (rca)**: root cause must precede fix. "Fix first" is anti-pattern.
-- **Never skip Phase 1 / 2 / 6 / 7 / 8 の supplement load**: bug-fix 固有 override が inject されず drift 発生.
-- **Never delegate root cause synthesis to subagents**: parallel exploration results は orchestrator が再構築.
+- **Never skip the supplement load in Phases 1 / 2 / 6 / 7 / 8**: without bug-fix specific overrides injected, behavior drifts.
+- **Never delegate root cause synthesis to subagents**: the orchestrator must reconstruct parallel exploration results.
 - **Never proceed without a failing reproduction test**: RCA-05 blocker.
-- **Never filter or omit review findings**: `/code-review:code-review`, `/spec-review:spec-review` の triage は user 責務.
-- **Never bypass the Phase 8 A/B choice**: merge-vs-PR は user 決定.
-- **Never hand-edit files under `docs/plans/<topic>-*`**: phase-produced; manual edits break belt の phase-start mtime filter.
-- **Never modify the consumed global skills**: override は `references/*-supplement.md` 経由のみ.
-- **Never leave narrative note 4 sections blank**: gate は file_exists のみで空 section も通過するが、下流 consume で context 復元不能になる。最低限 `(none)` placeholder を置き、heading は必ず保持。
+- **Never filter or omit review findings**: triage of `/code-review:code-review` and `/spec-review:spec-review` output is the user's responsibility.
+- **Never bypass the Phase 8 A/B choice**: the merge-vs-PR decision is always the user's.
+- **Never hand-edit files under `docs/plans/<topic>-*`**: they are phase-produced; manual edits break belt's phase-start mtime filter.
+- **Never modify the consumed global skills**: overrides go through `references/*-supplement.md` only.
+- **Never leave the narrative note's four sections blank**: the gate is `file_exists` only and empty sections still pass, but downstream consumers cannot restore context. Use at least `(none)` as a placeholder and always keep the heading.
 
 ## References
 
-- `./references/path-convention.md` — `docs/plans/YYYY-MM-DD-<topic>-*` 命名 SSOT
+- `./references/path-convention.md` — SSOT for `docs/plans/YYYY-MM-DD-<topic>-*` naming
 - `./references/rca-supplement.md` — Phase 1 override
 - `./references/fix-plan-supplement.md` — Phase 2 override
 - `./references/monkey-test-supplement.md` — Phase 6 override
