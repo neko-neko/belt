@@ -21,3 +21,9 @@ phase: plan
   cited by at least one task.
 - **PLAN-07**: Every input parameter surfaced in `test-strategy.md` has
   Given/When/Then coverage for: normal, boundary, abnormal, state-transition.
+
+- **PLAN-08**: Narrative note at `.belt/runs/<run_id>/notes/phase-plan.md` exists,
+  contains frontmatter (`phase: plan`, `run_id: <run_id>`), and all 4 required
+  sections. Decisions records task decomposition rationale and granularity choices.
+  Directives records constraints for execute phase (e.g. commit granularity rules,
+  test-first enforcement). See `plugins/belt-agents/references/narrative-convention.md`.

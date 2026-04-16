@@ -20,3 +20,9 @@ phase: monkey-test
   expected-vs-actual and at least one screenshot.
 - **MONKEY-05**: `SKIP` entries include a non-empty `skip_reason` referencing
   the `plan.md` task that is incomplete.
+
+- **MONKEY-06**: Narrative note at `.belt/runs/<run_id>/notes/phase-monkey-test.md`
+  exists with required frontmatter and 4 sections. Observations records scenario
+  replay results (pass/fail per scenario). Concerns flags scenarios that revealed
+  unexpected behavior worth dogfood follow-up. Directives carries forward regression
+  hotspots. See `plugins/belt-agents/references/narrative-convention.md`.

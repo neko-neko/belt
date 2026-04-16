@@ -24,3 +24,9 @@ phase: dogfood
 - **DOGFOOD-05**: The report's `Summary` section counts (new issues by
   severity, known issues re-encountered, must-verify coverage) are
   consistent with the detail sections.
+
+- **DOGFOOD-06**: Narrative note at `.belt/runs/<run_id>/notes/phase-dogfood.md`
+  exists with required frontmatter and 4 sections. Observations records exploratory
+  findings beyond scripted scenarios. Concerns flags unresolved risks for integrate
+  phase. Directives carries forward any must-verify items discovered during
+  exploration. See `plugins/belt-agents/references/narrative-convention.md`.
