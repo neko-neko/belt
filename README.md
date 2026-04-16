@@ -1,7 +1,8 @@
 # belt
 
-A lightweight workflow engine for AI agents. Define deterministic state machines
-in YAML, drive them idempotently from any LLM.
+A workflow engine for LLM-driven Agent Skills. Declare deterministic state
+machines in YAML, drive them idempotently from any LLM, and lint them
+statically before they ever reach execution.
 
 ## Why belt?
 
@@ -11,6 +12,10 @@ pipeline can cost ~900 lines of prompt just to maintain structure. belt moves
 the deterministic control plane into YAML: the agent calls `belt-agent next`
 to receive one phase at a time, executes it, and calls `belt-agent verify`
 to check gates. The pipeline definition never enters the context window.
+
+Pipelines are statically linted with `belt lint` before any LLM run, so
+structural errors — missing phase IDs, invalid gate checks, broken `uses:`
+references — never reach execution.
 
 ## Example
 
@@ -47,6 +52,17 @@ phases:
     confirm: true
 ```
 
+Lint it before handing it to the agent:
+
+```
+$ belt lint review-and-ship.yml
+ok: review-and-ship.yml
+```
+
+If any phase id is duplicated, a gate is malformed, or a `uses:` reference is
+unresolvable, lint exits non-zero with a descriptive diagnostic and the agent
+is never invoked.
+
 ## CLI
 
 belt ships two binaries, separated by audience:
@@ -55,6 +71,13 @@ belt ships two binaries, separated by audience:
 |--------|----------|---------|
 | `belt` | Pipeline authors | `belt lint <pipeline.yml>` — static validation |
 | `belt-agent` | LLM / CI / scripts | `init`, `next`, `verify`, `step`, `status` — runtime |
+
+`belt lint` is the pipeline author's fast feedback loop: it runs in
+milliseconds, catches structural errors (duplicate phase IDs, unknown `regate`
+targets, undefined args referenced from `when:`, missing descriptions,
+unresolvable `uses:` / `invoke.pipeline:` references, artifact flow
+violations, and sub-pipeline expansion failures), and exits non-zero on any
+finding — ideal for pre-commit hooks and CI.
 
 ### Agent loop
 
@@ -124,7 +147,7 @@ cargo build -p belt          # lint tool
 cargo build -p belt-agent    # agent runtime
 ```
 
-## Claude Code Plugins
+## Claude Code Plugins (Working Examples)
 
 belt ships 7 Claude Code plugins under `plugins/` — working examples and
 production tooling for quality-gated AI-driven development.
@@ -134,8 +157,8 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agents` | Base layer: 5 analysis agents (phase-auditor, code-explorer, code-architect, impact-analyzer, feature-implementer) + references |
-| `feature-dev` | 9-phase development pipeline (design → test-scenarios → spec-review → plan → execute → code-review → monkey-test → dogfood → integrate) |
-| `bug-fix` | 8-phase debugging pipeline (rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate) |
+| `feature-dev` | Quality-gated feature-development pipeline (design → implementation → review → integration). Phase structure is declared in the plugin's `pipeline.yml` |
+| `bug-fix` | Quality-gated debugging pipeline (RCA → fix → review → integration). Phase structure is declared in the plugin's `pipeline.yml` |
 | `code-review` | Multi-perspective code review (7 observations: quality / security / perf / test / ai-antipattern / impact / simplification) |
 | `spec-review` | Multi-perspective spec review (5 observations: requirements / design-judgment / feasibility / consistency / ui-design) |
 | `monkey-test` | Scripted E2E regression via agent-browser (Given/When/Then replay) |
