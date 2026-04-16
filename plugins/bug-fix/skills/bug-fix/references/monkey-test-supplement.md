@@ -1,6 +1,6 @@
 # Monkey Test Supplement (Phase 6 override for `/monkey-test:monkey-test`)
 
-**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 6 (INVOKE 1 = Read this file; INVOKE 2 = `/monkey-test:monkey-test`). Only runs when `args.e2e=true`.
+**Invoked by:** `SKILL.md` Phase 6 (INVOKE 1 = Read this file; INVOKE 2 = `/monkey-test:monkey-test`). Only runs when `args.e2e=true`.
 
 ## Scenarios source
 

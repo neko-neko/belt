@@ -1,6 +1,6 @@
 # RCA Supplement (Phase 1 override for `/systematic-debugging`)
 
-**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 1 (INVOKE 1 = Read this file; INVOKE 2 = `/systematic-debugging`).
+**Invoked by:** `SKILL.md` Phase 1 (INVOKE 1 = Read this file; INVOKE 2 = `/systematic-debugging`).
 
 ## Output path override
 

@@ -1,6 +1,6 @@
 # Worktrunk Supplement (Phase 8 override for `/worktrunk`)
 
-**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 8 (INVOKE 1 = Read this file; INVOKE 2 = prompt user for mode; INVOKE 3 = `/worktrunk`).
+**Invoked by:** `SKILL.md` Phase 8 (INVOKE 1 = Read this file; INVOKE 2 = prompt user for mode; INVOKE 3 = `/worktrunk`).
 
 ## A/B choice prompt
 

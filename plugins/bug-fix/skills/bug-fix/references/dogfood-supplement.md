@@ -1,6 +1,6 @@
 # Dogfood Supplement (Phase 7 override for `/dogfood`)
 
-**Invoked by:** `examples/skills/bug-fix/SKILL.md` Phase 7 (INVOKE 1 = Read this file; INVOKE 2 = `/dogfood`). Only runs when `args.e2e=true`.
+**Invoked by:** `SKILL.md` Phase 7 (INVOKE 1 = Read this file; INVOKE 2 = `/dogfood`). Only runs when `args.e2e=true`.
 
 ## Output path override
 
