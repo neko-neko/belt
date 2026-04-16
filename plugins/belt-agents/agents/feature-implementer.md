@@ -60,7 +60,7 @@ Your own verification is the first QA layer, not the final gate.
 
 When a return format is specified in your prompt, output results in that exact format.
 
-Fix Task のデフォルト返却スキーマ（オーケストレーターが注入）:
+Default return schema for a Fix Task (injected by the orchestrator):
 ```json
 { "fix_status": "completed|partial|blocked", "completed_fixes": [], "blocked_fixes": [], "changes_summary": "" }
 ```
