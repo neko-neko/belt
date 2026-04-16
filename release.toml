@@ -1,0 +1,34 @@
+# Workspace-wide cargo-release policy
+# (workspace root の release.toml は section header なしで key を直接記述)
+
+# 全 crate で version を揃える
+shared-version = true
+
+# Workspace release で commit を 1 本にまとめる (default だが明示)
+consolidate-commits = true
+
+# main からのみ release を許可
+allow-branch = ["main"]
+
+# Tag name: workspace 全体で "v{{version}}" を使う
+tag-name = "v{{version}}"
+tag-prefix = ""
+tag-message = "chore: Release v{{version}}"
+
+# Release commit
+pre-release-commit-message = "chore: Release v{{version}}"
+
+# crates.io publish は今回のスコープ外
+publish = false
+
+# verify (local cargo build) は default の true を保持
+# → pre-release 時に build 破綻を catch できる
+
+# CHANGELOG.md placeholder 置換 (keepachangelog)
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "Unreleased",  replace = "{{version}}" },
+    { file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}" },
+    { file = "CHANGELOG.md", search = "<!-- next-header -->", replace = "<!-- next-header -->\n\n## [Unreleased] - ReleaseDate", exactly = 1 },
+    { file = "CHANGELOG.md", search = "<!-- next-url -->", replace = "<!-- next-url -->\n[Unreleased]: https://github.com/neko-neko/belt/compare/{{tag_name}}...HEAD", exactly = 1 },
+    { file = "CHANGELOG.md", search = "\\.\\.\\.HEAD", replace = "...{{tag_name}}", exactly = 1 },
+]

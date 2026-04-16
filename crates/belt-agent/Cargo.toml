@@ -6,6 +6,12 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "belt-agent — runtime CLI for driving belt YAML pipelines from LLMs or scripts"
+readme.workspace = true
+publish = false
+
+[package.metadata.dist]
+dist = true
 
 [[bin]]
 name = "belt-agent"
