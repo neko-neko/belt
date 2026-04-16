@@ -4,8 +4,8 @@
 //! Shape contract:
 //! - args = { codex: bool } only (no iterations, swarm, ui)
 //! - phases = [review, fix], review.invoke.agents = [<plugin>:<agent>]
-//! - consolidated agent files exist in both plugins/<plugin>/agents/ and
-//!   .claude/agents/; legacy per-observation files are removed.
+//! - consolidated agent files exist in plugins/<plugin>/agents/;
+//!   legacy per-observation files are removed.
 
 use std::path::PathBuf;
 
@@ -24,8 +24,18 @@ fn pipeline_path(skill: &str) -> PathBuf {
 
 /// (skill, namespaced agent ref in pipeline YAML, bare agent file name, label)
 const REVIEW_SKILLS: &[(&str, &str, &str, &str)] = &[
-    ("code-review", "code-review:code-reviewer", "code-reviewer", "code-review"),
-    ("spec-review", "spec-review:spec-reviewer", "spec-reviewer", "spec-review"),
+    (
+        "code-review",
+        "code-review:code-reviewer",
+        "code-reviewer",
+        "code-review",
+    ),
+    (
+        "spec-review",
+        "spec-review:spec-reviewer",
+        "spec-reviewer",
+        "spec-review",
+    ),
 ];
 
 #[test]
@@ -116,9 +126,12 @@ fn review_skills_invoke_single_consolidated_agent() -> Result<(), BeltError> {
 
 #[test]
 fn review_skills_consolidated_agent_files_exist() {
-    let agents_dir = repo_root().join(".claude/agents");
-    for (_skill, _agent_ref, agent_file, _label) in REVIEW_SKILLS {
-        let path = agents_dir.join(format!("{agent_file}.md"));
+    for (_skill, _agent_ref, agent_file, label) in REVIEW_SKILLS {
+        let path = repo_root()
+            .join("plugins")
+            .join(label)
+            .join("agents")
+            .join(format!("{agent_file}.md"));
         assert!(
             path.exists(),
             "consolidated agent file must exist: {}",
