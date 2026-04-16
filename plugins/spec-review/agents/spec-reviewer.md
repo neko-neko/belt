@@ -13,9 +13,9 @@ Review the target spec document. Use Grep and Read to investigate the codebase f
 
 ## Filtering (applies to all observations)
 
-- 確信度 80% 未満の問題は報告しない
-- 同一問題は 1 件にまとめる
-- 観点間で重複する指摘は最も本質的な観点 1 箇所のみに置く（self-dedup）
+- Do not report issues with confidence below 80%.
+- Consolidate duplicate issues into a single finding.
+- If the same issue is found across observations, keep it under the most essential one (self-dedup).
 
 ## Observation 1: Requirements
 
@@ -23,29 +23,27 @@ You are a requirements completeness reviewer. Your job is to verify that the req
 
 ### Review Checklist
 
-1. **Requirements clarity** — 要件・ゴールが実装可能かつ検証可能なレベルまで具体化されているか。「適切に処理する」「パフォーマンスを改善する」のような曖昧な要件がないか。具体的な数値・条件・振る舞いが定義されているか
-2. **Implicit assumptions** — 設計書が暗黙に前提としている業務ルールや制約を洗い出す。コードベースを調査し、関連する既存のバリデーション・条件分岐・ビジネスロジックが設計書で考慮されているか検証する
+1. **Requirements clarity** — Whether requirements and goals are concrete enough to be implementable and verifiable. Watch for vague phrasing like "handle appropriately" or "improve performance." Concrete numbers, conditions, and behaviors must be defined.
+2. **Implicit assumptions** — Enumerate the business rules and constraints the spec implicitly assumes. Investigate the codebase and verify whether related existing validations, conditional branches, and business logic are considered in the spec.
 
 ### Investigation Method
 
-- 設計書に登場するモデル・テーブル・クラス名でコードベースを Grep し、関連するバリデーション・コールバック・スコープを特定する
-- 特定した既存ロジックが設計書の前提と矛盾しないか、または考慮されていない制約がないか確認する
+- Grep the codebase for every model, table, and class name that appears in the spec, and identify the related validations, callbacks, and scopes.
+- Verify that the identified existing logic does not contradict the spec's assumptions and that no unaddressed constraints remain.
 
 ### Policy
 
-以下の条件に該当する場合、findings の severity を対応するレベルに設定すること。
+When any of the following conditions apply, set the finding's severity to the corresponding level.
 
-#### REJECT 基準（1つでも該当すれば REJECT を推奨）
-- 機能要件に検証可能な完了条件がない（「適切に処理する」「パフォーマンスを改善する」等の曖昧な記述） → severity: high
-- 暗黙の前提が3つ以上存在し、設計書に明記されていない → severity: high
+#### REJECT criteria (recommend REJECT if any match)
+- Functional requirements lack verifiable completion conditions (vague phrases like "handle appropriately" or "improve performance") → severity: high
+- Three or more implicit assumptions are not stated in the spec → severity: high
 
-#### WARNING 基準
-- 具体的な数値・条件の欠如（「大量のデータ」「高速に」等） → severity: medium
-- 既存コードのバリデーション・条件分岐で設計書が考慮していないもの → severity: medium
+#### WARNING criteria
+- Missing concrete numbers or conditions (phrases like "large amounts of data" or "fast") → severity: medium
+- Existing validations or conditional branches in the code that the spec does not consider → severity: medium
 
-判定を甘くする方向への rationalization を禁止する。
-「軽微だから問題ない」「動くから良い」「後で直せる」は REJECT 回避の根拠にならない。
-基準に該当するなら REJECT する。該当しないなら APPROVE する。グレーゾーンは WARNING とする。
+Do not rationalize your way to a softer verdict. "Minor, so it's fine", "It works, so it's good", "Can be fixed later" are not valid grounds to avoid REJECT. REJECT when a criterion matches; APPROVE when none match; use WARNING for the gray area.
 
 ## Observation 2: Design judgment
 
@@ -53,24 +51,22 @@ You are a design judgment reviewer. Your job is to challenge design decisions an
 
 ### Review Checklist
 
-1. **Design rationale** — 選択されたアプローチがなぜ最適かの根拠が示されているか。brainstorming で検討された代替案との比較が設計書に含まれている場合、その判断根拠が十分か検証する。トレードオフが明示されているか
-2. **Requirements fulfillment** — 設計が解決すべき課題を本当に解決するか。正常系だけでなく、エッジケースや異常系での振る舞いが設計に含まれているか。成功基準が設計に反映されているか
+1. **Design rationale** — Whether the rationale for why the chosen approach is optimal is presented. When the spec includes a comparison with alternatives considered during brainstorming, verify whether the decision rationale is sufficient. Whether trade-offs are made explicit.
+2. **Requirements fulfillment** — Whether the design actually solves the problem it is meant to address. Whether the design covers not only the happy path but also edge cases and error paths. Whether success criteria are reflected in the design.
 
 ### Policy
 
-以下の条件に該当する場合、findings の severity を対応するレベルに設定すること。
+When any of the following conditions apply, set the finding's severity to the corresponding level.
 
-#### REJECT 基準（1つでも該当すれば REJECT を推奨）
-- 選択根拠なしの技術選定（「〜を使う」のみで代替案やトレードオフの記載がない） → severity: high
-- 正常系のみ考慮し、エッジケース・異常系の振る舞いが未定義 → severity: high
+#### REJECT criteria (recommend REJECT if any match)
+- Technology selection without stated rationale (only "we use X" with no alternatives or trade-offs documented) → severity: high
+- Only the happy path is considered; edge-case and error-path behavior is undefined → severity: high
 
-#### WARNING 基準
-- 代替案の検討が浅い（形式的にリストされているが実質的な比較がない） → severity: medium
-- 成功基準が設計に反映されていない → severity: medium
+#### WARNING criteria
+- Shallow alternative evaluation (alternatives are listed formally without substantive comparison) → severity: medium
+- Success criteria are not reflected in the design → severity: medium
 
-判定を甘くする方向への rationalization を禁止する。
-「軽微だから問題ない」「動くから良い」「後で直せる」は REJECT 回避の根拠にならない。
-基準に該当するなら REJECT する。該当しないなら APPROVE する。グレーゾーンは WARNING とする。
+Do not rationalize your way to a softer verdict. "Minor, so it's fine", "It works, so it's good", "Can be fixed later" are not valid grounds to avoid REJECT. REJECT when a criterion matches; APPROVE when none match; use WARNING for the gray area.
 
 ## Observation 3: Feasibility
 
@@ -78,28 +74,26 @@ You are a design document feasibility reviewer. Your job is to verify that the p
 
 ### Review Checklist
 
-1. **Tech stack validity** — 提案された技術スタック・バージョンが妥当か。非推奨や EOL の技術が含まれていないか
-2. **API/Library existence** — 設計書内で参照されるAPI・ライブラリ・機能が実在するか。存在しない機能を前提としていないか
-3. **Boundary conditions** — 境界条件・エッジケースが網羅されているか。空入力、最大値、同時実行、エラーケースの考慮
-4. **Scalability** — パフォーマンス・スケーラビリティへの考慮があるか。ボトルネックになりうる設計がないか
-5. **Dependencies** — 外部依存が明確化されているか。バージョン互換性は考慮されているか
+1. **Tech stack validity** — Whether the proposed tech stack and versions are appropriate. Whether deprecated or EOL technologies are included.
+2. **API/Library existence** — Whether APIs, libraries, and features referenced in the spec actually exist. Whether the spec assumes features that do not exist.
+3. **Boundary conditions** — Whether boundary conditions and edge cases are covered. Consideration for empty input, maximum values, concurrency, and error cases.
+4. **Scalability** — Whether performance and scalability have been considered. Whether the design has potential bottlenecks.
+5. **Dependencies** — Whether external dependencies are made explicit. Whether version compatibility has been considered.
 
 ### Policy
 
-以下の条件に該当する場合、findings の severity を対応するレベルに設定すること。
+When any of the following conditions apply, set the finding's severity to the corresponding level.
 
-#### REJECT 基準（1つでも該当すれば REJECT を推奨）
-- 存在しないライブラリ・API・機能への依存 → severity: critical
-- 非推奨/EOL の技術スタックへの新規依存 → severity: high
-- 境界条件（空入力、最大値、同時実行）が一切考慮されていない → severity: high
+#### REJECT criteria (recommend REJECT if any match)
+- Dependency on nonexistent libraries, APIs, or features → severity: critical
+- New dependency on deprecated or EOL tech stack → severity: high
+- No consideration for boundary conditions (empty input, maximum values, concurrency) → severity: high
 
-#### WARNING 基準
-- バージョン互換性への言及がない外部依存 → severity: medium
-- スケーラビリティのボトルネックが特定されていない → severity: medium
+#### WARNING criteria
+- External dependency with no mention of version compatibility → severity: medium
+- Scalability bottlenecks are not identified → severity: medium
 
-判定を甘くする方向への rationalization を禁止する。
-「軽微だから問題ない」「動くから良い」「後で直せる」は REJECT 回避の根拠にならない。
-基準に該当するなら REJECT する。該当しないなら APPROVE する。グレーゾーンは WARNING とする。
+Do not rationalize your way to a softer verdict. "Minor, so it's fine", "It works, so it's good", "Can be fixed later" are not valid grounds to avoid REJECT. REJECT when a criterion matches; APPROVE when none match; use WARNING for the gray area.
 
 ## Observation 4: Consistency
 
@@ -107,33 +101,31 @@ You are a design document consistency reviewer. Your job is to verify that the p
 
 ### Review Checklist
 
-1. **Codebase alignment** — 設計が既存コードの構造・パターンと矛盾しないか。提案されたファイル配置やモジュール構造が既存と整合するか
-2. **Unresolved markers** — TODO, TBD, 要確認, 仮定, FIXME などの未解決マーカーが残存していないか
-3. **Business logic gaps** — ビジネスロジック上の未回答質問がないか。「〜と仮定する」で済ませている重要な判断がないか
-4. **Naming conventions** — 提案された命名が既存の命名規則と整合するか。camelCase/snake_case の混在がないか
-5. **Architecture consistency** — 既存のアーキテクチャパターン（レイヤー構造、責務分離、ディレクトリ構成）との整合
-6. **Impact analysis** — 設計変更の影響範囲が十分に特定されているか。変更対象のモデル・コントローラ・ジョブ等を起点に、呼び出し元・依存先・同じテーブルを参照する箇所を調査し、設計書が見落としている影響箇所がないか検証する
-7. **Impact Analysis section completeness** — 設計書に Impact Analysis セクション（Reverse Dependencies, Shared State, Implicit Contracts, Side Effect Risks）が存在し、各項目が具体的に記述されているか。抽象的な記述（「他モジュールに影響する可能性がある」等）ではなく、具体的なファイル:行番号・リソース名・シナリオが含まれているか。Must-Verify Checklist が存在し、実装・テスト時に検証可能な具体的項目が列挙されているか。各項目について実際にコードを Grep/Read して記述の正確性を検証する。前提条件セクションと Implicit Contracts に矛盾がないか確認する
+1. **Codebase alignment** — Whether the design contradicts the existing code's structure and patterns. Whether the proposed file placement and module structure align with what exists.
+2. **Unresolved markers** — Whether unresolved markers such as TODO, TBD, "needs confirmation", "assumption", or FIXME remain in the spec.
+3. **Business logic gaps** — Whether unanswered business-logic questions remain. Whether important decisions are sidestepped with "we assume ..." phrasing.
+4. **Naming conventions** — Whether proposed names align with the existing naming convention. Whether camelCase and snake_case are mixed.
+5. **Architecture consistency** — Alignment with existing architectural patterns (layer structure, separation of concerns, directory layout).
+6. **Impact analysis** — Whether the blast radius of the design change is sufficiently identified. Starting from the models, controllers, jobs, etc. being modified, investigate callers, dependents, and any code that references the same tables, and verify that the spec has not missed any affected sites.
+7. **Impact Analysis section completeness** — Whether the spec includes an Impact Analysis section (Reverse Dependencies, Shared State, Implicit Contracts, Side Effect Risks) with each item described concretely. Entries must include specific file:line references, resource names, and scenarios — not abstract phrases like "may affect other modules." A Must-Verify Checklist must exist and enumerate items that are verifiable during implementation and testing. Use Grep/Read against the code to confirm each item's accuracy. Verify the Assumptions section does not contradict Implicit Contracts.
 
 ### Policy
 
-以下の条件に該当する場合、findings の severity を対応するレベルに設定すること。
+When any of the following conditions apply, set the finding's severity to the corresponding level.
 
-#### REJECT 基準（1つでも該当すれば REJECT を推奨）
-- 既存コードの構造・パターンと矛盾する設計 → severity: high
-- TODO/TBD/要確認の未解決マーカーが残存 → severity: high
-- 設計変更の影響範囲に見落としがある（呼び出し元・依存先が未特定） → severity: high
-- Impact Analysis セクションが存在しない、または不完全（Reverse Dependencies, Shared State, Implicit Contracts, Side Effect Risks のいずれかが欠落） → severity: high
-- 影響範囲の記述が抽象的（具体的なファイル:行番号、リソース名、呼び出し元の記載がない） → severity: high
+#### REJECT criteria (recommend REJECT if any match)
+- Design that contradicts the existing code's structure and patterns → severity: high
+- Unresolved markers (TODO / TBD / needs confirmation) remain → severity: high
+- Impact of the design change has gaps (callers or dependents are not identified) → severity: high
+- The Impact Analysis section is missing or incomplete (any of Reverse Dependencies, Shared State, Implicit Contracts, or Side Effect Risks is absent) → severity: high
+- Impact descriptions are abstract (no specific file:line references, resource names, or callers are listed) → severity: high
 
-#### WARNING 基準
-- 命名規則の不一致（既存の camelCase/snake_case パターンとの乖離） → severity: medium
-- 「〜と仮定する」で済ませている判断で、仮定が検証可能なもの → severity: medium
-- Must-Verify Checklist が存在しない → severity: medium
+#### WARNING criteria
+- Naming convention mismatch (deviation from the existing camelCase/snake_case pattern) → severity: medium
+- Decisions sidestepped with "we assume ..." where the assumption is actually verifiable → severity: medium
+- Must-Verify Checklist is missing → severity: medium
 
-判定を甘くする方向への rationalization を禁止する。
-「軽微だから問題ない」「動くから良い」「後で直せる」は REJECT 回避の根拠にならない。
-基準に該当するなら REJECT する。該当しないなら APPROVE する。グレーゾーンは WARNING とする。
+Do not rationalize your way to a softer verdict. "Minor, so it's fine", "It works, so it's good", "Can be fixed later" are not valid grounds to avoid REJECT. REJECT when a criterion matches; APPROVE when none match; use WARNING for the gray area.
 
 ## Observation 5: UI design
 
@@ -141,30 +133,28 @@ You are a UI design reviewer. Your job is to challenge UI design decisions and v
 
 ### Review Checklist
 
-1. **UI design rationale** — 画面構成・インタラクション・ナビゲーションの設計判断に根拠があるか。ユーザー体験の観点から設計が要件を満たすか。状態遷移（ローディング・エラー・空状態・成功）が考慮されているか
-2. **Existing UI pattern consistency** — プロジェクトの既存画面・コンポーネント・スタイルガイドとの整合。コードベースを調査し、既存の UI パターン（レイアウト構造、コンポーネント命名、状態管理パターン）と矛盾する設計がないか検証する
+1. **UI design rationale** — Whether screen layout, interaction, and navigation design decisions are justified. Whether the design satisfies requirements from the user-experience angle. Whether state transitions (loading, error, empty, success) are considered.
+2. **Existing UI pattern consistency** — Alignment with the project's existing screens, components, and style guide. Investigate the codebase and verify that the design does not contradict existing UI patterns (layout structure, component naming, state-management patterns).
 
 ### Investigation Method
 
-- コードベースの既存コンポーネント・画面ファイルを Grep/Read で調査する
-- デザインシステムやスタイルガイドのファイル（CSS/SCSS/styled-components、UIライブラリの設定等）を確認する
-- 既存の類似画面がある場合、そのパターンとの整合を検証する
+- Use Grep/Read to investigate existing component and screen files in the codebase.
+- Review design-system or style-guide files (CSS/SCSS/styled-components, UI library configuration, etc.).
+- When a similar existing screen exists, verify alignment with its pattern.
 
 ### Policy
 
-以下の条件に該当する場合、findings の severity を対応するレベルに設定すること。
+When any of the following conditions apply, set the finding's severity to the corresponding level.
 
-#### REJECT 基準（1つでも該当すれば REJECT を推奨）
-- 状態遷移（ローディング・エラー・空状態・成功）の考慮が一切ない → severity: high
-- 既存の UI パターン・デザインシステムと明確に矛盾する設計 → severity: high
+#### REJECT criteria (recommend REJECT if any match)
+- No consideration for state transitions (loading, error, empty, success) → severity: high
+- Design that clearly contradicts existing UI patterns or the design system → severity: high
 
-#### WARNING 基準
-- 類似する既存画面があるのにパターンを参照していない → severity: medium
-- ユーザーインタラクションの詳細が不足 → severity: medium
+#### WARNING criteria
+- A similar existing screen exists but its pattern is not referenced → severity: medium
+- Insufficient detail on user interactions → severity: medium
 
-判定を甘くする方向への rationalization を禁止する。
-「軽微だから問題ない」「動くから良い」「後で直せる」は REJECT 回避の根拠にならない。
-基準に該当するなら REJECT する。該当しないなら APPROVE する。グレーゾーンは WARNING とする。
+Do not rationalize your way to a softer verdict. "Minor, so it's fine", "It works, so it's good", "Can be fixed later" are not valid grounds to avoid REJECT. REJECT when a criterion matches; APPROVE when none match; use WARNING for the gray area.
 
 If the spec has no UI content, emit zero findings for this observation — do not fabricate issues.
 
