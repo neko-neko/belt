@@ -4,7 +4,6 @@ description: >-
   Replays Given/When/Then scenarios via agent-browser and emits human- plus
   machine-readable reports. Use when running scripted E2E regression on a web
   UI with pre-defined scenarios.
-allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*)
 user-invocable: true
 ---
 
