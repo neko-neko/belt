@@ -6,35 +6,18 @@ user-invocable: false
 
 # Belt Protocol
 
-Protocol for LLM agents driving `belt-agent` CLI — a deterministic state machine for pipeline execution.
+Protocol for LLM agents driving `belt-agent` CLI — a deterministic state
+machine for pipeline execution.
 
 ## Commands
 
 ```bash
-# Start a new run
-belt-agent init <pipeline.yml>
-belt-agent init <pipeline.yml> --arg smoke=true --arg team=BELT
-
-# Get current phase info (or completion signal)
-belt-agent next
-belt-agent next --run <run_id>
-
-# Run gate checks for current phase
-belt-agent verify
-belt-agent verify --run <run_id>
-
-# Run regate checks for target phases
-belt-agent regate
-belt-agent regate --run <run_id>
-
-# Advance to next phase
-belt-agent step
-belt-agent step --confirm
-belt-agent step --run <run_id>
-
-# Inspect full run state (enriched view)
-belt-agent status
-belt-agent status --run <run_id>
+belt-agent init   <pipeline.yml> [--arg key=value ...]  # Start a new run
+belt-agent next   [--run <id>]                          # Get current phase info (or completion signal)
+belt-agent verify [--run <id>]                          # Run gate checks for current phase
+belt-agent regate [--run <id>]                          # Run regate checks for target phases
+belt-agent step   [--confirm] [--run <id>]              # Advance to next phase
+belt-agent status [--run <id>]                          # Inspect full run state (enriched)
 ```
 
 `--run <id>` is optional on all commands; omit to use the latest run.
@@ -48,24 +31,31 @@ verify (if gates) → regate (if targets) → step → next → ... → complete
 
 ## Reading `phase.invoke`
 
-Every phase returned by `next` may carry an `invoke` field with one of two variants. Read the variant and take the matching action.
+Every phase returned by `next` may carry an `invoke` field with one of two
+variants. Read the variant and take the matching action.
 
 | Variant | Shape | Orchestrator action |
-|---------|-------|---------------------|
+|---|---|---|
 | `skill` | `{ skill: "/name", args: { ... } }` | Invoke the Claude Code slash-command skill named in `invoke.skill`, passing `invoke.args` as parameters. |
 | `pipeline` | `{ pipeline: "./path.yml", with: { ... } }` | Initialise a nested `belt-agent` run on the referenced sub-pipeline. Pass `with` as args. Treat the nested run as a black-box until it reports `completed`. |
 
-> **Note (2026-04-16):** The `agent` and `agents` variants were removed. Agent dispatch is now a skill-layer concern: a parent skill uses the Task tool internally (or wraps `context: fork` + `agent:` in a child skill) to launch subagents, and `pipeline.yml` references only `invoke.skill`. See `docs/specs/2026-04-16-review-skills-subagent-boundary-design.md`.
+**`pipeline` invoke — `with` template resolution.** When a `with` entry's
+value is a string of the form `"args.X"` (literal prefix `args.` followed by
+a single arg identifier — no nested dotted paths), resolve it against the
+parent run's `args` before calling `belt-agent init --arg X=<value>`. Literal
+values (bool, number, non-template string) are passed through verbatim. If
+`args.X` is absent in the parent, omit the `--arg` instead of passing `null`;
+the sub-pipeline's declared default applies.
 
-**`pipeline` invoke — `with` template resolution.** When a `with` entry's value is a string of the form `"args.X"` (literal prefix `args.` followed by a single arg identifier — no nested dotted paths), resolve it against the parent run's `args` before calling `belt-agent init --arg X=<value>`. Literal values (bool, number, non-template string) are passed through verbatim. If `args.X` is absent in the parent, omit the `--arg` instead of passing `null`; the sub-pipeline's declared default applies.
+If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`,
+`validate:`, or `confirm:`. Proceed directly to the verify/step loop.
 
-If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`, `validate:`, or `confirm:`. Proceed directly to the verify/step loop.
+## Artifact Graph in `status`
 
-## Artifact graph in `status`
+`belt-agent status` returns each phase's `produces` and `consumes` as part of
+the enriched view.
 
-`belt-agent status` returns each phase's `produces` and `consumes` as part of the enriched view.
-
-`produces` is a list of resolved artifacts. Each entry has:
+`produces` entries are resolved artifacts:
 
 ```json
 {
@@ -77,47 +67,58 @@ If `invoke` is absent, the phase is a "pure checkpoint" with only `gate:`, `vali
 }
 ```
 
-`belt-core` resolves glob paths using the phase-start mtime filter: the matching file with the newest mtime (greater than or equal to the phase's entry timestamp) is chosen, ties broken lexicographically. For concrete paths, `exists` is a direct `std::fs::metadata` check. Use `exists: false` as the signal that the declared artifact is missing. The `resolved_path` field is omitted from JSON (not serialized as `null`) when unresolved.
+`belt-core` resolves glob paths using the phase-start mtime filter: the
+matching file with the newest mtime (>= phase entry timestamp) wins, ties
+broken lexicographically. For concrete paths, `exists` is a direct
+`std::fs::metadata` check. The `resolved_path` field is omitted from JSON
+when unresolved.
 
-`consumes` is a list of artifact references. Each entry is either:
+`consumes` entries are artifact references — either a string (resolved by
+lint against the most recent earlier phase producing that name) or
+`{ "name": "...", "from": "..." }` for explicit disambiguation.
 
-- A string (short form): the artifact name, resolved by lint against the most recent earlier phase that produced that name.
-- An object: `{ "name": "design_doc", "from": "design" }` — explicit disambiguation when multiple earlier phases produce the same name.
+**`next` and `init` emit declared artifacts, not resolved.** The `produces`
+array in `next`/`init` carries raw `{ name, path, description }` entries from
+pipeline.yml — without `exists` or `resolved_path`. Filesystem resolution
+only happens in `status`. Call `belt-agent status` whenever you need the
+concrete path of a prior phase's output.
 
-Use the status output's artifact graph when you need to locate the concrete path of a prior phase's output during the current phase.
-
-**Note: `next` and `init` emit declared artifacts, not resolved.** The `produces` array in `next`/`init` carries raw `{ name, path, description }` entries from pipeline.yml — without `exists` or `resolved_path`. Filesystem resolution (the mtime filter, glob matching) only happens in `status`. Call `belt-agent status` whenever you need the concrete path of a prior phase's output.
-
-## Validate file semantics
+## Validate File Semantics
 
 Phases may use either:
 
-- `validate: ./criteria/name.md` (scalar file reference) — read the file at that path (relative to the pipeline.yml directory) and judge the criteria defined inside it.
-- `validate: /abs/path.md` — same, absolute path.
-- `validate: ["criterion one", "criterion two"]` (list of inline strings) — judge each string directly.
-- `validate: [{ file: "./x.md" }, "inline"]` (mixed list) — combine.
+- `validate: ./criteria/name.md` (scalar file reference, relative to pipeline.yml directory)
+- `validate: /abs/path.md` (absolute path)
+- `validate: ["criterion one", "criterion two"]` (inline list)
+- `validate: [{ file: "./x.md" }, "inline"]` (mixed)
 
-When a validate entry is a file reference, the orchestrator MUST read the file before running `step --confirm`. The file contains the actual criteria; the scalar/struct in `pipeline.yml` is just the pointer. See `plugins/belt-agents/references/audit-protocol.md` for the expected criteria file format.
+When a validate entry is a file reference, the orchestrator MUST read the
+file before `step --confirm`. The file contains the actual criteria; the
+scalar in pipeline.yml is just the pointer. See
+`plugins/belt-agents/references/audit-protocol.md` for the expected
+criteria file format.
 
 ## Decision Rules
 
 | Situation | Action |
-|-----------|--------|
+|---|---|
 | Phase has no `gate` | Skip `verify`. Go directly to `step`. |
 | `verify` returns FAIL | Read `checks` array. Fix failing items. Re-run `verify`. Each verify invocation counts toward `max_retries`. |
 | Phase has `regate` targets | After `verify` PASS, run `regate`. On FAIL, fix target phases and re-run `verify` then `regate`. |
 | Phase has no `regate` targets | Skip `regate`. Go directly to `step`. |
-| Phase has `validate` criteria | Verify each criterion yourself (read file if file-ref; read list if inline), then `step --confirm`. |
-| `phase_attempts[phase] > max_retries` | `step` fails with `max_retries_exceeded`. Escalate per pipeline's `on_escalation` policy (BELT-28). |
+| Phase has `validate` criteria | Verify each criterion yourself (file-ref: read file; inline: judge strings), then `step --confirm`. |
+| `phase_attempts[phase] > max_retries` | `step` fails with `max_retries_exceeded`. Escalate per pipeline's `on_escalation` policy. |
 
-Every call to `verify` increments the current phase's attempts counter regardless of verdict. `regate` is an in-place re-verification of earlier phases' gates; it does not modify any phase's attempts counter. Earlier phases' counters are never touched by operations at the current phase.
+Every call to `verify` increments the current phase's attempts counter
+regardless of verdict. `regate` is an in-place re-verification of earlier
+phases' gates; it does not modify any phase's attempts counter.
 
 ## Step Troubleshooting
 
 When `step` returns `advanced: false`, read the `reason` field:
 
 | `reason` | Action |
-|----------|--------|
+|---|---|
 | `confirmation_required` | Phase has `validate` or `confirm`. Verify criteria, then `step --confirm`. |
 | `verify_required` | Run `verify` first. |
 | `regate_not_executed` | Run `regate` first. |
@@ -126,7 +127,8 @@ When `step` returns `advanced: false`, read the `reason` field:
 
 ## Status Output
 
-`status` returns an enriched view assembled from run state, pipeline YAML, and output directories:
+`status` returns an enriched view assembled from run state, pipeline YAML,
+and output directories:
 
 ```json
 {
@@ -137,42 +139,35 @@ When `step` returns `advanced: false`, read the `reason` field:
     {
       "id": "build",
       "status": "completed",
-      "verify_passed": true,
-      "attempt": 1,
-      "invoke": { "skill": "/brainstorming", "args": { "swarm": false } },
-      "produces": [
-        { "name": "design_doc", "path": "docs/plans/*-design.md", "exists": true, "resolved_path": "docs/plans/2026-04-11-feature-x-design.md" }
-      ],
+      "invoke": { "skill": "/brainstorming" },
+      "produces": [{ "name": "design_doc", "exists": true, "resolved_path": "docs/plans/2026-04-11-feature-x-design.md" }],
       "consumes": [],
       "outputs": ["report.json"]
     },
     {
       "id": "review",
       "status": "current",
-      "verify_passed": false,
-      "attempt": 2,
       "invoke": { "pipeline": "../spec-review/pipeline.yml", "with": {} },
-      "produces": [],
-      "consumes": ["design_doc"],
-      "outputs": []
+      "consumes": ["design_doc"]
     }
   ]
 }
 ```
 
-Note: `produces`, `consumes`, and `invoke` are omitted from `status` JSON when empty/absent. Treat absence as equivalent to an empty array (or `null` for `invoke`).
-
-Use `status` for context recovery or progress checks.
+`produces`, `consumes`, and `invoke` are omitted when empty/absent. Treat
+absence as equivalent to an empty array (or `null` for `invoke`). Use
+`status` for context recovery or progress checks.
 
 ## Well-known Config Keys
 
-`config` is an opaque map that belt passes through without interpretation. It is retained for phase-specific flags that are orthogonal to invocation identity.
+`config` is an opaque map that belt passes through without interpretation.
+Use it for phase-specific flags orthogonal to invocation identity (e.g.,
+`codex: true`, `ui: true`, or pipeline-specific arguments). Unknown keys
+MAY be ignored.
 
-Phase-level invocation identity moved to the typed `invoke:` field; do not use `config.skill`, `config.agents`, `config.criteria`, `config.audit`, or `config.reference` — these have been replaced by `invoke:`, `produces:`, `consumes:`, and file-reference `validate:` respectively.
-
-As of 2026-04-16, `invoke.agents` and `invoke.iterations` are permanently removed from the Invoker schema (partial revert of BELT-32). Agent dispatch and iteration loops are skill-layer concerns; `pipeline.yml` now references only `invoke.skill` or `invoke.pipeline`.
-
-Remaining `config` keys are skill-specific flags (e.g., `codex: true`, `ui: true`, pipeline-specific arguments). Unknown keys MAY be ignored.
+Phase-level invocation identity belongs in the typed `invoke:` field. Agent
+dispatch and iteration loops are skill-layer concerns; `pipeline.yml`
+references only `invoke.skill` or `invoke.pipeline`.
 
 ## HARD-GATE
 
