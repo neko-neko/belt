@@ -97,7 +97,7 @@ Phases may use either:
 - `validate: ["criterion one", "criterion two"]` (list of inline strings) — judge each string directly.
 - `validate: [{ file: "./x.md" }, "inline"]` (mixed list) — combine.
 
-When a validate entry is a file reference, the orchestrator MUST read the file before running `step --confirm`. The file contains the actual criteria; the scalar/struct in `pipeline.yml` is just the pointer. See `examples/references/audit-protocol.md` for the expected criteria file format.
+When a validate entry is a file reference, the orchestrator MUST read the file before running `step --confirm`. The file contains the actual criteria; the scalar/struct in `pipeline.yml` is just the pointer. See `plugins/belt-agents/references/audit-protocol.md` for the expected criteria file format.
 
 ## Decision Rules
 
