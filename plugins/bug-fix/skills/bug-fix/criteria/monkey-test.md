@@ -47,6 +47,19 @@ audit: required
 - **verification**: Run `git status --porcelain -- docs/plans/*-monkey-test-*.{md,json}`; confirm zero output lines
 - **pass_condition**: `git status --porcelain` returns empty for monkey-test artifacts
 
+### MONKEY-TEST-06: Narrative note captures replay outcomes
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-monkey-test.md`
+  2. Verify frontmatter contains `phase: monkey-test` and `run_id: <run_id>`
+  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  4. Verify Observations records reproduction scenario results (was the RCA reproduction test now PASS?)
+  5. Verify Directives carries forward dogfood exploration targets surfaced by replay
+- **pass_condition**: Steps 1-5 all pass
+- **fail_diagnosis_hint**: If Observations missing reproduction PASS/FAIL outcome, cross-reference `monkey-test-results.json` and re-derive. If Directives empty, identify which regression hotspots dogfood should explore. See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **depends_on_artifacts**: [.belt/runs/*/notes/phase-monkey-test.md]
+
 ## Observation Collection
 
 The belt-agents:phase-auditor MUST include `observations[]` in its verdict output. Record

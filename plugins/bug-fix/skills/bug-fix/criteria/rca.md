@@ -111,6 +111,19 @@ audit: required
 - **depends_on_artifacts**: [docs/plans/*-rca-scenarios.yml]  # only relevant when args.e2e=true
 - **forward_check**: monkey-test phase consumes `rca_scenarios` when `args.e2e=true`
 
+### RCA-10: Narrative note captures root-cause investigation
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-rca.md`
+  2. Verify frontmatter contains `phase: rca` and `run_id: <run_id>`
+  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  4. Verify Decisions records the chosen root cause hypothesis and which alternative candidates were rejected, with rationale
+  5. Verify Directives records Fix Strategy constraints (test-first requirements, regression scope) for the fix-plan phase
+- **pass_condition**: Steps 1-5 all pass; Concerns section flags any ambiguity in the reproduction window or environment coupling that downstream phases must verify
+- **fail_diagnosis_hint**: If Decisions lacks rejected-candidate rationale, re-read the RCA report's Investigation Record. If Directives empty, derive Fix Strategy constraints from the RCA report's Fix Strategy section. See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **depends_on_artifacts**: [.belt/runs/*/notes/phase-rca.md]
+
 ## Observation Collection
 
 The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.

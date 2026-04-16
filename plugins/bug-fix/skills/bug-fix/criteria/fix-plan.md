@@ -71,6 +71,19 @@ audit: required
 - **fail_diagnosis_hint**: If the fix plan document is uncommitted, `git add` + `git commit` may not have been executed. Check the final step of the Phase executor for the commit operation
 - **depends_on_artifacts**: [docs/plans/*-fix-plan.md]
 
+### FIX-PLAN-07: Narrative note captures plan decomposition
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-fix-plan.md`
+  2. Verify frontmatter contains `phase: fix-plan` and `run_id: <run_id>`
+  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  4. Verify Decisions records task decomposition rationale tracing back to RCA Fix Strategy
+  5. Verify Directives records test-first requirements and regression scope for the execute phase
+- **pass_condition**: Steps 1-5 all pass
+- **fail_diagnosis_hint**: If Decisions lacks RCA traceability, re-read the RCA report's Fix Strategy and re-derive task boundaries. If Directives empty, articulate which regression test set must run during execute. See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **depends_on_artifacts**: [.belt/runs/*/notes/phase-fix-plan.md]
+
 ## Observation Collection
 
 The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.

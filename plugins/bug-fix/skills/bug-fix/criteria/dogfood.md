@@ -48,6 +48,19 @@ audit: required
 - **verification**: `git status --porcelain -- docs/plans/*-dogfood-report/` returns empty
 - **pass_condition**: zero uncommitted changes under the dogfood report directory
 
+### DOGFOOD-06: Narrative note captures exploratory regression results
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-dogfood.md`
+  2. Verify frontmatter contains `phase: dogfood` and `run_id: <run_id>`
+  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  4. Verify Observations records Symmetry-Pair probe results and Impact Scope coverage
+  5. Verify Concerns flags any Root Cause mechanism re-emergence signals; Directives carries forward regression guards for integrate
+- **pass_condition**: Steps 1-5 all pass
+- **fail_diagnosis_hint**: If Observations missing Symmetry-Pair results, re-derive from RCA report's symmetry analysis. If Concerns empty, explicitly affirm that no regression signals surfaced (or re-explore). See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **depends_on_artifacts**: [.belt/runs/*/notes/phase-dogfood.md]
+
 ## Observation Collection
 
 The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.
