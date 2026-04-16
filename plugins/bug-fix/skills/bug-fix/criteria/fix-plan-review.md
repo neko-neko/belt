@@ -40,6 +40,49 @@ audit: required
 - **fail_diagnosis_hint**: User triage (accept/reject for each finding) is incomplete, or fix commits have not landed. Re-run the `/spec-review:spec-review` fix phase with accepted blocker findings
 - **depends_on_artifacts**: [.belt/runs/*/review/findings.json, docs/plans/*-fix-plan.md]
 
+### FIX-PLAN-REVIEW-04: Grill-me group findings each have a resolution
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Enumerate grill-me group findings in `.belt/runs/<run_id>/review/findings.json`
+  2. For each grill-me finding, verify a `resolution` of `accept`, `reject`, or `accept_current` has been recorded by the user
+  3. List grill-me findings lacking a recorded resolution
+- **pass_condition**: Step 3 list is empty — every grill-me finding has one of the three recognised resolutions
+- **fail_diagnosis_hint**: Resume the grill-me dialogue in the main context. Do NOT let the orchestrator auto-resolve; each finding needs explicit user judgement
+- **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
+
+### FIX-PLAN-REVIEW-05: Selection-group findings have a recorded user selection
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Enumerate selection-group findings in `.belt/runs/<run_id>/review/findings.json`
+  2. For each selection-group finding, verify the user recorded a numbered selection (either applied or explicitly skipped)
+  3. List selection-group findings with no recorded user selection
+- **pass_condition**: Step 3 list is empty — every selection-group finding has a recorded user selection (applied or skipped)
+- **fail_diagnosis_hint**: Return to the selection prompt in the main context. The user must pick by number or explicitly skip each selection-group finding
+- **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
+
+### FIX-PLAN-REVIEW-06: Applied changes are confined to the fix-plan document(s)
+- **severity**: blocker
+- **verify_type**: automated
+- **verification**:
+  1. Run `git diff --name-only` against the parent phase baseline
+  2. Verify every modified file is a fix-plan document (e.g. `docs/plans/*-fix-plan.md`) — no source, test, or unrelated doc changes leaked in
+- **pass_condition**: All diff entries fall under the fix-plan document scope; zero out-of-scope files modified
+- **fail_diagnosis_hint**: An out-of-scope edit was made during fix-plan-review. Revert unrelated changes or move them into a separate phase (execute, rca, etc.)
+- **depends_on_artifacts**: [docs/plans/*-fix-plan.md]
+
+### FIX-PLAN-REVIEW-07: Internal markdown links in the fix-plan still resolve
+- **severity**: quality
+- **verify_type**: inspection
+- **verification**:
+  1. Extract internal markdown links (`[text](./path)` / `[text](#anchor)`) from the updated fix-plan document(s)
+  2. For each link target, verify the referenced file/heading exists
+  3. List any broken anchors or dangling relative paths
+- **pass_condition**: Step 3 list is empty — every internal link resolves
+- **fail_diagnosis_hint**: Fix the broken link targets (typo in path, renamed heading, etc.) or update the link. Broken cross-references degrade downstream agents' navigation
+- **depends_on_artifacts**: [docs/plans/*-fix-plan.md]
+
 ## Observation Collection
 
 The belt-agents:phase-auditor MUST include `observations[]` in its verdict output. Record
