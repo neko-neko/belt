@@ -52,6 +52,19 @@ audit: required
 - **fail_diagnosis_hint**: Identify user-unconfirmed findings and PAUSE to request user judgment. Check whether the orchestrator auto-deferred any findings without user confirmation
 - **depends_on_artifacts**: [artifacts/reviews/]
 
+### CODE-REVIEW-05: Narrative note captures review findings and directives
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
+  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-code-review.md`
+  2. Verify frontmatter contains `phase: code-review` and `run_id: <run_id>`
+  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  4. Verify Decisions records which review findings were accepted / rejected and why
+  5. Verify Directives flags carry-over concerns for downstream phases (e.g. regression tests to run in monkey-test)
+- **pass_condition**: Steps 1-5 all pass; narrative records specific review outcomes not abstract "code reviewed"
+- **fail_diagnosis_hint**: If Decisions lacks accept/reject rationale, re-read review findings and enumerate. If Directives empty, consider whether monkey-test / dogfood needs specific regression coverage. See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **depends_on_artifacts**: [.belt/runs/*/notes/phase-code-review.md]
+
 ## Observation Collection
 
 The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.
