@@ -124,6 +124,88 @@ cargo build -p belt          # lint tool
 cargo build -p belt-agent    # agent runtime
 ```
 
+## Claude Code Plugins
+
+belt ships 7 Claude Code plugins under `plugins/` — working examples and
+production tooling for quality-gated AI-driven development.
+
+### Plugins in this repo
+
+| Plugin | Purpose |
+|---|---|
+| `belt-agents` | Base layer: 5 analysis agents (phase-auditor, code-explorer, code-architect, impact-analyzer, feature-implementer) + references |
+| `feature-dev` | 9-phase development pipeline (design → review → plan → execute → review → e2e → integrate) |
+| `bug-fix` | 8-phase debugging pipeline (rca → fix-plan → review → execute → review → e2e → integrate) |
+| `code-review` | Multi-perspective code review (7 observations: quality / security / perf / test / ai-antipattern / impact / simplification) |
+| `spec-review` | Multi-perspective spec review (5 observations: requirements / design-judgment / feasibility / consistency / ui-design) |
+| `monkey-test` | Scripted E2E regression via agent-browser (Given/When/Then replay) |
+| `test-scenarios` | Test strategy (ISTQB + ISO 25010) + Given/When/Then scenarios |
+
+### External skill dependencies
+
+`feature-dev` and `bug-fix` invoke skills from other plugins. `monkey-test`
+requires the `agent-browser` CLI. Install them before the belt plugins that
+use them:
+
+| Dependency | Source | Required by |
+|---|---|---|
+| `/brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) | feature-dev Phase 1 |
+| `/writing-plans` | obra/superpowers | feature-dev Phase 4, bug-fix Phase 2 |
+| `/subagent-driven-development` | obra/superpowers | feature-dev Phase 5, bug-fix Phase 4 |
+| `/systematic-debugging` | obra/superpowers | bug-fix Phase 1 |
+| `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | feature-dev Phase 9, bug-fix Phase 8 (integrate) |
+| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | monkey-test (always), feature-dev Phase 7, bug-fix Phase 6 (when `--e2e`) |
+| `/dogfood` | vercel-labs/agent-browser | feature-dev Phase 8, bug-fix Phase 7 (when `--e2e`) |
+
+### Install
+
+Install external dependencies first, then belt plugins. `skills add` supports
+both GitHub shorthand (`owner/repo`) and full URLs. Use `-g` for global
+install (all projects) or omit for project-local.
+
+```bash
+# 1. superpowers (/brainstorming, /writing-plans, /subagent-driven-development, /systematic-debugging)
+npx skills add obra/superpowers -g -y
+
+# 2. worktrunk (/worktrunk)
+npx skills add max-sixty/worktrunk -g -y
+
+# 3. agent-browser plugin (agent-browser CLI + /dogfood skill)
+npx skills add vercel-labs/agent-browser --skill agent-browser --skill dogfood -g -y
+
+# 4. belt plugins (all 7)
+npx skills add neko-neko/belt -g -y
+```
+
+Selective install (only some belt plugins):
+
+```bash
+# Example: code-review only (no external deps)
+npx skills add neko-neko/belt --skill code-review -g -y
+```
+
+Plugin discovery uses `.claude-plugin/marketplace.json` at belt repo root.
+
+### Internal dependencies (plugin-to-plugin)
+
+- `feature-dev` invokes `spec-review`, `code-review`, `test-scenarios`, `monkey-test`
+- `bug-fix` invokes `spec-review`, `code-review`, `monkey-test`
+- `feature-dev`, `bug-fix` require `belt-agents` (analysis agents referenced by criteria and supplements)
+- `code-review`, `spec-review`, `monkey-test`, `test-scenarios`, `belt-agents` are standalone
+
+### Usage
+
+After install:
+
+```
+/feature-dev:feature-dev         # start a new feature
+/bug-fix:bug-fix                 # start a bug investigation
+/code-review:code-review         # standalone code review
+/spec-review:spec-review         # standalone spec review
+```
+
+See each plugin's `SKILL.md` for phase details and arg reference.
+
 ## License
 
 MIT

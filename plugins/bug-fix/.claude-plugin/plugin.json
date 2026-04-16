@@ -1,0 +1,6 @@
+{
+  "name": "bug-fix",
+  "description": "Quality-gated 8-phase debugging pipeline (rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate)",
+  "version": "0.1.0",
+  "author": "neko-neko"
+}

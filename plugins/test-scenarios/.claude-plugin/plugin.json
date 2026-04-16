@@ -1,0 +1,6 @@
+{
+  "name": "test-scenarios",
+  "description": "Generate ISTQB + ISO 25010 test strategy and optional agent-browser scenarios.yml from a design document",
+  "version": "0.1.0",
+  "author": "neko-neko"
+}
