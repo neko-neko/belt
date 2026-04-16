@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use assert_cmd::Command;
 use tempfile::TempDir;
 

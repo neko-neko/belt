@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::too_many_lines,
+    clippy::similar_names,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::TempDir;
@@ -6,7 +15,7 @@ use tempfile::TempDir;
 ///
 /// Writes a COMPLETED producer run at `tmp/.belt/runs/<producer_run>/` and a
 /// consumer pipeline YAML (`tmp/consumer.yml`) that references the producer
-/// via a `belt://run/<id>/...` External URI. Returns the producer run_id so
+/// via a `belt://run/<id>/...` External URI. Returns the producer `run_id` so
 /// tests can reference it in assertions.
 fn setup_chain(tmp: &std::path::Path) -> String {
     let producer_run = "01947a0a-0000-7000-8000-000000000000";
@@ -292,7 +301,7 @@ fn next_json_output_includes_uri_and_resolved_path() {
 /// back through the `resolved_path` surfaced by `belt-agent next`. This is
 /// the end-to-end wiring that the context-neutral narrative plan exists to
 /// deliver: note body written in run A must flow through `belt://latest/...`
-/// into run B without the consumer skill knowing the producer's run_id.
+/// into run B without the consumer skill knowing the producer's `run_id`.
 #[test]
 fn e2e_chain_producer_to_consumer_happy_path() {
     let tmp = tempfile::tempdir().unwrap();
@@ -326,7 +335,7 @@ fn e2e_chain_producer_to_consumer_happy_path() {
     // 2. Read producer run_id from the newly-created run directory.
     let run_dirs: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
         .unwrap()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .collect();
     assert_eq!(run_dirs.len(), 1, "expected exactly one producer run");
     let producer_run = run_dirs[0].file_name().into_string().unwrap();
@@ -446,8 +455,8 @@ fn e2e_chain_producer_to_consumer_happy_path() {
 /// `belt://latest/<pipeline>/...` resolution must be scoped to the current
 /// git branch so narrative does not leak between branches that happen to
 /// share a workspace. This test seeds TWO completed producer runs of the
-/// same pipeline: one on `main` with an *earlier* UUIDv7 and one on
-/// `develop` with a *later* UUIDv7. Lex-max on run_id alone would select
+/// same pipeline: one on `main` with an *earlier* `UUIDv7` and one on
+/// `develop` with a *later* `UUIDv7`. Lex-max on `run_id` alone would select
 /// the develop run; but the branch filter (Task 14 + Task 17 wiring) must
 /// steer the resolver back to the main run because the consumer is init'd
 /// on branch `main`.
@@ -652,7 +661,7 @@ fn e2e_consumer_init_fails_when_no_completed_producer() {
 /// once while the producer is missing (fail), once after the producer
 /// completes (succeed) — must end up with exactly two run directories:
 /// the completed producer plus the successful consumer. A pre-fix
-/// cmd_init accumulates a half-initialised consumer run from the first
+/// `cmd_init` accumulates a half-initialised consumer run from the first
 /// failed call, breaking this invariant.
 #[test]
 fn e2e_init_succeeds_after_resolver_failure() {
@@ -710,7 +719,7 @@ fn e2e_init_succeeds_after_resolver_failure() {
     );
     let run_dirs: Vec<_> = std::fs::read_dir(tmp.path().join(".belt/runs"))
         .unwrap()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .collect();
     assert_eq!(run_dirs.len(), 1, "exactly one producer run expected");
     let producer_run = run_dirs[0].file_name().into_string().unwrap();
@@ -763,7 +772,7 @@ fn e2e_init_succeeds_after_resolver_failure() {
 /// a consumer init fails loudly (non-zero exit, stderr mentions parse
 /// failure) AND leaves no orphan consumer run behind. The orphan
 /// assertion cross-verifies BELT-33 atomicity under a different
-/// resolver-error path (StateParse, not NoCompletedRun).
+/// resolver-error path (`StateParse`, not `NoCompletedRun`).
 #[test]
 fn e2e_init_fails_when_producer_state_json_is_corrupt() {
     let tmp = tempfile::tempdir().unwrap();

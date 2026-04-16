@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test: panic-on-mismatch is the intended assertion style"
+)]
+
 use assert_cmd::Command;
 use tempfile::TempDir;
 
@@ -14,7 +21,7 @@ fn run_belt_agent(dir: &TempDir, args: &[&str]) -> serde_json::Value {
         .args(args)
         .current_dir(dir.path())
         .output()
-        .unwrap_or_else(|e| panic!("belt-agent {:?} failed: {e}", args));
+        .unwrap_or_else(|e| panic!("belt-agent {args:?} failed: {e}"));
     assert!(
         output.status.success(),
         "belt-agent {:?} exit non-zero: {}",
@@ -22,7 +29,7 @@ fn run_belt_agent(dir: &TempDir, args: &[&str]) -> serde_json::Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout)
-        .unwrap_or_else(|e| panic!("invalid JSON from belt-agent {:?}: {e}", args))
+        .unwrap_or_else(|e| panic!("invalid JSON from belt-agent {args:?}: {e}"))
 }
 
 #[test]
@@ -1086,7 +1093,7 @@ phases:
     assert_eq!(status2["current_phase"], "build");
 }
 
-/// verify outputs timed_out field in JSON for passing cmd.
+/// verify outputs `timed_out` field in JSON for passing cmd.
 #[test]
 fn verify_outputs_timed_out_field() {
     let dir = TempDir::new().unwrap();
@@ -1113,7 +1120,7 @@ phases:
     assert_eq!(verify["checks"][0]["timed_out"], false);
 }
 
-/// verify returns FAIL with timed_out = true for hanging cmd.
+/// verify returns FAIL with `timed_out` = true for hanging cmd.
 #[test]
 fn verify_timeout_returns_fail() {
     let dir = TempDir::new().unwrap();
@@ -1305,7 +1312,7 @@ phases:
     assert!(ts.contains('T') && ts.ends_with('Z'), "bad timestamp: {ts}");
 }
 
-/// verify result file includes timed_out field from BELT-31.
+/// verify result file includes `timed_out` field from BELT-31.
 #[test]
 fn verify_result_file_includes_timed_out() {
     let dir = TempDir::new().unwrap();
@@ -1484,7 +1491,7 @@ phases:
 // BELT-30: status with verify_checks / regate_checks
 // ===========================================================================
 
-/// status shows verify_checks after verify.
+/// status shows `verify_checks` after verify.
 #[test]
 fn status_shows_verify_checks_after_verify() {
     let dir = TempDir::new().unwrap();
@@ -1515,7 +1522,7 @@ phases:
     assert_eq!(checks[0]["passed"], true);
 }
 
-/// status shows regate_checks after regate.
+/// status shows `regate_checks` after regate.
 #[test]
 fn status_shows_regate_checks_after_regate() {
     let dir = TempDir::new().unwrap();
@@ -1581,14 +1588,14 @@ phases:
     write_yaml(
         &dir,
         "pipeline.yml",
-        r#"
+        r"
 name: sub-test
 version: 1
 phases:
   - id: review
     invoke:
       pipeline: ./pipelines/review.yml
-"#,
+",
     );
 
     let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
