@@ -37,7 +37,7 @@ audit: required
 - **verify_type**: inspection
 - **verification**:
   1. Check `docs/plans/<topic>-dogfood-report/screenshots/` or `.../videos/` for at least one evidence file
-  2. If Impact Scope contains zero UI files (CLI / API / backend-only fix), accept a rationale paragraph in `report.md` explaining CLI-only exploration scope (per spec "UI なし bug fix の dogfood graceful degradation")
+  2. If Impact Scope contains zero UI files (CLI / API / backend-only fix), accept a rationale paragraph in `report.md` explaining CLI-only exploration scope (per spec "dogfood graceful degradation for UI-less bug fixes")
 - **pass_condition**: ≥1 evidence file under screenshots/ or videos/, OR rationale paragraph present for CLI-only fixes
 - **fail_diagnosis_hint**: For UI-touching fixes, `/dogfood` should emit screenshots by default. For CLI-only fixes, ensure the rationale paragraph was added per supplement instructions
 - **depends_on_artifacts**: [docs/plans/*-dogfood-report/]

@@ -55,7 +55,7 @@ Every task MUST have a completion condition expressible as:
 - Pattern match (e.g., "grep returns ≥1 line"), OR
 - Boolean state assertion (e.g., "feature flag is enabled")
 
-Reject subjective terms (「適切に」「十分に」「correct」).
+Reject subjective terms ("appropriately", "sufficiently", "correct").
 
 ## RCA artifacts reference
 
