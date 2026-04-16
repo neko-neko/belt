@@ -1,42 +1,96 @@
 ---
 name: code-review
 description: >-
-  Reviews a diff across seven dimensions: quality, security, performance, tests,
-  AI anti-patterns, impact, and simplification. Use when code changes need
-  multi-perspective critique before merging. --codex adds an adversarial pass.
+  Multi-perspective code review with parallel observation subagents.
+  Dispatches security, test, ai-antipattern, and cross-cutting reviewers
+  in parallel; merges findings with severity-first + actionability-priority
+  cross-agent dedup. --codex adds an adversarial pass via /codex:rescue.
 argument-hint: "[--codex]"
 ---
 
 # Code Review
 
-Multi-perspective code review with direct selection triage.
-
-Dispatching and `invoke:` semantics follow `skills/belt-agent/SKILL.md`. This document covers only code-review-specific concerns (scope detection, impact context, triage, verify).
+Parent dispatcher for parallel multi-observation code review. This skill runs in the main context (no `context: fork`) because triage (user selection) and fix apply require user dialogue and direct Edit tool usage.
 
 ## Scope Detection
 
-Determine diff scope before dispatching the reviewer agent:
+Determine the diff scope before dispatching observation agents:
 
-1. If branch differs from `main` → `git diff main...HEAD`
+1. If the current branch differs from `main` → `git diff main...HEAD`
 2. Else if staged changes exist → `git diff --staged`
-3. Else → report "no diff detected" and exit without dispatching
+3. Else → report "no diff detected" and exit without dispatching.
 
-Pass the diff summary (file list + line counts) as context to the reviewer agent.
+Pass the diff summary (file list + line counts) as context to each observation agent.
 
 ## Impact Observation Context
 
-If a design doc exists in the current run's output directory (filename matches `*-design.md`), pass the Impact Analysis section content as additional context to the reviewer agent. The Impact observation consumes it.
+If a design document exists in the current run's output directory (filename matches `*-design.md`), pass the Impact Analysis section content as additional context to the `cross-cutting-reviewer` agent's prompt. The Impact observation inside cross-cutting consumes it.
+
+## Parallel Dispatch
+
+Dispatch observation agents in parallel via the Agent (Task) tool. Send all Task calls in **one single message** with multiple tool-use blocks so they run concurrently:
+
+- `Task(subagent_type: code-review:security-reviewer, prompt: <diff + path to write findings-security.json>)`
+- `Task(subagent_type: code-review:test-reviewer, prompt: <diff + path to write findings-test.json>)`
+- `Task(subagent_type: code-review:ai-antipattern-reviewer, prompt: <diff + path to write findings-ai-antipattern.json>)`
+- `Task(subagent_type: code-review:cross-cutting-reviewer, prompt: <diff + optional design-doc Impact Analysis + path to write findings-cross-cutting.json>)`
+
+If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the diff, the expected `findings-codex.json` format (same shape as observation agents, `source: "codex"`), and the output path `.belt/runs/<run_id>/review/findings-codex.json`.
+
+All agents write to `.belt/runs/<run_id>/review/findings-<observation>.json`. Each file is independent — no race condition between agents.
+
+Announce each dispatched agent (and Codex, if `--codex`) before sending.
+
+## Merge + Cross-agent Dedup
+
+After all agents complete:
+
+1. Read each `findings-<observation>.json` file under `.belt/runs/<run_id>/review/`.
+2. For each finding, determine if it is the same issue as a finding from another agent. Use file + line + description overlap as the primary signal (LLM judgment — when `file` + `line` match and descriptions share core vocabulary, treat as the same issue candidate).
+3. For same-issue candidates, apply the dedup rule:
+   - **Severity-first**: keep the finding with the highest severity (critical > high > medium > low).
+   - **Tie-break on severity equality — observation priority (actionability order)**:
+     `Security > Impact > Quality > Test > AI-antipattern > Performance > Simplification`
+   - **Codex findings are NOT deduplicated**. If a Codex finding overlaps with another observation, keep both — Codex signal carries separate "external-provider adversarial" value.
+4. Write the merged `.belt/runs/<run_id>/review/findings.json`:
+
+```json
+{
+  "findings": [
+    {
+      "id": "<uuid>",
+      "observation": "security|test|ai-antipattern|quality|performance|impact|simplification|codex",
+      "severity": "critical|high|medium|low",
+      "file": "<path>",
+      "line": <integer or null>,
+      "description": "...",
+      "suggestion": "...",
+      "source": "agent|codex"
+    }
+  ]
+}
+```
+
+- Cap at 20 findings total. If more exist after dedup, keep the highest-severity ones and append a final `low`-severity finding of observation `quality` noting the truncation.
+- If no findings at all, write `{"findings": []}`.
 
 ## Triage
 
-Categories: `quality`, `security`, `performance`, `test`, `ai-antipattern`, `impact`, `simplification`, `codex`.
+Present all merged findings as a numbered list sorted by severity descending, then by observation priority. User selects which to fix by number. No dialogue phase (dialogue is reserved for spec-review).
 
-All findings are presented as a numbered list sorted by severity descending. User selects which to fix by number. No dialogue phase.
+## Fix apply
+
+For each user-selected finding:
+1. Read the file at the `file` / `line` location.
+2. Apply the `suggestion` via the Edit tool in the main context.
+3. Note in a scratch area which findings are applied (for verification).
+
+Apply fixes serially to avoid merge conflicts in the same file.
 
 ## Verify (after fix)
 
-1. `git diff` — confirm changes match approved findings scope
-2. Auto-detect and run project linter:
+1. `git diff` — confirm changes match approved findings scope.
+2. Auto-detect and run the project linter:
 
 | Indicator file | Linter command |
 |---|---|
@@ -46,7 +100,7 @@ All findings are presented as a numbered list sorted by severity descending. Use
 | `go.mod` | `go vet ./...` |
 | `Makefile` (has lint target) | `make lint` |
 
-3. Auto-detect and run project tests:
+3. Auto-detect and run the project test suite:
 
 | Indicator file | Test command |
 |---|---|
@@ -56,17 +110,21 @@ All findings are presented as a numbered list sorted by severity descending. Use
 | `go.mod` | `go test ./...` |
 | `Makefile` (has test target) | `make test` |
 
-4. If linter or tests fail → report honestly, do not suppress
+4. If linter or tests fail → report honestly, do not suppress.
 
 ## Red Flags
 
 **Never:**
-- Modify code without user approval of findings
-- Change files outside the diff scope
-- Omit or filter findings before presenting to user
-- Suppress or hide test/linter failures
+- Modify code without user approval of findings.
+- Change files outside the diff scope.
+- Omit or filter findings before presenting to user (except via the severity-first + observation-priority dedup rule above).
+- Suppress or hide test/linter failures.
+- Attempt to read other agents' `findings-*.json` files inside any observation agent's prompt (those agents must stay self-contained).
 
 **Always:**
-- Announce the reviewer agent being dispatched (and Codex, if `--codex`)
-- Run linter and tests after applying fixes
-- Apply fixes serially to avoid merge conflicts in the same file
+- Announce each dispatched agent (and Codex, if `--codex`).
+- Dispatch all observation agents in a single parallel batch (one message, multiple Task tool uses).
+- Apply the dedup rule deterministically — severity first, observation priority only on tie.
+- Preserve Codex findings as separate entries (no dedup into other observations).
+- Run linter and tests after applying fixes.
+- Apply fixes serially to avoid merge conflicts.
