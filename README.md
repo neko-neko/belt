@@ -159,32 +159,30 @@ use them:
 
 ### Install
 
-Install external dependencies first, then belt plugins. `skills add` supports
-both GitHub shorthand (`owner/repo`) and full URLs. Use `-g` for global
-install (all projects) or omit for project-local.
+belt plugins are distributed via the Claude Code plugin marketplace. Install
+external plugin dependencies first, then add belt as a marketplace and install
+the plugins you need.
 
-```bash
-# 1. superpowers (/brainstorming, /writing-plans, /subagent-driven-development, /systematic-debugging)
-npx skills add obra/superpowers -g -y
+```
+# In Claude Code:
 
-# 2. worktrunk (/worktrunk)
-npx skills add max-sixty/worktrunk -g -y
+# 1. Add external plugin dependencies
+/install-plugin obra/superpowers-marketplace superpowers
+/install-plugin max-sixty/worktrunk worktrunk
+/install-plugin vercel-labs/agent-browser agent-browser
 
-# 3. agent-browser plugin (agent-browser CLI + /dogfood skill)
-npx skills add vercel-labs/agent-browser --skill agent-browser --skill dogfood -g -y
-
-# 4. belt plugins (all 7)
-npx skills add neko-neko/belt -g -y
+# 2. Add belt marketplace and install plugins
+/install-plugin neko-neko/belt belt-agents
+/install-plugin neko-neko/belt feature-dev
+/install-plugin neko-neko/belt bug-fix
+/install-plugin neko-neko/belt code-review
+/install-plugin neko-neko/belt spec-review
+/install-plugin neko-neko/belt monkey-test
+/install-plugin neko-neko/belt test-scenarios
 ```
 
-Selective install (only some belt plugins):
-
-```bash
-# Example: code-review only (no external deps)
-npx skills add neko-neko/belt --skill code-review -g -y
-```
-
-Plugin discovery uses `.claude-plugin/marketplace.json` at belt repo root.
+Plugin discovery uses `.claude-plugin/marketplace.json` (Claude Code
+marketplace format) at belt repo root.
 
 ### Internal dependencies (plugin-to-plugin)
 
