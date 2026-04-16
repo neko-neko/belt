@@ -167,6 +167,68 @@ CI + pre-commit で `cargo clippy --workspace -- -D warnings` を実行すれば
 - **コミット対象**: belt は binary project のため `Cargo.lock` をコミットする
 - 再現可能なビルドを保証
 
+## Release Process
+
+belt は `cargo-dist` + `cargo-release` による 2 段構成でリリースする。version bump と tag 作成は開発者ローカル、multi-target build と GitHub Release 作成は CI が担う。
+
+### Tooling
+
+| Tool | Pinned version | Role | Upgrade policy |
+|------|----------------|------|----------------|
+| `cargo-dist` | `=0.31.0` | CI で multi-target build、GitHub Release 作成、shell installer / tar アーカイブ / attestation 生成 | 0.x 完全ピン。bump 時は `dist-workspace.toml` 更新 + `dist init --yes` 再実行 + 生成された `.github/workflows/release.yml` の再 commit の三点セットを必須 |
+| `cargo-release` | `1.1.2` | ローカルで version bump + `CHANGELOG.md` placeholder 置換 + commit + tag + push | 1.x SemVer 安定版。major 互換内で追従可 |
+
+### 配置ファイル
+
+| File | 所有 | 役割 |
+|------|------|------|
+| `dist-workspace.toml` | 人間 | cargo-dist 設定 (targets / installers / attestations / cache-builds) |
+| `release.toml` | 人間 | cargo-release 設定 (`shared-version = true` / `tag-name = "v{{version}}"` / `pre-release-replacements` / `allow-branch = ["main"]`) |
+| `.github/workflows/release.yml` | cargo-dist が自動生成 | 人間は直接編集しない。再生成は `dist init --yes` |
+| `CHANGELOG.md` | 人間 | keepachangelog 形式、`<!-- next-header -->` / `<!-- next-url -->` マーカー必須 |
+
+### Target platforms
+
+- `x86_64-apple-darwin` / `aarch64-apple-darwin` / `x86_64-unknown-linux-gnu` / `aarch64-unknown-linux-gnu`
+- Windows は対象外 (MVP scope、将来必要なら `dist-workspace.toml` に追加)
+- `aarch64-unknown-linux-gnu` は default runner 上で `cross` を用いて cross-compile
+
+### Release commands
+
+```bash
+cargo release patch -x          # 0.1.0 → 0.1.1
+cargo release minor -x          # 0.1.0 → 0.2.0
+cargo release major -x          # 0.1.0 → 1.0.0
+cargo release 0.2.3 -x          # 明示 version
+cargo release rc -x             # pre-release (0.2.0-rc.1)
+cargo release release -x        # pre-release extension 除去
+cargo release changes           # 前 tag 以降の commit 一覧 (CHANGELOG 執筆補助)
+```
+
+Bump は `allow-branch = ["main"]` により main からのみ実行可能。CI workflow (`release.yml`) は `v*` tag push で自動発火する。
+
+### 初回 release の特殊ケース
+
+`workspace.package.version` が既に `0.1.0` の状態では cargo-release は「次 version への bump」を前提とするため、初回 v0.1.0 は手動 tag 作成で発火する (`git tag v0.1.0 && git push --tags`)。初回前に `CHANGELOG.md` の `[Unreleased]` 節を `[0.1.0] - YYYY-MM-DD` に手で書き換える。2 回目以降は `cargo release minor -x` 等で CHANGELOG placeholder 置換を含めて完全自動化される。
+
+### crates.io
+
+**publish 対象外** (MVP)。`release.toml` で `publish = false`、各 crate の `Cargo.toml` にも `publish = false` を冗長記述。将来 crates.io 対応時は両方を外す + `publish-jobs = ["crates-io"]` を `dist-workspace.toml` に追加。
+
+### 供給チェーン検証
+
+`github-attestations = true` により release asset は sigstore 署名される。利用者検証:
+
+```bash
+gh attestation verify <asset>.tar.xz --repo neko-neko/belt
+```
+
+README の Install section に optional step として記載。
+
+### 依存管理ポリシーとの整合
+
+Release tooling は既存の「依存管理ポリシー > バージョン指定ポリシー」に従う。`cargo-dist` は 0.x ゆえ完全ピン、`cargo-release` は 1.x ゆえ caret 許容の対象だが、release 再現性を重視して patch-level まで明示する。
+
 ## Non-Goals (やらないこと)
 
 - 複雑な assertion DSL / N 回実行統計 / 可視化ダッシュボード

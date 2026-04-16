@@ -170,10 +170,53 @@ This is `/clear` that keeps the conclusions.
 - **config** — Opaque metadata passed through to the LLM. belt doesn't
   interpret it; your skills do.
 
-## Build
+## Install
+
+### Shell installer (recommended)
+
+Installs `belt` and `belt-agent` to `$HOME/.cargo/bin` (or configurable),
+auto-detects platform.
 
 ```bash
-cargo build --workspace
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/neko-neko/belt/releases/latest/download/belt-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/neko-neko/belt/releases/latest/download/belt-agent-installer.sh | sh
+```
+
+### Manual install (CI / Docker)
+
+Pick a tarball matching your platform from the
+[releases page](https://github.com/neko-neko/belt/releases):
+
+```bash
+# Example: Linux x86_64 — one tarball per binary
+curl -L https://github.com/neko-neko/belt/releases/latest/download/belt-x86_64-unknown-linux-gnu.tar.xz \
+  | tar -xJ -C /usr/local/bin belt
+curl -L https://github.com/neko-neko/belt/releases/latest/download/belt-agent-x86_64-unknown-linux-gnu.tar.xz \
+  | tar -xJ -C /usr/local/bin belt-agent
+```
+
+Replace the triple to match your platform:
+
+| OS | Arch | Triple |
+|---|---|---|
+| macOS | Intel | `x86_64-apple-darwin` |
+| macOS | Apple Silicon | `aarch64-apple-darwin` |
+| Linux | x86_64 | `x86_64-unknown-linux-gnu` |
+| Linux | aarch64 | `aarch64-unknown-linux-gnu` |
+
+### Verify (optional)
+
+```bash
+gh release download v0.1.0 --repo neko-neko/belt --pattern '*.tar.xz'
+gh attestation verify belt-x86_64-unknown-linux-gnu.tar.xz --repo neko-neko/belt
+gh attestation verify belt-agent-x86_64-unknown-linux-gnu.tar.xz --repo neko-neko/belt
+```
+
+### From source
+
+```bash
+git clone https://github.com/neko-neko/belt.git && cd belt
+cargo build --release --workspace
 ```
 
 Build only what you need:

@@ -13,6 +13,8 @@ rust-version = "1.86"
 authors = ["neko-neko"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/neko-neko/belt"
+description = "Workspace root. See crate-level Cargo.toml for per-crate description."
+readme = "README.md"
 
 [workspace.dependencies]
 # --- serialization / YAML ---
@@ -72,3 +74,8 @@ module_name_repetitions = "allow"  # belt_core::pipeline::Pipeline 等の命名�
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

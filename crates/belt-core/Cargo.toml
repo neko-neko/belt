@@ -6,6 +6,12 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Core library for belt — pipeline model, parser, expander, engine, gates, linter"
+readme.workspace = true
+publish = false
+
+[package.metadata.release]
+release = false
 
 [dependencies]
 chrono = { workspace = true }
