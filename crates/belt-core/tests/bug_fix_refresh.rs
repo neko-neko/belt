@@ -29,7 +29,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn bug_fix_dir() -> PathBuf {
-    repo_root().join("examples/skills/bug-fix")
+    repo_root().join("plugins/bug-fix/skills/bug-fix")
 }
 
 fn bug_fix_pipeline_path() -> PathBuf {
@@ -263,13 +263,15 @@ fn criteria_files_exist() {
         );
     }
 
-    // Shared criteria: pipeline.yml uses `../../criteria/` relative to
-    // `examples/skills/bug-fix/`, resolving to `examples/criteria/`.
-    let shared = repo_root().join("examples/criteria");
+    // Shared criteria: after plugin migration, pipeline.yml uses `./criteria/`
+    // and the shared files are physically duplicated into each plugin.
+    // Drift between feature-dev and bug-fix copies is checked in
+    // `shared_criteria_parity.rs`.
     for name in ["execute.md", "code-review.md"] {
         assert!(
-            shared.join(name).exists(),
-            "shared criteria '{name}' must exist at examples/criteria/"
+            criteria_dir.join(name).exists(),
+            "duplicated shared criteria '{name}' must exist at {}",
+            criteria_dir.display()
         );
     }
 }

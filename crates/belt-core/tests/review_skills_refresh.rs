@@ -3,8 +3,9 @@
 //!
 //! Shape contract:
 //! - args = { codex: bool } only (no iterations, swarm, ui)
-//! - phases = [review, fix], review.invoke.agents = [<skill>-reviewer]
-//! - consolidated agent files exist; legacy per-observation files are removed.
+//! - phases = [review, fix], review.invoke.agents = [<plugin>:<agent>]
+//! - consolidated agent files exist in both plugins/<plugin>/agents/ and
+//!   .claude/agents/; legacy per-observation files are removed.
 
 use std::path::PathBuf;
 
@@ -18,17 +19,18 @@ fn repo_root() -> PathBuf {
 }
 
 fn pipeline_path(skill: &str) -> PathBuf {
-    repo_root().join(format!("examples/skills/{skill}/pipeline.yml"))
+    repo_root().join(format!("plugins/{skill}/skills/{skill}/pipeline.yml"))
 }
 
-const REVIEW_SKILLS: &[(&str, &str, &str)] = &[
-    ("code-review", "code-reviewer", "code-review"),
-    ("spec-review", "spec-reviewer", "spec-review"),
+/// (skill, namespaced agent ref in pipeline YAML, bare agent file name, label)
+const REVIEW_SKILLS: &[(&str, &str, &str, &str)] = &[
+    ("code-review", "code-review:code-reviewer", "code-reviewer", "code-review"),
+    ("spec-review", "spec-review:spec-reviewer", "spec-reviewer", "spec-review"),
 ];
 
 #[test]
 fn review_skills_args_are_codex_only() -> Result<(), BeltError> {
-    for (skill, _agent, _label) in REVIEW_SKILLS {
+    for (skill, _agent_ref, _agent_file, _label) in REVIEW_SKILLS {
         let pipeline = parse_pipeline(&pipeline_path(skill))?;
         let mut names: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
         names.sort_unstable();
@@ -58,7 +60,7 @@ fn review_skills_args_are_codex_only() -> Result<(), BeltError> {
 
 #[test]
 fn review_skills_have_two_phases_review_then_fix() -> Result<(), BeltError> {
-    for (skill, _agent, _label) in REVIEW_SKILLS {
+    for (skill, _agent_ref, _agent_file, _label) in REVIEW_SKILLS {
         let pipeline = parse_pipeline(&pipeline_path(skill))?;
         let ids: Vec<&str> = pipeline.phases.iter().map(|p| p.id.as_str()).collect();
         assert_eq!(
@@ -74,7 +76,7 @@ fn review_skills_have_two_phases_review_then_fix() -> Result<(), BeltError> {
 fn review_skills_invoke_single_consolidated_agent() -> Result<(), BeltError> {
     // belt-core's typed Invoker model may not expose `agents` directly; assert
     // by parsing the raw YAML.
-    for (skill, agent, _label) in REVIEW_SKILLS {
+    for (skill, agent_ref, _agent_file, _label) in REVIEW_SKILLS {
         let yaml = std::fs::read_to_string(pipeline_path(skill))?;
         let doc: serde_json::Value =
             serde_saphyr::from_str(&yaml).map_err(|e| BeltError::YamlParse {
@@ -105,8 +107,8 @@ fn review_skills_invoke_single_consolidated_agent() -> Result<(), BeltError> {
             .collect();
         assert_eq!(
             agent_list,
-            vec![*agent],
-            "{skill} review.invoke.agents must be [{agent}]"
+            vec![*agent_ref],
+            "{skill} review.invoke.agents must be [{agent_ref}]"
         );
     }
     Ok(())
@@ -115,8 +117,8 @@ fn review_skills_invoke_single_consolidated_agent() -> Result<(), BeltError> {
 #[test]
 fn review_skills_consolidated_agent_files_exist() {
     let agents_dir = repo_root().join(".claude/agents");
-    for (_skill, agent, _label) in REVIEW_SKILLS {
-        let path = agents_dir.join(format!("{agent}.md"));
+    for (_skill, _agent_ref, agent_file, _label) in REVIEW_SKILLS {
+        let path = agents_dir.join(format!("{agent_file}.md"));
         assert!(
             path.exists(),
             "consolidated agent file must exist: {}",
