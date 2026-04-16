@@ -69,6 +69,19 @@ Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 - **INVOKE 2**: Prompt user for mode (A: `wt merge` / B: `gh pr create`).
 - **INVOKE 3**: Execute via `/worktrunk` per user's choice.
 
+## Narrative Notes
+
+以下 6 phase は `/clear` 後の context 復元のため narrative note を produce する (`.belt/runs/{run_id}/notes/phase-<id>.md`):
+
+- **rca** / **fix-plan** / **execute** / **code-review**
+- **monkey-test** (`--e2e`) / **dogfood** (`--e2e`)
+
+各 note は 4 section (`## Decisions` / `## Concerns` / `## Directives` / `## Observations`) と minimal frontmatter (`phase`, `run_id`) を含む。
+
+規約詳細: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
+
+`/clear` 自体は user 判断（Claude Code runtime 制約で自動化不可）。重い phase 完了直後（例: rca / execute 後）に context が膨れた場合の選択肢として narrative を活用できる。
+
 ## Red Flags
 
 - **Never skip Phase 1 (rca)**: root cause must precede fix. "Fix first" is anti-pattern.
@@ -79,6 +92,7 @@ Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 - **Never bypass the Phase 8 A/B choice**: merge-vs-PR は user 決定.
 - **Never hand-edit files under `docs/plans/<topic>-*`**: phase-produced; manual edits break belt の phase-start mtime filter.
 - **Never modify the consumed global skills**: override は `references/*-supplement.md` 経由のみ.
+- **Never leave narrative note 4 sections blank**: gate は file_exists のみで空 section も通過するが、下流 consume で context 復元不能になる。最低限 `(none)` placeholder を置き、heading は必ず保持。
 
 ## References
 
@@ -88,3 +102,4 @@ Belt pipeline for quality-gated debugging. 8 phases driven by belt-agent.
 - `./references/monkey-test-supplement.md` — Phase 6 override
 - `./references/dogfood-supplement.md` — Phase 7 override and CLI-only degradation
 - `./references/worktrunk-supplement.md` — Phase 8 A/B choice logic
+- `plugins/belt-agents/references/narrative-convention.md` — narrative note schema (shared with feature-dev)
