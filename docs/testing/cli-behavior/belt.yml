@@ -35,3 +35,10 @@ scenarios:
     given: "both --config and positional path are provided"
     when: "belt lint --config <config> <path> is invoked"
     then: "exit code 1 and stderr indicates mutual exclusion"
+  - id: belt-lint-invalid-yaml-rejected
+    category: lint
+    severity: high
+    technique: error-guessing
+    given: "a pipeline YAML file with invalid syntax (malformed indentation or structure)"
+    when: "belt lint <file> is invoked"
+    then: "belt exits with code 1 and stderr contains a parse error indication"

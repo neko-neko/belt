@@ -19,7 +19,7 @@ This directory is the belt project's **long-term test foundation**:
 
 - `cli-behavior/belt.yml` — belt lint CLI behavioral scenarios
 - `cli-behavior/belt-agent.yml` — belt-agent CLI behavioral scenarios (F3 で拡充、F1 は stub)
-- `cli-behavior/belt-core.yml` — belt-core public API behavioral scenarios (F2 で拡充、F1 は config module のみ)
+- `cli-behavior/belt-core.yml` — belt-core public API behavioral scenarios (F1 で config、F2a で engine/view/lint/model/gate/error/expander/parser/uri/artifact_when の 10 module 拡充、残 shape-lock file は F2b scope)
 - `lock-ledger.md` — plugin shape lock test 台帳
 - `audit-template.md` — F2/F3 audit 判定手順 (v1 9 reason labels / decision tree / re-audit trigger)
 

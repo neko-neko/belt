@@ -11,6 +11,7 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
+/// scenario: belt-core-parser-parses-valid-pipeline-yaml
 #[test]
 fn parse_pipeline_from_file() {
     let mut f = NamedTempFile::new().expect("failed to create temp file");
@@ -33,6 +34,7 @@ phases:
     assert_eq!(pipeline.phases.len(), 1);
 }
 
+/// scenario: belt-core-parser-parses-valid-gate-definition-yaml
 #[test]
 fn parse_gate_def_from_file() {
     let mut f = NamedTempFile::new().expect("failed to create temp file");
@@ -57,6 +59,7 @@ checks:
     assert_eq!(gate_def.checks.len(), 2);
 }
 
+/// scenario: belt-core-parser-nonexistent-file-yields-file-not-found
 #[test]
 fn parse_nonexistent_file_returns_error() {
     let result = parse_pipeline(Path::new("/nonexistent/pipeline.yml"));
@@ -70,6 +73,8 @@ fn parse_nonexistent_file_returns_error() {
 /// BELT-32 integration: a complete pipeline exercising Invoker, Artifact,
 /// `ArtifactRef`, and `ValidationSource` together. Verifies parse + lint-clean
 /// on a valid example and parses round-trip correctly.
+///
+/// scenario: belt-core-parser-parses-belt32-pipeline-with-invoker-artifact-validation-source
 #[test]
 fn belt32_full_pipeline_with_all_new_types() {
     use belt_core::lint::{Severity, lint_pipeline};

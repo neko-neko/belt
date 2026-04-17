@@ -8,6 +8,7 @@
 use belt_core::error::BeltError;
 use miette::Diagnostic;
 
+/// scenario: belt-core-error-config-parse-renders-path-detail-and-code
 #[test]
 fn config_parse_error_display_includes_path_and_detail() {
     let err = BeltError::ConfigParse {
@@ -20,6 +21,7 @@ fn config_parse_error_display_includes_path_and_detail() {
     );
 }
 
+/// scenario: belt-core-error-config-parse-renders-path-detail-and-code
 #[test]
 fn config_parse_error_diagnostic_code() {
     let err = BeltError::ConfigParse {
@@ -32,6 +34,7 @@ fn config_parse_error_diagnostic_code() {
     assert_eq!(code.to_string(), "belt::config_parse");
 }
 
+/// scenario: belt-core-error-regate-required-renders-phase-and-code
 #[test]
 fn regate_required_error_display() {
     let err = BeltError::RegateRequired {
@@ -44,6 +47,7 @@ fn regate_required_error_display() {
     );
 }
 
+/// scenario: belt-core-error-regate-required-renders-phase-and-code
 #[test]
 fn regate_required_error_diagnostic_code() {
     let err = BeltError::RegateRequired {
@@ -56,6 +60,7 @@ fn regate_required_error_diagnostic_code() {
     assert_eq!(code.to_string(), "belt::regate_required");
 }
 
+/// scenario: belt-core-error-regate-failed-renders-targets-and-code
 #[test]
 fn regate_failed_error_display() {
     let err = BeltError::RegateFailed {
@@ -68,6 +73,7 @@ fn regate_failed_error_display() {
     );
 }
 
+/// scenario: belt-core-error-regate-failed-renders-targets-and-code
 #[test]
 fn regate_failed_error_diagnostic_code() {
     let err = BeltError::RegateFailed {

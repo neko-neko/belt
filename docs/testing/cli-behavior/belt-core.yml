@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1 で config module のみ本格 (6 scenarios)。F2 で拡充予定: engine / view / lint / model / parser / expander / gate / error / uri の 9 module 公開 API"
+scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計)。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -42,3 +42,737 @@ scenarios:
     given: "a belt.toml with relative pipeline_file containing a subdirectory (e.g. pipelines/main.yml)"
     when: "resolve_pipeline_path(config_path, config) is called"
     then: "returns config_dir joined with the subdirectory-qualified relative path"
+  - id: belt-core-config-preserves-absolute-pipeline-path
+    category: config
+    severity: medium
+    technique: boundary-value
+    given: "a belt.toml with an absolute pipeline_file path (starts with /)"
+    when: "resolve_pipeline_path(config_path, config) is called"
+    then: "returns the absolute path unchanged, not joined with config_path's parent directory"
+
+  # --- engine module ---
+  - id: belt-core-engine-init-creates-run-with-first-active-phase
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML with one or more active phases"
+    when: "Engine::init is called with empty args"
+    then: "returns RunState with current_phase = first phase id, persists state.json, creates output_dir and notes/ directory under runs/<run_id>/"
+  - id: belt-core-engine-init-canonicalizes-pipeline-file-path
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline path containing relative segments, symlinks, or already absolute form"
+    when: "Engine::init is called"
+    then: "state.pipeline_file is an absolute canonical path with no '..' or '/./' segments and symlinks resolved to the real target"
+  - id: belt-core-engine-init-records-optional-branch-verbatim
+    category: engine
+    severity: medium
+    technique: equivalence-partition
+    given: "a caller invoking Engine::init_with_branch with Some(name) or the legacy Engine::init"
+    when: "the engine initialises a run"
+    then: "state.branch equals the supplied Option value verbatim (Some when provided, None for legacy init)"
+  - id: belt-core-engine-init-auto-sets-verify-for-gateless-first-phase
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "a pipeline whose first active phase has no gate vs a pipeline whose first phase has gate checks"
+    when: "Engine::init is called"
+    then: "phase_verify_passed[first] = Some(true) for the gateless case and is absent for the gated case"
+  - id: belt-core-engine-init-error-paths
+    category: engine
+    severity: high
+    technique: error-guessing
+    given: "a pipeline where every phase's when: evaluates to false, or a path to a file that does not exist"
+    when: "Engine::init is called"
+    then: "no-active-phase case returns BeltError::InvalidPipeline; nonexistent path surfaces a parse-layer error (FileNotFound or YamlParse) and never BeltError::Io from canonicalize"
+  - id: belt-core-engine-step-advances-through-active-phases-and-completes
+    category: engine
+    severity: high
+    technique: state-transition
+    given: "a multi-phase pipeline with verify already recorded for each current phase"
+    when: "Engine::step is called repeatedly"
+    then: "current_phase advances through active phases, completed_phases accumulates in order, and after the last phase current_phase = COMPLETED, status = RunStatus::Completed (persisted to state.json), next returns None"
+  - id: belt-core-engine-step-skips-phases-whose-when-is-false
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "a pipeline containing a phase with when: args.X where X is false or absent"
+    when: "Engine::step advances past the prior phase"
+    then: "the conditional phase id is appended to skipped_phases, current_phase jumps to the next active phase, and phase_verify_passed contains no entry for the skipped phase"
+  - id: belt-core-engine-step-requires-verify-before-advancing-gate-phase
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "the current phase has at least one gate check and phase_verify_passed is absent or false"
+    when: "Engine::step is called"
+    then: "returns BeltError::VerifyRequired with phase_id equal to the current phase, and repeated calls remain rejected without mutating state"
+  - id: belt-core-engine-step-auto-verifies-gateless-next-phase-on-entry
+    category: engine
+    severity: medium
+    technique: state-transition
+    given: "Engine::step advances from a gated phase to a phase with no gate checks"
+    when: "the transition occurs"
+    then: "phase_verify_passed[next] is automatically set to true and a subsequent step succeeds without an explicit verify_verdict call; verify state does not carry from one gated phase to the next"
+  - id: belt-core-engine-verify-verdict-increments-attempts-and-records-outcome
+    category: engine
+    severity: high
+    technique: state-transition
+    given: "a run positioned on a gated phase"
+    when: "Engine::verify_verdict is called one or more times with true or false"
+    then: "phase_attempts[phase] increases by one per call regardless of verdict and phase_verify_passed[phase] reflects the latest boolean verdict"
+  - id: belt-core-engine-step-blocks-when-max-retries-exceeded
+    category: engine
+    severity: high
+    technique: boundary-value
+    given: "a phase declares max_retries = N > 0 and phase_attempts exceeds N after several verify_verdict calls"
+    when: "Engine::step is called"
+    then: "returns BeltError::MaxRetriesExceeded carrying phase_id, attempts, and max_retries; step stays blocked while verify_verdict continues to increment attempts"
+  - id: belt-core-engine-max-retries-zero-is-unlimited
+    category: engine
+    severity: medium
+    technique: boundary-value
+    given: "a gated phase with max_retries = 0 (the default) and many FAIL attempts followed by a PASS"
+    when: "Engine::step is called after the final PASS"
+    then: "step succeeds regardless of the attempt count (0 is interpreted as unlimited)"
+  - id: belt-core-engine-guard-order-verify-then-regate-then-max-retries
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "a step() call where multiple guards would apply simultaneously"
+    when: "Engine::step evaluates guards"
+    then: "VerifyRequired is returned before RegateRequired, and RegateRequired is returned before MaxRetriesExceeded"
+  - id: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
+    category: engine
+    severity: high
+    technique: state-transition
+    given: "a gated phase with regate: [<targets>] whose verify has passed"
+    when: "Engine::step is called without record_regate, with record_regate(false), with record_regate(true), or after a re-verify following a recorded regate"
+    then: "no record yields RegateRequired, false yields RegateFailed, true yields a successful advance, and any subsequent verify_verdict clears regate_passed so step is blocked again until regate is re-recorded; init leaves regate_passed empty and record_regate is idempotent"
+  - id: belt-core-engine-regate-handles-empty-or-skipped-or-gateless-targets
+    category: engine
+    severity: medium
+    technique: equivalence-partition
+    given: "a regate target list containing phases with empty gate, skipped (when:false) phases, or a current phase that is itself gateless"
+    when: "Engine::record_regate and Engine::step are exercised"
+    then: "empty-gate targets and skipped targets are treated as passed; a gateless current phase still requires regate to be recorded before step succeeds"
+  - id: belt-core-engine-state-round-trips-through-save-load
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a RunState mutated via init, verify_verdict, record_regate, or direct field writes and saved to disk"
+    when: "Engine::load_state is called with the same run_id"
+    then: "all observable fields (run_id, pipeline, pipeline_file, version, current_phase, completed_phases, skipped_phases, phase_verify_passed, regate_passed, status, phase_start_times, created_at, updated_at) are equal to the in-memory state, and the reloaded pipeline_file is usable by next_phase_info"
+  - id: belt-core-engine-latest-run-id-returns-most-recent-or-errors-when-empty
+    category: engine
+    severity: high
+    technique: boundary-value
+    given: "zero, one, or multiple runs persisted under <belt_dir>/runs/"
+    when: "Engine::latest_run_id is called"
+    then: "returns the UUIDv7-ordered most recent run_id when runs exist, and returns BeltError::State when no runs exist; load_state for an unknown id also returns BeltError::State"
+  - id: belt-core-engine-phase-start-times-set-on-entry-preserved-on-retry-and-persisted
+    category: engine
+    severity: medium
+    technique: state-transition
+    given: "init plus subsequent step() and verify_verdict() calls on a run with multiple phases"
+    when: "phase_start_times is inspected in-memory and after load_state"
+    then: "each phase has a UTC timestamp set when step() first enters it, retries (verify PASS or FAIL) do not update an existing entry, and the map round-trips through state.json with identical RFC3339 values"
+  - id: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose gate contains file_exists: '…{run_id}…' and whose produces[*].path contains '{run_id}'"
+    when: "Engine::next_phase_info is called"
+    then: "the returned PhaseInfo has output_dir set to an existing directory under runs/<run_id>/, and every {run_id} token in gate paths and produces[*].path is replaced with the current run_id (no template token remains)"
+
+  # --- view module ---
+  - id: belt-core-view-phase-state-classified-by-membership
+    category: view
+    severity: high
+    technique: decision-table
+    given: "a RunState whose current_phase, completed_phases, and skipped_phases name a subset of the pipeline's phases"
+    when: "build_status_view is called"
+    then: "every phase is classified as Completed (in completed_phases), Skipped (in skipped_phases), Current (equals current_phase), or Pending (otherwise), preserving the pipeline's declared phase order"
+  - id: belt-core-view-completed-sentinel-clears-current-phase
+    category: view
+    severity: high
+    technique: state-transition
+    given: "a RunState whose current_phase equals the COMPLETED sentinel, with completed_phases (and optionally skipped_phases) covering every active phase"
+    when: "build_status_view is called"
+    then: "PipelineStatus is Completed, current_phase is None, and each phase shows Completed or Skipped (never Current) in declaration order"
+  - id: belt-core-view-progress-counts-sum-to-total
+    category: view
+    severity: high
+    technique: boundary-value
+    given: "a pipeline of N phases (N=1 for the single-phase boundary; N>=3 otherwise) with any mix of completed, skipped, and unvisited phases"
+    when: "build_status_view is called"
+    then: "progress.total == N, progress.completed + progress.skipped + progress.remaining == progress.total, and the individual tallies match the RunState membership counts (including the all-complete and all-pending extremes)"
+  - id: belt-core-view-metadata-fields-propagated-verbatim
+    category: view
+    severity: medium
+    technique: equivalence-partition
+    given: "a RunState carrying run_id, pipeline, pipeline_file, version, args map, created_at, and updated_at"
+    when: "build_status_view is called"
+    then: "PipelineStatus copies every metadata field (including args entries) into the view verbatim without transformation"
+  - id: belt-core-view-verify-passed-tri-state-reflects-record
+    category: view
+    severity: high
+    technique: decision-table
+    given: "phase_verify_passed for the current phase is absent, true, or false"
+    when: "build_status_view is called"
+    then: "PhaseView.verify_passed is None, Some(true), or Some(false) respectively"
+  - id: belt-core-view-regate-passed-tri-state-reflects-record
+    category: view
+    severity: medium
+    technique: decision-table
+    given: "regate_passed for the current phase is absent or true"
+    when: "build_status_view is called"
+    then: "PhaseView.regate_passed is None when no record exists and Some(true) when recorded as passed"
+  - id: belt-core-view-attempt-count-defaults-to-zero-and-reflects-record
+    category: view
+    severity: medium
+    technique: boundary-value
+    given: "phase_attempts lacks an entry for the phase (zero boundary) or records a positive count"
+    when: "build_status_view is called"
+    then: "PhaseView.attempt is 0 when absent and equals the recorded count otherwise"
+  - id: belt-core-view-outputs-lists-phase-directory-files-sorted-excluding-subdirs
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "the run's output directory for a phase is absent, empty, or contains a mix of files and subdirectories"
+    when: "build_status_view is called"
+    then: "PhaseView.outputs is empty when the directory is missing or empty, and otherwise lists only regular file names (subdirectories excluded) sorted ascending"
+  - id: belt-core-view-sub-pipeline-phase-id-sanitized-to-underscore-for-filesystem
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose id contains a '/' separator (e.g. 'review/triage') and corresponding per-phase files on disk (output directory, verify JSON)"
+    when: "build_status_view scans the filesystem for that phase"
+    then: "the filesystem lookup substitutes '/' with '_' (reading 'review_triage/' for outputs and 'verify/review_triage.json' for verify_checks) while the view's phase id retains the original slash form"
+  - id: belt-core-view-yaml-drift-preserves-orphan-completed-and-skipped-phases
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline definition that has added a new phase or removed phases that appear in the RunState's completed_phases or skipped_phases"
+    when: "build_status_view is called"
+    then: "newly added phases appear Pending in declaration order and removed-but-recorded phases are appended to the view with their recorded Completed or Skipped state preserved"
+  - id: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
+    category: view
+    severity: high
+    technique: state-transition
+    given: "an Engine with a run created via init (optionally advanced via verify_verdict and step, with files written under runs/<run_id>/<phase>/)"
+    when: "Engine::enriched_status is called with the run_id"
+    then: "the returned view reflects the current/completed/skipped phase states, progress counts, and per-phase outputs read from the run directory; when state.pipeline_file points at a missing pipeline the call returns an error"
+  - id: belt-core-view-verify-checks-read-from-verify-json-with-graceful-degradation
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "the run directory's verify/<sanitized_phase>.json is absent, corrupt, or a well-formed VerifyReport"
+    when: "build_status_view is called"
+    then: "PhaseView.verify_checks is None when the file is absent or unparseable (graceful degradation) and Some(Vec<CheckView>) mirroring check_type/passed when parsing succeeds"
+  - id: belt-core-view-regate-checks-read-from-regate-json-with-graceful-degradation
+    category: view
+    severity: medium
+    technique: equivalence-partition
+    given: "the run directory's regate/<phase>.json is absent, corrupt, or a well-formed regate report"
+    when: "build_status_view is called"
+    then: "PhaseView.regate_checks is None when the file is absent or unparseable and Some(targets map) preserving the passed/checks structure when parsing succeeds"
+  - id: belt-core-view-phase-view-serializes-invoke-and-produces-as-structured-json
+    category: view
+    severity: medium
+    technique: equivalence-partition
+    given: "a PhaseMetadata carrying an Invoker::Skill and a produces Artifact list"
+    when: "build_status_view is called and the resulting PipelineStatus is serialized with serde_json"
+    then: "the view exposes invoke as Some and produces as a resolved list, and the JSON encoding contains the invoke object (with skill field), the produces array, and the artifact name"
+  - id: belt-core-view-glob-produces-path-resolves-to-newest-file-after-phase-start-with-alphabetical-tiebreak
+    category: view
+    severity: high
+    technique: decision-table
+    given: "a produces Artifact whose path is a glob vs a concrete path, evaluated against candidate files older than, newer than, or equal-mtime with the phase_start_times entry"
+    when: "build_status_view resolves the artifact"
+    then: "glob paths pick the newest match strictly after phase_start (filtering older files out, reporting exists=false when no match remains, and breaking mtime ties by ascending filename), while concrete paths bypass the phase_start filter and resolve purely by filesystem existence"
+
+  # --- lint module ---
+  - id: belt-core-lint-detects-duplicate-phase-ids
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML with two phases sharing the same id"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic mentioning 'duplicate' is emitted"
+  - id: belt-core-lint-detects-invalid-regate-target
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose regate: list references a nonexistent phase id"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic naming the unknown target is emitted"
+  - id: belt-core-lint-detects-undefined-arg-in-when
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a phase with when: 'args.X' where X is not declared in pipeline args"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic naming the undefined arg is emitted"
+  - id: belt-core-lint-clean-pipeline-passes
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a well-formed pipeline with declared args, gate, when, and regate all resolving correctly"
+    when: "lint_pipeline() is called"
+    then: "no Error-severity diagnostics are returned"
+  - id: belt-core-lint-invoke-pipeline-path-resolution
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase with invoke.pipeline pointing to either a nonexistent file or to an existing sibling sub-pipeline file"
+    when: "lint_pipeline() is called"
+    then: "missing file yields an Error-severity diagnostic naming the path and invoke/pipeline; existing file yields no errors"
+  - id: belt-core-lint-invoke-skill-validation
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase with invoke.skill that is missing a leading slash, empty, absent with no description, or properly formed with leading slash plus description"
+    when: "lint_pipeline() is called"
+    then: "missing-slash yields an Error mentioning 'slash', empty-string yields an Error mentioning 'empty', missing-description yields an Error mentioning 'leaf phase' or 'description', and a well-formed /skill invocation yields no errors"
+  - id: belt-core-lint-detects-duplicate-produces-name-within-phase
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose produces: list has two entries sharing the same name"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic containing 'duplicate' and the shared name is emitted"
+  - id: belt-core-lint-consumes-resolution
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a consumes: entry referencing a bare name with no matching produces, a {name, from} pair whose from-phase is unknown, a later phase's output (forward reference), or a correctly earlier-produced artifact (bare and qualified forms)"
+    when: "lint_pipeline() is called"
+    then: "unresolved bare and qualified references and forward references each yield an Error naming the offending token; valid backward references yield no errors"
+  - id: belt-core-lint-validate-file-existence
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase whose validate: entry is file: <path> where the path is either missing or present, or a list of inline string criteria"
+    when: "lint_pipeline() is called"
+    then: "missing file yields an Error naming the path and 'validate'; present file yields no errors; inline-string validate produces no errors"
+  - id: belt-core-lint-empty-phase-rule
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase declaring only description (no invoke, gate, validate, or confirm) vs a phase declaring exactly one of gate, validate, or confirm: true"
+    when: "lint_pipeline() is called"
+    then: "description-only yields an Error naming the phase id and 'neither invoke, gate, validate, nor confirm' (DD-8); any of gate-only, validate-only, or confirm-only passes the empty-phase rule"
+  - id: belt-core-lint-rejects-invalid-belt-uri-grammar
+    category: lint
+    severity: high
+    technique: error-guessing
+    given: "a consumes: entry whose uri: uses an unknown belt:// selector"
+    when: "lint_pipeline() is called"
+    then: "either an Ok(diagnostics) containing a URI/selector/invalid diagnostic, or an Err whose Display mentions URI or belt://; parse-layer rejection is also acceptable"
+  - id: belt-core-lint-warns-on-belt-uri-unknown-sibling-pipeline
+    category: lint
+    severity: medium
+    technique: equivalence-partition
+    given: "a consumes: entry with uri: belt://latest/<pipeline>/... where no sibling <pipeline>.yml nor <pipeline>/pipeline.yml exists next to the current pipeline file"
+    when: "lint_pipeline() is called"
+    then: "a diagnostic mentioning the unknown pipeline name is emitted (advisory, non-fatal)"
+  - id: belt-core-lint-warns-on-produces-without-gate
+    category: lint
+    severity: medium
+    technique: equivalence-partition
+    given: "a phase declaring produces: entries but whose gate does not protect those outputs"
+    when: "lint_pipeline() is called"
+    then: "a Warning-severity diagnostic mentioning 'not protected by gate' is emitted"
+  - id: belt-core-lint-rejects-removed-invoke-keys
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase whose invoke: block uses one of the removed keys agent, agents, or iterations (post-2026-04-16 migration)"
+    when: "lint_raw_pipeline_yaml() is called"
+    then: "returns Err whose Display mentions the removed key name; invoke.agent additionally mentions 'no longer supported' or 'removed'"
+  - id: belt-core-lint-pipeline-surfaces-migration-hint
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline file on disk containing invoke.agent"
+    when: "lint_pipeline() is called (the CLI entry point used by 'belt lint')"
+    then: "the rendered result (Err Display or Ok diagnostics Debug) contains both 'invoke.agent' and 'no longer supported', ensuring the raw-YAML migration hint is surfaced rather than the generic serde untagged-enum error"
+
+  # --- model module ---
+  - id: belt-core-model-parses-minimal-pipeline
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a minimal pipeline YAML (name, version, one phase, single cmd gate)"
+    when: "serde_saphyr deserialises it into Pipeline"
+    then: "pipeline.name, version, and phases[0].id match the YAML; description is None, args is empty, and phases[0].gate[0] is the GateCheck::Cmd variant carrying the expected cmd string"
+  - id: belt-core-model-parses-phase-with-all-fields-and-gate-variants
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a phase YAML exercising every field (when, confirm, max_retries, config map, produces list, validate, regate) plus all five gate shapes (cmd, file_exists, git_clean, has_output, uses with with-map)"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "every scalar/optional field and each gate variant deserialises into its matching GateCheck discriminant with original values preserved"
+  - id: belt-core-model-parses-gate-definition
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a standalone gate definition YAML with name, description, typed inputs (required string, number with default), and a checks list"
+    when: "serde_saphyr deserialises it into GateDefinition"
+    then: "name, description, inputs (including ArgType::String/Number, required flag, default value), and the checks list populate as declared"
+  - id: belt-core-model-parses-sub-pipeline-with-typed-inputs
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a sub-pipeline YAML with name, version, typed inputs including ArgType::List and ArgType::Number with default, and multiple phases"
+    when: "serde_saphyr deserialises it into SubPipeline"
+    then: "all top-level fields plus inputs (with correct ArgType variants and defaults) and phases (ids in order) populate as declared"
+  - id: belt-core-model-parses-pipeline-args-with-arg-types
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML declaring args with ArgType::Bool (default false) and ArgType::Number (default 4)"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Pipeline.args contains both entries with correct ArgType discriminants and default values preserved as typed JSON values"
+  - id: belt-core-model-cmd-timeout-default-and-explicit-and-zero
+    category: model
+    severity: high
+    technique: boundary-value
+    given: "a GateCheck::Cmd YAML with no timeout field, with an explicit positive timeout, or with timeout=0"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "missing field yields timeout=1800 (default), explicit value is preserved verbatim, and 0 is accepted and preserved (interpreted as no-timeout)"
+  - id: belt-core-model-cmd-timeout-does-not-affect-other-gate-variants
+    category: model
+    severity: medium
+    technique: equivalence-partition
+    given: "a gate list mixing a FileExists check and a Cmd check with explicit timeout"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "the FileExists variant deserialises without absorbing Cmd's timeout field and each variant retains its discriminant-specific fields"
+  - id: belt-core-model-validate-list-discriminates-inline-and-file-and-mixed
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a validate: list containing bare strings, {file: path} mappings, or a mixture of both"
+    when: "serde_saphyr deserialises the phase"
+    then: "bare strings become ValidationSource::Inline, {file: path} mappings become ValidationSource::File preserving the path, and mixed lists preserve order and discriminants per item"
+  - id: belt-core-model-validate-scalar-shorthand-path-prefix-rule
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a top-level scalar validate: value whose text starts with './', '/', a non-path dot prefix ('.hidden …'), or no path prefix at all"
+    when: "serde_saphyr deserialises the phase"
+    then: "strict prefix match promotes './' and '/' to ValidationSource::File (path preserved) while every other scalar — including dot-prefixed but non-path text — stays as ValidationSource::Inline"
+  - id: belt-core-model-validate-list-bare-string-stays-inline
+    category: model
+    severity: medium
+    technique: equivalence-partition
+    given: "a validate: list containing a bare string that happens to begin with './' and a {file: …} entry"
+    when: "serde_saphyr deserialises the phase"
+    then: "the bare string remains ValidationSource::Inline (list items never auto-promote to File), while the {file: …} sibling stays ValidationSource::File"
+  - id: belt-core-model-validate-empty-list-accepted
+    category: model
+    severity: low
+    technique: boundary-value
+    given: "a validate: [] declaration on a phase"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "the phase parses successfully with an empty validate Vec (no error, no default injection)"
+  - id: belt-core-model-produces-artifact-field-population-and-default
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose produces: declares an artifact with all fields (name, path, description), an artifact without description, or no produces field at all"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "full artifact preserves name/path/description, missing description becomes None, and an omitted produces field defaults to an empty Vec"
+  - id: belt-core-model-consumes-artifact-ref-named-qualified-and-mixed
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a consumes: list of bare strings (Named), {name, from} mappings (Qualified), or a mixture of both shapes in one list"
+    when: "serde_saphyr deserialises the phase"
+    then: "the untagged ArtifactRef enum discriminates each item correctly: Named preserves the string, Qualified preserves name+from, and list order is retained across mixed shapes"
+  - id: belt-core-model-consumes-defaults-to-empty-vec
+    category: model
+    severity: medium
+    technique: boundary-value
+    given: "a phase YAML with no consumes field"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Phase.consumes defaults to an empty Vec without requiring an explicit empty list"
+  - id: belt-core-model-invoker-skill-and-pipeline-variants
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a phase with invoke: containing either a skill entry with args map or a pipeline entry with with map"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Phase.invoke is Some(Invoker::Skill) preserving skill path and args values, or Some(Invoker::Pipeline) preserving pipeline path and with values, according to which key is present"
+  - id: belt-core-model-invoker-defaults-to-none
+    category: model
+    severity: medium
+    technique: boundary-value
+    given: "a phase YAML without an invoke field"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Phase.invoke is None"
+  - id: belt-core-model-invoker-agent-and-agents-variants-rejected
+    category: model
+    severity: high
+    technique: error-guessing
+    given: "a phase whose invoke: carries a legacy agent: scalar or agents: list (pre-2026-04-16 subagent-boundary refactor shape)"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "deserialisation returns Err — neither Invoker::Agent nor Invoker::Agents exists anymore, so both legacy shapes are firmly rejected"
+  - id: belt-core-model-artifact-ref-untagged-enum-discrimination
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a YAML ArtifactRef list entry shaped as a bare string (Named), {name, from} mapping (Qualified), or {name, uri} mapping with a belt:// URI (External)"
+    when: "serde_saphyr deserialises Vec<ArtifactRef>"
+    then: "the untagged enum discriminates correctly per entry: Named carries the string, Qualified carries name+from, and External carries name plus a parsed BeltUri (e.g. BeltUri::Latest)"
+  - id: belt-core-model-run-state-round-trip-serialization
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a RunState populated with regate_passed entries, optional branch, resolved_consumes mappings, and status=InProgress serialised to JSON"
+    when: "it is deserialised back via serde_json"
+    then: "regate_passed values, branch Option, resolved_consumes map, and status all round-trip byte-identically with no field loss"
+  - id: belt-core-model-run-state-backward-compat-missing-fields
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "legacy state.json lacking regate_passed, branch, resolved_consumes, phase_attempts, phase_verify_passed, and status fields"
+    when: "serde_json deserialises it into RunState"
+    then: "deserialisation succeeds with regate_passed=empty HashMap, branch=None, resolved_consumes=empty, and status defaulting to RunStatus::InProgress"
+  - id: belt-core-model-run-status-serializes-as-lowercase-string
+    category: model
+    severity: medium
+    technique: equivalence-partition
+    given: "a RunStatus value of InProgress, Completed, or Failed"
+    when: "serde_json serialises it"
+    then: "output is the snake_case lowercase JSON string 'in_progress', 'completed', or 'failed' respectively"
+  - id: belt-core-model-run-status-default-is-in-progress
+    category: model
+    severity: low
+    technique: boundary-value
+    given: "RunStatus::default() is called"
+    when: "the default instance is inspected"
+    then: "it equals RunStatus::InProgress"
+
+  # --- gate module ---
+  - id: belt-core-gate-cmd-zero-exit-passes
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a GateCheck::Cmd whose shell invocation exits with status 0 within the configured timeout (including timeout: 0 = unlimited and short cmds well below the timeout budget)"
+    when: "execute_gate is called"
+    then: "returns GateResult with check_type = 'cmd', passed = true, timed_out = false, and duration_ms Some(<elapsed>) strictly below the timeout budget"
+  - id: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
+    category: gate
+    severity: high
+    technique: error-guessing
+    given: "a GateCheck::Cmd that (a) exits non-zero, (b) targets a nonexistent binary (sh -c returns 127), (c) writes to stderr then exits non-zero, or (d) is killed by a signal — all within the timeout budget"
+    when: "execute_gate is called"
+    then: "returns passed = false, timed_out = false, duration_ms set, and detail mentions the cause ('exit' code, 'not found', captured stderr text, or 'signal' depending on the failure mode)"
+  - id: belt-core-gate-cmd-timeout-kills-and-reports
+    category: gate
+    severity: high
+    technique: boundary-value
+    given: "a GateCheck::Cmd running `sleep 60` with timeout: N seconds (N small and positive)"
+    when: "execute_gate is called"
+    then: "the child is killed at the deadline, passed = false, timed_out = true, detail contains 'timed out', and duration_ms is within [N*1000, (N+2)*1000)"
+  - id: belt-core-gate-file-exists-glob-matches
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a work directory containing a file that matches the file_exists glob pattern (e.g. *.txt vs hello.txt)"
+    when: "execute_gate is called with GateCheck::FileExists"
+    then: "returns check_type = 'file_exists', passed = true, timed_out = false, and detail mentions 'matched'"
+  - id: belt-core-gate-file-exists-no-match-fails
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a work directory that has no file satisfying the file_exists glob"
+    when: "execute_gate is called with GateCheck::FileExists"
+    then: "returns check_type = 'file_exists', passed = false, and detail mentions 'no files'"
+  - id: belt-core-gate-has-output-non-empty-passes
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a GateCheck::HasOutput { has_output: true } and an output_dir containing at least one file"
+    when: "execute_gate is called"
+    then: "returns check_type = 'has_output', passed = true, and detail mentions 'non-empty'"
+  - id: belt-core-gate-has-output-empty-dir-fails
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a GateCheck::HasOutput { has_output: true } and an empty output_dir"
+    when: "execute_gate is called"
+    then: "returns check_type = 'has_output', passed = false, and detail mentions 'empty'"
+  - id: belt-core-gate-result-json-round-trip-and-timed-out-default
+    category: gate
+    severity: medium
+    technique: equivalence-partition
+    given: "a GateResult value, or a JSON payload missing the timed_out field, or a non-cmd gate execution"
+    when: "GateResult is serialized/deserialized via serde_json and non-cmd execute_gate is observed"
+    then: "timed_out serializes as the expected boolean, a round-trip preserves every field, JSON without timed_out deserializes with default false, and non-cmd gates always report timed_out = false"
+  - id: belt-core-gate-execute-gates-and-all-passed-aggregate
+    category: gate
+    severity: high
+    technique: decision-table
+    given: "a slice of GateCheck values evaluated together (all pass vs one timeout among passes vs heterogeneous cmd + file_exists)"
+    when: "execute_gates and all_passed are called"
+    then: "execute_gates returns one GateResult per input in order, all_passed(&results) is true iff every result has passed = true, and a single timed-out entry forces all_passed = false while other entries retain their individual passed/timed_out flags"
+
+  # --- error module ---
+  - id: belt-core-error-config-parse-renders-path-detail-and-code
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::ConfigParse{path, detail} constructed from a miette::Diagnostic"
+    when: "Display::to_string() and Diagnostic::code() are evaluated"
+    then: "Display yields 'config parse error in <path>: <detail>' and code() equals 'belt::config_parse'"
+  - id: belt-core-error-regate-required-renders-phase-and-code
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::RegateRequired{phase_id, targets} treated as a miette::Diagnostic"
+    when: "Display::to_string() and Diagnostic::code() are evaluated"
+    then: "Display yields 'regate required for phase <phase_id>: run regate before step' and code() equals 'belt::regate_required'"
+  - id: belt-core-error-regate-failed-renders-targets-and-code
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::RegateFailed{phase_id, targets} treated as a miette::Diagnostic"
+    when: "Display::to_string() and Diagnostic::code() are evaluated"
+    then: "Display yields 'regate failed for phase <phase_id>: targets <debug-formatted targets> did not pass' and code() equals 'belt::regate_failed'"
+
+  # --- expander module ---
+  - id: belt-core-expander-invoke-pipeline-to-namespaced-ids
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a main pipeline with an `invoke: { pipeline: ... }` phase referencing a sub-pipeline with multiple phases, optionally alongside a leaf phase"
+    when: "expand_pipeline is called"
+    then: "sub-pipeline phases are expanded with `{parent_id}/{sub_phase_id}` namespaced IDs in declaration order; any sibling leaf phases preserve their original id and description"
+  - id: belt-core-expander-parent-gate-regate-inherited-by-last-sub-phase-only
+    category: expander
+    severity: high
+    technique: decision-table
+    given: "a parent phase with `invoke:` plus its own `gate:` and `regate:` and a sub-pipeline containing multiple sub-phases"
+    when: "expand_pipeline is called"
+    then: "parent gate entries are appended only to the LAST expanded sub-phase (others keep their own gates unchanged) and parent regate targets are attached only to the LAST sub-phase"
+  - id: belt-core-expander-parent-when-propagates-to-all-sub-phases
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a parent phase with `invoke:` and `when: <expr>` over a sub-pipeline whose sub-phases do not declare their own when"
+    when: "expand_pipeline is called"
+    then: "every expanded sub-phase carries when = Some(<expr>) verbatim"
+  - id: belt-core-expander-leaf-phase-without-description-yields-invalid-pipeline
+    category: expander
+    severity: high
+    technique: error-guessing
+    given: "a pipeline whose leaf (non-invoke) phase omits the `description` field"
+    when: "expand_pipeline is called"
+    then: "returns BeltError::InvalidPipeline"
+
+  # --- parser module ---
+  - id: belt-core-parser-parses-valid-pipeline-yaml
+    category: parser
+    severity: high
+    technique: equivalence-partition
+    given: "a YAML file containing a minimal valid pipeline (name, version, one phase with gate)"
+    when: "parse_pipeline(path) is called"
+    then: "returns a Pipeline whose name and phases match the YAML (phases.len() == 1)"
+  - id: belt-core-parser-parses-valid-gate-definition-yaml
+    category: parser
+    severity: high
+    technique: equivalence-partition
+    given: "a YAML file containing a valid gate definition (name, description, inputs, checks)"
+    when: "parse_gate_definition(path) is called"
+    then: "returns a GateDefinition whose name and checks match the YAML (checks.len() == 2, both cmd and git_clean variants present)"
+  - id: belt-core-parser-nonexistent-file-yields-file-not-found
+    category: parser
+    severity: high
+    technique: error-guessing
+    given: "a path that does not exist on disk"
+    when: "parse_pipeline(path) is called"
+    then: "returns BeltError::FileNotFound variant (not a YAML parse error or generic Io error)"
+  - id: belt-core-parser-parses-belt32-pipeline-with-invoker-artifact-validation-source
+    category: parser
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML exercising BELT-32 types: Invoker::Skill with args, Invoker::Pipeline with uses path, produces with name/path/description, consumes as Named and Qualified ArtifactRef, validate as mixed File + Inline ValidationSource"
+    when: "parse_pipeline(path) is called and the result is lint-checked"
+    then: "all three phases round-trip into the expected Invoker / Artifact / ArtifactRef / ValidationSource variants and lint_pipeline reports no Severity::Error diagnostics"
+
+  # --- artifact_when module ---
+  - id: belt-core-artifact-when-parser-retains-field
+    category: artifact_when
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML declaring produces entries both with and without a when: expression"
+    when: "parse_pipeline is called on the fixture"
+    then: "the parsed Artifact carries when = Some(\"args.e2e\") for the conditional entry and when = None for the unconditional entry"
+  - id: belt-core-artifact-when-expander-preserves-field
+    category: artifact_when
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline whose phase produces an Artifact with when: \"args.e2e\""
+    when: "expand_pipeline is called"
+    then: "the expanded phase's produces[0].when equals Some(\"args.e2e\"), proving the Clone-derive path retains the field across expansion"
+  - id: belt-core-artifact-when-view-active-produces-filters-by-expression
+    category: artifact_when
+    severity: high
+    technique: decision-table
+    given: "a phase with one conditional (when: args.e2e) and one unconditional Artifact, and an args map that is false, true, or empty"
+    when: "view::active_produces is called with each args map"
+    then: "args.e2e=false yields only the unconditional artifact, args.e2e=true yields both, and an empty args map (undefined flag) yields only the unconditional artifact"
+  - id: belt-core-artifact-when-resolve-artifact-ref-honors-source-when
+    category: artifact_when
+    severity: high
+    technique: decision-table
+    given: "a downstream phase consuming an artifact whose source declares when: args.e2e"
+    when: "engine::resolve_artifact_ref is called with args.e2e=false versus args.e2e=true"
+    then: "the false case returns None (conditional source filtered out) and the true case returns Some(ResolvedArtifactRef), keeping consumer resolution in lock-step with the filter"
+  - id: belt-core-artifact-when-lint-warns-undefined-arg-reference
+    category: artifact_when
+    severity: medium
+    technique: error-guessing
+    given: "an Artifact.when expression referencing an arg (args.undefined_flag) that is not declared in args"
+    when: "lint_pipeline is called"
+    then: "diagnostics contain a Severity::Warning whose message names the undefined arg identifier"
+
+  # --- uri module ---
+  - id: belt-core-uri-latest-selector-parses
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://latest/<pipeline>/<path> string"
+    when: "BeltUri::parse() is called"
+    then: "returns Ok(BeltUri::Latest { pipeline, path }) with field values from URI segments"
+  - id: belt-core-uri-workspace-latest-selector-parses
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://workspace/<branch>/latest/<pipeline>/<path> string"
+    when: "BeltUri::parse() is called"
+    then: "returns Ok(BeltUri::WorkspaceLatest { branch, pipeline, path }) with field values from URI segments"
+  - id: belt-core-uri-run-selector-parses
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://run/<run_id>/<path> string"
+    when: "BeltUri::parse() is called"
+    then: "returns Ok(BeltUri::Run { run_id, path }) with field values from URI segments"
+  - id: belt-core-uri-missing-scheme-rejected
+    category: uri
+    severity: high
+    technique: error-guessing
+    given: "a URI string with non-belt:// scheme"
+    when: "BeltUri::parse() is called"
+    then: "returns Err(UriParseError::MissingScheme)"
+  - id: belt-core-uri-path-traversal-rejected
+    category: uri
+    severity: high
+    technique: error-guessing
+    given: "a belt:// URI with .. segment in path"
+    when: "BeltUri::parse() is called"
+    then: "returns Err(UriParseError::PathTraversal)"

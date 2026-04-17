@@ -49,6 +49,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test 1: engine_init_creates_run_with_first_phase
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-creates-run-with-first-active-phase
 #[test]
 fn engine_init_creates_run_with_first_phase() {
     let dir = TempDir::new().expect("tempdir");
@@ -83,6 +84,7 @@ fn engine_init_creates_run_with_first_phase() {
 // ---------------------------------------------------------------------------
 // Test 2: engine_step_advances_to_next_phase
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-advances-through-active-phases-and-completes
 #[test]
 fn engine_step_advances_to_next_phase() {
     let dir = TempDir::new().expect("tempdir");
@@ -121,6 +123,7 @@ fn engine_step_advances_to_next_phase() {
 // ---------------------------------------------------------------------------
 // Test 3: engine_skips_phase_with_false_when
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-skips-phases-whose-when-is-false
 #[test]
 fn engine_skips_phase_with_false_when() {
     let dir = TempDir::new().expect("tempdir");
@@ -164,6 +167,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test 4: engine_verify_verdict_increments_attempts
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-verify-verdict-increments-attempts-and-records-outcome
 #[test]
 fn engine_verify_verdict_increments_attempts() {
     let dir = TempDir::new().expect("tempdir");
@@ -200,6 +204,7 @@ fn engine_verify_verdict_increments_attempts() {
 // ---------------------------------------------------------------------------
 // Test 5: engine_load_state_round_trip
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-state-round-trips-through-save-load
 #[test]
 fn engine_load_state_round_trip() {
     let dir = TempDir::new().expect("tempdir");
@@ -228,6 +233,7 @@ fn engine_load_state_round_trip() {
 // ---------------------------------------------------------------------------
 // Adversarial: load_state with non-existent run returns State error
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-latest-run-id-returns-most-recent-or-errors-when-empty
 #[test]
 fn engine_load_state_missing_run_returns_error() {
     let dir = TempDir::new().expect("tempdir");
@@ -242,6 +248,7 @@ fn engine_load_state_missing_run_returns_error() {
 // ---------------------------------------------------------------------------
 // Adversarial: latest_run_id with no runs returns State error
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-latest-run-id-returns-most-recent-or-errors-when-empty
 #[test]
 fn engine_latest_run_id_no_runs_returns_error() {
     let dir = TempDir::new().expect("tempdir");
@@ -256,6 +263,7 @@ fn engine_latest_run_id_no_runs_returns_error() {
 // ---------------------------------------------------------------------------
 // Adversarial: init with all phases having false `when:` returns error
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-error-paths
 #[test]
 fn engine_init_no_active_phases_returns_error() {
     let dir = TempDir::new().expect("tempdir");
@@ -288,6 +296,7 @@ phases:
 // ---------------------------------------------------------------------------
 // next_phase_info sets output_dir correctly
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
 #[test]
 fn engine_next_phase_info_sets_output_dir() {
     let dir = TempDir::new().expect("tempdir");
@@ -315,6 +324,7 @@ fn engine_next_phase_info_sets_output_dir() {
 // ---------------------------------------------------------------------------
 // Test: init auto-sets verify for gate-less first phase
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-auto-sets-verify-for-gateless-first-phase
 #[test]
 fn init_auto_sets_verify_for_gateless_phase() {
     let dir = TempDir::new().expect("tempdir");
@@ -333,6 +343,7 @@ fn init_auto_sets_verify_for_gateless_phase() {
 // ---------------------------------------------------------------------------
 // Test: init does NOT auto-set verify for gate phase
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-auto-sets-verify-for-gateless-first-phase
 #[test]
 fn init_does_not_auto_set_verify_for_gate_phase() {
     let dir = TempDir::new().expect("tempdir");
@@ -364,6 +375,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: phase_verify_passed round-trips through save/load
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-state-round-trips-through-save-load
 #[test]
 fn engine_phase_verify_passed_round_trip() {
     let dir = TempDir::new().expect("tempdir");
@@ -426,6 +438,7 @@ fn error_max_retries_exceeded_message() {
 // ---------------------------------------------------------------------------
 // latest_run_id returns the most recent run
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-latest-run-id-returns-most-recent-or-errors-when-empty
 #[test]
 fn engine_latest_run_id_returns_most_recent() {
     let dir = TempDir::new().expect("tempdir");
@@ -449,6 +462,7 @@ fn engine_latest_run_id_returns_most_recent() {
 // ---------------------------------------------------------------------------
 // Test: verify_verdict sets phase_verify_passed
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-verify-verdict-increments-attempts-and-records-outcome
 #[test]
 fn verify_verdict_sets_phase_verify_passed() {
     let dir = TempDir::new().expect("tempdir");
@@ -469,6 +483,7 @@ fn verify_verdict_sets_phase_verify_passed() {
 // ---------------------------------------------------------------------------
 // Test: step auto-sets verify for gate-less next phase
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-auto-verifies-gateless-next-phase-on-entry
 #[test]
 fn step_auto_sets_verify_for_gateless_next_phase() {
     let dir = TempDir::new().expect("tempdir");
@@ -507,6 +522,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step without verify returns VerifyRequired
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-requires-verify-before-advancing-gate-phase
 #[test]
 fn step_without_verify_returns_verify_required() {
     let dir = TempDir::new().expect("tempdir");
@@ -539,6 +555,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step after verify PASS succeeds
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-advances-through-active-phases-and-completes
 #[test]
 fn step_after_verify_pass_succeeds() {
     let dir = TempDir::new().expect("tempdir");
@@ -571,6 +588,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step after verify FAIL returns VerifyRequired
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-requires-verify-before-advancing-gate-phase
 #[test]
 fn step_after_verify_fail_returns_verify_required() {
     let dir = TempDir::new().expect("tempdir");
@@ -606,6 +624,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step on gate-less phase succeeds without verify
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-auto-verifies-gateless-next-phase-on-entry
 #[test]
 fn step_on_gateless_phase_succeeds_without_verify() {
     let dir = TempDir::new().expect("tempdir");
@@ -623,6 +642,7 @@ fn step_on_gateless_phase_succeeds_without_verify() {
 // ---------------------------------------------------------------------------
 // Test: verify PASS does not carry to next gate phase
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-auto-verifies-gateless-next-phase-on-entry
 #[test]
 fn verify_pass_does_not_carry_to_next_gate_phase() {
     let dir = TempDir::new().expect("tempdir");
@@ -669,6 +689,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step exceeding max_retries returns error
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-blocks-when-max-retries-exceeded
 #[test]
 fn step_exceeding_max_retries_returns_error() {
     let dir = TempDir::new().expect("tempdir");
@@ -714,6 +735,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step within max_retries succeeds
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-blocks-when-max-retries-exceeded
 #[test]
 fn step_within_max_retries_succeeds() {
     let dir = TempDir::new().expect("tempdir");
@@ -753,6 +775,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: step with zero max_retries is unlimited
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-max-retries-zero-is-unlimited
 #[test]
 fn step_with_zero_max_retries_is_unlimited() {
     let dir = TempDir::new().expect("tempdir");
@@ -792,6 +815,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: verify still works after max_retries exceeded
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-blocks-when-max-retries-exceeded
 #[test]
 fn verify_still_works_after_max_retries_exceeded() {
     let dir = TempDir::new().expect("tempdir");
@@ -841,6 +865,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: VerifyRequired fires before MaxRetriesExceeded when both apply
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-guard-order-verify-then-regate-then-max-retries
 #[test]
 fn guard_order_verify_required_before_max_retries() {
     let dir = TempDir::new().expect("tempdir");
@@ -880,6 +905,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test: phase_verify_passed persists across load (via verify_verdict)
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-state-round-trips-through-save-load
 #[test]
 fn phase_verify_passed_persists_across_load() {
     let dir = TempDir::new().expect("tempdir");
@@ -906,6 +932,7 @@ fn phase_verify_passed_persists_across_load() {
 // ---------------------------------------------------------------------------
 // Test: Full lifecycle through gate_pipeline (3 gate phases)
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-advances-through-active-phases-and-completes
 #[test]
 fn lifecycle_gate_pipeline_init_verify_step_to_completion() {
     let dir = TempDir::new().expect("tempdir");
@@ -950,6 +977,7 @@ fn lifecycle_gate_pipeline_init_verify_step_to_completion() {
 // ---------------------------------------------------------------------------
 // Test: Lifecycle through gate + confirm mixed pipeline
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-auto-sets-verify-for-gateless-first-phase
 #[test]
 fn lifecycle_gate_confirm_mixed_pipeline() {
     let dir = TempDir::new().expect("tempdir");
@@ -999,6 +1027,7 @@ fn lifecycle_gate_confirm_mixed_pipeline() {
 // ---------------------------------------------------------------------------
 // Test: Lifecycle with max_retries recovery (fail then pass within limit)
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-blocks-when-max-retries-exceeded
 #[test]
 fn lifecycle_max_retries_recovery() {
     let dir = TempDir::new().expect("tempdir");
@@ -1044,6 +1073,7 @@ fn lifecycle_max_retries_recovery() {
 // ---------------------------------------------------------------------------
 // Test: Skipped phase does not pollute verify state
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-skips-phases-whose-when-is-false
 #[test]
 fn when_skipped_phase_does_not_pollute_verify_state() {
     let dir = TempDir::new().expect("tempdir");
@@ -1078,6 +1108,7 @@ fn when_skipped_phase_does_not_pollute_verify_state() {
 // ---------------------------------------------------------------------------
 // Test: Regate pipeline verify-step works through all phases
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_pipeline_verify_step_works() {
     let dir = TempDir::new().expect("tempdir");
@@ -1124,6 +1155,7 @@ fn regate_pipeline_verify_step_works() {
 // ---------------------------------------------------------------------------
 // Test: max_retries: 1 triggers immediate escalation after 2 attempts
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-blocks-when-max-retries-exceeded
 #[test]
 fn max_retries_one_immediate_escalation() {
     let dir = TempDir::new().expect("tempdir");
@@ -1163,6 +1195,7 @@ fn max_retries_one_immediate_escalation() {
 // ---------------------------------------------------------------------------
 // Test: Consecutive step without verify always rejected
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-requires-verify-before-advancing-gate-phase
 #[test]
 fn consecutive_step_without_verify_always_rejected() {
     let dir = TempDir::new().expect("tempdir");
@@ -1188,6 +1221,7 @@ fn consecutive_step_without_verify_always_rejected() {
 // ---------------------------------------------------------------------------
 // Test: After max_retries escalation, verify works but step remains rejected
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-blocks-when-max-retries-exceeded
 #[test]
 fn after_escalation_verify_works_but_step_rejected() {
     let dir = TempDir::new().expect("tempdir");
@@ -1233,6 +1267,7 @@ fn after_escalation_verify_works_but_step_rejected() {
 // ---------------------------------------------------------------------------
 // Test: init stores absolute path in state.pipeline_file
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-canonicalizes-pipeline-file-path
 #[test]
 fn init_stores_absolute_path() {
     let dir = TempDir::new().expect("tempdir");
@@ -1253,6 +1288,7 @@ fn init_stores_absolute_path() {
 // ---------------------------------------------------------------------------
 // Test: init canonicalizes dot segments (../ and ./)
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-canonicalizes-pipeline-file-path
 #[test]
 fn init_canonicalizes_dot_segments() {
     let dir = TempDir::new().expect("tempdir");
@@ -1288,6 +1324,7 @@ fn init_canonicalizes_dot_segments() {
 // ---------------------------------------------------------------------------
 // Test: init with absolute path stores same canonical path
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-canonicalizes-pipeline-file-path
 #[test]
 fn init_with_absolute_path_preserved() {
     let dir = TempDir::new().expect("tempdir");
@@ -1312,6 +1349,7 @@ fn init_with_absolute_path_preserved() {
 // Test: init resolves symlink to real path
 // ---------------------------------------------------------------------------
 #[cfg(unix)]
+/// scenario: belt-core-engine-init-canonicalizes-pipeline-file-path
 #[test]
 fn init_resolves_symlink() {
     let dir = TempDir::new().expect("tempdir");
@@ -1343,6 +1381,7 @@ fn init_resolves_symlink() {
 // ---------------------------------------------------------------------------
 // Test: state.pipeline_file is usable after save/load round-trip
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-state-round-trips-through-save-load
 #[test]
 fn state_pipeline_file_usable_after_reload() {
     let dir = TempDir::new().expect("tempdir");
@@ -1366,6 +1405,7 @@ fn state_pipeline_file_usable_after_reload() {
 // ---------------------------------------------------------------------------
 // Test: nonexistent path returns parse_pipeline error, not canonicalize error
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-error-paths
 #[test]
 fn init_nonexistent_path_returns_parse_error() {
     let dir = TempDir::new().expect("tempdir");
@@ -1427,6 +1467,7 @@ fn advance_to_build(
     assert_eq!(state.current_phase, "build");
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_init_does_not_set_regate_passed() {
     let dir = TempDir::new().expect("tempdir");
@@ -1440,6 +1481,7 @@ fn regate_init_does_not_set_regate_passed() {
     );
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_record_stores_result() {
     let dir = TempDir::new().expect("tempdir");
@@ -1457,6 +1499,7 @@ fn regate_record_stores_result() {
     assert_eq!(state.regate_passed.get("build"), Some(&true));
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_verify_clears_regate_passed() {
     let dir = TempDir::new().expect("tempdir");
@@ -1478,6 +1521,7 @@ fn regate_verify_clears_regate_passed() {
     );
 }
 
+/// scenario: belt-core-engine-state-round-trips-through-save-load
 #[test]
 fn regate_passed_persists_across_save_load() {
     let dir = TempDir::new().expect("tempdir");
@@ -1494,6 +1538,7 @@ fn regate_passed_persists_across_save_load() {
     assert_eq!(loaded.regate_passed.get("build"), Some(&true));
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_step_requires_regate_when_targets_exist() {
     let dir = TempDir::new().expect("tempdir");
@@ -1512,6 +1557,7 @@ fn regate_step_requires_regate_when_targets_exist() {
     );
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_step_blocked_when_regate_failed() {
     let dir = TempDir::new().expect("tempdir");
@@ -1532,6 +1578,7 @@ fn regate_step_blocked_when_regate_failed() {
     );
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_step_succeeds_after_verify_and_regate_pass() {
     let dir = TempDir::new().expect("tempdir");
@@ -1546,6 +1593,7 @@ fn regate_step_succeeds_after_verify_and_regate_pass() {
     assert_eq!(next.as_deref(), Some("test"));
 }
 
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_step_succeeds_without_regate_when_no_targets() {
     let dir = TempDir::new().expect("tempdir");
@@ -1559,6 +1607,7 @@ fn regate_step_succeeds_without_regate_when_no_targets() {
     assert_eq!(next.as_deref(), Some("build"));
 }
 
+/// scenario: belt-core-engine-guard-order-verify-then-regate-then-max-retries
 #[test]
 fn regate_verify_guard_priority_over_regate_guard() {
     let dir = TempDir::new().expect("tempdir");
@@ -1577,6 +1626,7 @@ fn regate_verify_guard_priority_over_regate_guard() {
     );
 }
 
+/// scenario: belt-core-engine-guard-order-verify-then-regate-then-max-retries
 #[test]
 fn regate_guard_priority_over_max_retries() {
     let dir = TempDir::new().expect("tempdir");
@@ -1623,6 +1673,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test 11: verify -> regate(PASS) -> re-verify -> regate cleared -> step blocked
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_verify_regate_reverify_resets_regate() {
     let dir = TempDir::new().expect("tempdir");
@@ -1646,6 +1697,7 @@ fn regate_verify_regate_reverify_resets_regate() {
 // ---------------------------------------------------------------------------
 // Test 12: regate FAIL -> re-verify clears state for fresh retry
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_fail_then_reverify_clears_state() {
     let dir = TempDir::new().expect("tempdir");
@@ -1668,6 +1720,7 @@ fn regate_fail_then_reverify_clears_state() {
 // ---------------------------------------------------------------------------
 // Test 13: multiple regate targets — partial fail -> all_passed false
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_multiple_targets_partial_fail() {
     let dir = TempDir::new().expect("tempdir");
@@ -1721,6 +1774,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test 14: record_regate is idempotent
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
 #[test]
 fn regate_record_idempotent() {
     let dir = TempDir::new().expect("tempdir");
@@ -1742,6 +1796,7 @@ fn regate_record_idempotent() {
 // ---------------------------------------------------------------------------
 // Test 23: gateless phase with regate targets
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-handles-empty-or-skipped-or-gateless-targets
 #[test]
 fn regate_gateless_phase_with_regate_targets() {
     let dir = TempDir::new().expect("tempdir");
@@ -1794,6 +1849,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test 25: regate target skipped phase — auto-passed
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-handles-empty-or-skipped-or-gateless-targets
 #[test]
 fn regate_target_skipped_phase_auto_passed() {
     let dir = TempDir::new().expect("tempdir");
@@ -1849,6 +1905,7 @@ phases:
 // ---------------------------------------------------------------------------
 // Test 26: regate target with empty gate -> treated as passed
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-regate-handles-empty-or-skipped-or-gateless-targets
 #[test]
 fn regate_target_with_empty_gate() {
     let dir = TempDir::new().expect("tempdir");
@@ -1897,6 +1954,7 @@ phases:
 /// `phase_start_times` is set when `step()` first enters a phase.
 /// It is not touched by retries within the same phase.
 /// regate does not modify any phase's `phase_start_times`.
+/// scenario: belt-core-engine-phase-start-times-set-on-entry-preserved-on-retry-and-persisted
 #[test]
 fn phase_start_times_is_set_on_entry_not_updated_on_retry() {
     let dir = TempDir::new().expect("tempdir");
@@ -1989,6 +2047,7 @@ phases:
 }
 
 /// `phase_start_times` uses UTC and serialises round-trip via state.json.
+/// scenario: belt-core-engine-phase-start-times-set-on-entry-preserved-on-retry-and-persisted
 #[test]
 fn phase_start_times_round_trips_through_state_json() {
     let dir = TempDir::new().expect("tempdir");
@@ -2033,6 +2092,7 @@ phases:
 // `Engine::init`, so downstream tasks can write narrative Markdown artifacts
 // without worrying about directory-creation ordering.
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-creates-run-with-first-active-phase
 #[test]
 fn init_creates_notes_directory() {
     let dir = TempDir::new().expect("tempdir");
@@ -2065,6 +2125,7 @@ phases:
 // Task 14's resolver, which filters runs by `status == "completed"` for
 // `belt://latest/...` URI resolution.
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-step-advances-through-active-phases-and-completes
 #[test]
 fn step_marks_run_completed_when_no_next_phase() {
     use belt_core::model::RunStatus;
@@ -2123,6 +2184,7 @@ phases:
 // so that the LLM-facing JSON emitted by `belt-agent next` carries run-scoped
 // absolute-ish paths rather than raw templates.
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
 #[test]
 fn next_phase_info_expands_run_id_in_file_exists_gate() {
     use belt_core::model::GateCheck;
@@ -2175,6 +2237,7 @@ phases:
 // that downstream consumers (narrative artifact writers, Task 22 fixtures)
 // receive run-scoped paths from the phase descriptor.
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
 #[test]
 fn next_phase_info_expands_run_id_in_produces_path() {
     let dir = TempDir::new().expect("tempdir");
@@ -2226,6 +2289,7 @@ phases:
 // (belt-agent) is responsible for detecting the branch via git; core trusts
 // whatever `Option<String>` it receives. This test pins the happy path.
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-records-optional-branch-verbatim
 #[test]
 fn init_records_branch_when_provided() {
     let dir = TempDir::new().expect("tempdir");
@@ -2263,6 +2327,7 @@ phases:
 // observe `branch: None` in the resulting state, matching the pre-Task-12
 // behaviour guarded by Tasks 8/9/10.
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-init-records-optional-branch-verbatim
 #[test]
 fn init_legacy_records_no_branch() {
     let dir = TempDir::new().expect("tempdir");
