@@ -37,15 +37,17 @@ Design source: `docs/features/2026-04-17-belt-test-foundation-f2b/design.md`
 
 **Application target**: git_clean XNOR / uri error matrix / F2b Decision Tree label application
 
-**Table 1: `GateCheck::GitClean` → `GateResult.passed`**
+**Table 1: `GateCheck::GitClean` → `GateResult.passed` / `detail`** (※ detail は production contract (gate.rs:272-277) で `is_clean` のみで分岐、`expect_clean` に依存しない)
 
 | is_clean | expect_clean | git CLI | passed | detail |
 |---|---|---|---|---|
-| T | T | Ok | T | "clean" |
-| T | F | Ok | F | "expected dirty but clean" |
-| F | T | Ok | F | "1 file(s) with uncommitted changes" |
-| F | F | Ok | T | "1 file(s) uncommitted (expected dirty)" |
-| - | - | Err | F | "failed to run git" |
+| T | T | Ok | T | `"working tree clean"` |
+| T | F | Ok | F | `"working tree clean"` (passed=false だが detail は clean) |
+| F | T | Ok | F | `"N file(s) with uncommitted changes"` |
+| F | F | Ok | T | `"N file(s) with uncommitted changes"` (passed=true だが detail は uncommitted) |
+| - | - | Err (spawn failure via **non-existent work_dir**) | F | `"failed to run git: <os error>"` |
+
+Note: Row 5 の `Err` trigger は **non-existent work_dir** (tempdir.close() 後 or 存在しない path)。非 git tempdir は `git status` exit=128 だが `Command::output()` は `Ok(output)` を返し、stdout=empty → is_clean=true 判定 → row 1 に fall through (production contract)。
 
 **Table 2: `BeltUri::parse` → `Result<BeltUri, UriParseError>`**
 
@@ -131,17 +133,17 @@ Expected: 各 phase gate PASS 後に advance、narrative notes が design/plan/e
 
 以下は F2b 完了 gate の測定可能 acceptance criteria:
 
-1. **NFR-01 Performance**: `cargo test -p belt-core --test scenarios_contract -- --nocapture` の real time < 2 秒 (14 test の wall clock)
-2. **NFR-02 Performance**: `cargo test -p belt-core --test gate_test --test-threads=1 -- git_clean` が 5 test 合計 < 5 秒
+1. **NFR-01 Performance**: `cargo test -p belt-core --test scenarios_contract --no-run` 後、compiled binary wall time < 2 秒 (warm-cache test runtime; cold-cache CI wall time は別概念で NFR-10 で扱う)
+2. **NFR-02 Performance**: `cargo test -p belt-core --test gate_test git_clean -- --test-threads=1` が 4-5 test 合計 < 5 秒 (libtest filter は `--` より前、runner flag は `--` より後)
 3. **NFR-03 Reliability**: `for i in {1..50}; do cargo test --workspace || exit 1; done; echo OK` exit 0
-4. **NFR-04 Functional**: baseline 408 → F2b 完了時 workspace test count が [411, 417] レンジに収まる
-5. **NFR-05 Functional**: scenarios_contract の symmetric diff (yml ID set == rust doc-comment ID set) が全 commit で pass
-6. **NFR-06 Maintainability**: F2b audit-report.md に 9 reason label 各使用頻度を記載、Forward-to-F3 list が 3 category (belt-agent / cross-crate / binary helper) で cover
-7. **NFR-07 Compatibility**: `cargo clippy --workspace -- -D warnings` clean (全 commit)
+4. **NFR-04 Functional**: baseline 408 → F2b 完了時 workspace test count が **[409, 411]** レンジに収まる (arithmetic: Item 1 ±0 + Item 2 -5 + Item 3 +4〜5 + Item 6 +2〜3 = +1〜+3)
+5. **NFR-05 Functional**: scenarios_contract の symmetric diff (yml ID set == rust doc-comment ID set) が全 commit で pass (category/file 配置は global set 照合のみ、category 対応は human-review)
+6. **NFR-06 Maintainability**: F2b audit-report.md に 9 reason label 各使用頻度 + Side Findings section (Q3-B 副次発見) + Forward-to-F3 list が 3 category (belt-agent / cross-crate / binary helper) で cover
+7. **NFR-07 Compatibility**: `cargo clippy --workspace -- -D warnings` clean (全 commit、common/mod.rs preamble で clippy::unwrap_used / expect_used / panic / dead_code を allow)
 8. **NFR-08 Compatibility**: `cargo fmt --all -- --check` clean (全 commit)
 9. **NFR-09 Security**: `cargo audit` / `cargo deny` 差分なし (F2a merge 基準)
-10. **NFR-10 Portability**: CI runner (`ubuntu-latest` × `macos-latest`) で全 test green、`aarch64-unknown-linux-gnu` cross build pass
-11. **NFR-11 Integrity**: production code diff (`git diff main -- 'crates/*/src/**' | grep -v 'src/uri.rs'` の non-test-only 行) が空
+10. **NFR-10 Portability**: CI runner (`ubuntu-latest` × `macos-latest`) で全 test green、`aarch64-unknown-linux-gnu` cross build pass、cold-cache wall time は measurement 対象外
+11. **NFR-11 Integrity**: production code diff `git diff main -- 'crates/*/src/**' ':(exclude)crates/belt-core/src/uri.rs'` が empty (pathspec 除外、`grep -v` の文字列 match fragility 回避)。別途 `git diff main -- crates/belt-core/src/uri.rs` が `#[cfg(test)] mod tests` 削除 hunk のみであることを人間 review
 12. **NFR-12 Integrity**: pilot 3 file (`cli_test.rs` / `config_test.rs` / `feature_dev_refresh.rs`) の assertion body 不変 (`git diff main -- <pilot files>` の test body diff が helper import と narrative refresh のみ)
 
 ## Must-Verify Mapping
@@ -201,23 +203,26 @@ design.md の 46 Must-Verify items (MV-01 〜 MV-46) を以下 10 Test Entries (
 ### TE-E: expander_with integration test addition
 
 **Covers**: MV-09, MV-17, MV-28  
-**Test Perspective**: P6 (expander with × 4 観点)  
+**Test Perspective**: P6 (expander with × 4 観点、non-overlap matrix あり)  
 **Technique**: Equivalence Partitioning (string / bool / null 値) + Boundary-value (1 sub-phase / 10 sub-phase)  
 **Entry point**: `cargo test -p belt-core --test expander_with_test`  
 **Pass criteria**:
 - `expander_with_test.rs` に integration test 2-3 本追加、既存 17 行 preamble 保持 (MV-09)
 - `belt-core.yml` expander category が 4 → 6-7 scenarios (MV-17)
 - public API `expand_pipeline` 経由の end-to-end、private helper 直接 call なし (MV-28)
+- **Non-overlap matrix** (design.md P6 参照): 各新 test が inline 26 unit test の「対応 semantic」と「public boundary で新規 cover する内容」を明示。plan phase で table を確定
 
 ### TE-F: lock-ledger bug_fix_refresh stub expansion
 
 **Covers**: MV-10, MV-18  
 **Test Perspective**: P7 (ledger entry × 4 観点)  
 **Technique**: Equivalence Partitioning (stub vs populated) + State-transition (F1 stub → F2b populated)  
-**Entry point**: `cargo test -p belt-core --test scenarios_contract lock_ledger_locks_files_exist`  
+**Entry point (machine)**: `cargo test -p belt-core --test scenarios_contract lock_ledger_locks_files_exist` — **locks-file: 行の file 存在のみ検証**  
+**Entry point (human-review)**: test-fn-count / 19 named test-fn / 9 shape dimensions / cross-coupling — 機械検証対象外、reviewer が feature_dev_refresh template と同粒度か目視確認  
 **Pass criteria**:
-- `lock-ledger.md` の bug_fix_refresh.rs entry が stub "F2/F3 で同様の shape dimension 列挙" を削除、feature_dev_refresh template 並みに 19 test-fn-names + 9 shape dimensions 列挙 (MV-10)
-- `lock_ledger_locks_files_exist` が全 `locks-file:` 行で pass (MV-18)
+- [machine] `lock_ledger_locks_files_exist` が全 `locks-file:` 行で pass (MV-18)
+- [human-review] `lock-ledger.md` の bug_fix_refresh.rs entry が stub "F2/F3 で同様の shape dimension 列挙" を削除、feature_dev_refresh template 並みに 19 test-fn-names + 9 shape dimensions 列挙 (MV-10)
+- **Note**: test-fn-count の実値 drift (bug_fix_refresh.rs に test 追加されたのに ledger 未更新) は CI で検出されない、contributor rule として管理
 
 ### TE-G: audit-template wording correction
 
@@ -243,22 +248,25 @@ design.md の 46 Must-Verify items (MV-01 〜 MV-46) を以下 10 Test Entries (
 
 ### TE-I: Infrastructure correctness (cross-cutting)
 
-**Covers**: MV-13, MV-34, MV-35, MV-36, MV-37, MV-38, MV-39, MV-42, MV-44, MV-45, MV-46  
+**Covers**: MV-13, MV-23, MV-34, MV-35, MV-36, MV-37, MV-38, MV-39, MV-42, MV-44, MV-45, MV-46, MV-47, MV-48  
 **Test Perspective**: NFR 全項  
 **Technique**: State-transition (baseline → commit 1 → ... → final) + Decision Table (各 commit の green 条件)  
 **Entry point**: 各 commit で `cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check`  
 **Pass criteria**:
 - `scenarios_contract` 全 test pass (MV-13)
-- `cargo test --workspace` 全 pass、count 411-417 (MV-34、NFR-04)
-- `cargo clippy --workspace -- -D warnings` clean (MV-35、NFR-07)
+- shape-lock 4 file の test fn 名 + `#[test]` 数が F2a merge 時点と同数、helper import 以外は touchless (MV-23)
+- `cargo test --workspace` 全 pass、count **409-411** (MV-34、NFR-04)
+- `cargo clippy --workspace -- -D warnings` clean (common/mod.rs preamble で test helper 由来 warnings 抑止) (MV-35、NFR-07)
 - `cargo fmt --all -- --check` clean (MV-36、NFR-08)
 - pilot 3 file の assertion body 不変 (MV-37、NFR-12)
 - shape-lock 4 file の test count / assertion body 不変 (MV-38)
-- production code diff zero (MV-39、NFR-11)
+- production code diff zero with pathspec exclude (MV-39、NFR-11)
 - baseline 408 pass を design commit 前に再確認 (MV-42)
 - `docs/testing/README.md` 整合 (MV-44)
 - `docs/superpowers/specs/**` verbatim path 維持 (MV-45)
 - audit-template wording patch が cross doc と矛盾なし (MV-46)
+- common/mod.rs preamble に test helper 由来 clippy lint allowances 宣言 (MV-47)
+- git_clean spawn-failure variant が non-existent work_dir で trigger (MV-48)
 
 ### TE-J: Narrative notes + worktree + pipeline args
 
@@ -273,7 +281,7 @@ design.md の 46 Must-Verify items (MV-01 〜 MV-46) を以下 10 Test Entries (
 
 ### Mapping 網羅性確認
 
-46 MV items が 10 Test Entries で全 cover されている:
+48 MV items が 10 Test Entries で全 cover されている (F2b spec-review で MV-47/48 追加):
 
 | MV | TE | MV | TE | MV | TE |
 |---|---|---|---|---|---|
@@ -283,7 +291,7 @@ design.md の 46 Must-Verify items (MV-01 〜 MV-46) を以下 10 Test Entries (
 | 04 | A | 20 | A | 36 | I |
 | 05 | B | 21 | A | 37 | I |
 | 06 | B | 22 | A | 38 | I |
-| 07 | C | 23 | I (shape-lock) | 39 | I |
+| 07 | C | 23 | I | 39 | I |
 | 08 | D | 24 | D | 40 | J |
 | 09 | E | 25 | D | 41 | J |
 | 10 | F | 26 | B | 42 | I |
@@ -291,10 +299,10 @@ design.md の 46 Must-Verify items (MV-01 〜 MV-46) を以下 10 Test Entries (
 | 12 | H | 28 | E | 44 | I |
 | 13 | I | 29 | D | 45 | I |
 | 14 | B | 30 | B | 46 | I |
-| 15 | C | 31 | B | | |
-| 16 | D | 32 | H | | |
+| 15 | C | 31 | B | 47 | I |
+| 16 | D | 32 | H | 48 | C/I |
 
-網羅性: 46 / 46 = 100%
+網羅性: 48 / 48 = 100%
 
 ## Risk-based Test Prioritization
 

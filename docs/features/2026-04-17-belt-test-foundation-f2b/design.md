@@ -21,13 +21,13 @@ F2b は「belt の test 資産を audit する多段 feature 群 (F1 → F2a →
 |---|---|---|
 | 2-A (lock-ledger scope) | **bug_fix_refresh stub 本文化のみ** | 実態として 6 entries 既存、他 3 (review_skills / shared_criteria / shared_filter) は complete |
 | 2-B (binary crate helper) | **F3 送り、belt-core/tests のみ対象** | F2a `belt-agent/tests/** = F3 scope` の延長、Cargo の tests/common/mod.rs は同 crate 内 only |
-| 2-C (engine Display 2 test) | **keep + scenario 追加 + parameterize** | spec engine-guards.md:43 が `attempts/max_retries` ratio format を reference、CLI JSON reason は Display 層 regression 感度を cover せず |
+| 2-C (engine Display 2 test) | **keep + scenario 追加 + parameterize** | spec engine-guards.md:43 が `attempts/max_retries` ratio format を reference、CLI JSON reason は Display 層 regression 感度を cover せず。parameterize (literal `"3/3"` → `format!("{attempts}/{max_retries}")`、literal `"verify required"` → `contains(&format!("for phase '{phase_id}'"))`) により F2a の `brittle-format-match` 診断を解消、assertion が format literal から semantic invariant に変化 → Decision Tree Q3 branch で "behavior" として resolve → Q5 kept (scenario 登録で legitimize) に routing。parameterize しない場合は implementation-coupling または format-match のまま削除対象 |
 | 2-D (uri inline 12 test) | **全量 integration 移植 + inline 全削除** | inline は `super::*` で public API のみ叩く、Q3 white-box exemption 成立せず、SSOT 化 |
 | 2-E (parser_test vs model_test) | **layer 分離で両保持** | audit-template.md:52 記述の fn 名誤り、実 fn は layer 異なる complementary test |
 
 ### Execute approach: A (F2a-mirror)
 
-F2a の Phase B (infrastructure-first) → Phase A (item work) → Phase C (audit-report) を踏襲。11 commit 想定 (Phase B0-B2 → A1-A5 → C1)。
+F2a の Phase B (infrastructure-first) → Phase A (item work) → Phase C (audit-report) を踏襲。9 commit 想定 (Phase B0-B2 → A1-A5 → C1、Phase B2 skip なら 8)。
 
 ## Architecture
 
@@ -46,7 +46,7 @@ Layer 2: Binding (crates/belt-core/tests/scenarios_contract.rs)
     - F2b では mechanism 変更なし (binding consumer 側で scenario 追加/削除)
 
 Layer 3: Binding realization + Helper consolidation
-    - crates/belt-core/tests/common/mod.rs (new, re-export hub)
+    - crates/belt-core/tests/common/mod.rs (new, re-export hub; preamble: #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::missing_panics_doc, dead_code, reason = "test helpers use panic-on-mismatch per workspace convention; dead_code exempted centrally")])
     - crates/belt-core/tests/common/helpers.rs (new, write_yaml/repo_root/fixture_path)
     - crates/belt-core/tests/common/narrative.rs (new, find_phase/find_produce/has_file_exists_gate/has_named_consume + 4 assert_* helpers)
     - crates/belt-core/tests/common/parity.rs (new, optional)
@@ -101,8 +101,8 @@ Layer 4: Documentation
 | 8 | `crates/belt-core/tests/expander_test.rs` | edit | write_yaml を common 経由に |
 | 9 | `crates/belt-core/tests/expander_with_test.rs` | edit | integration test 2-3 本追加 (preamble 保持) |
 | 10 | `crates/belt-core/tests/gate_test.rs` | edit | git_clean test 4-5 本追加 (scenarios 対応 doc-comment 付与) |
-| 11 | `crates/belt-core/tests/model_test.rs` | edit (optional) | common import (helper 未使用なら touchless) |
-| 12 | `crates/belt-core/tests/parser_test.rs` | edit (optional) | 同上 |
+| ~~11~~ | ~~model_test.rs~~ | **non-impacted** | helper 未使用 (grep 検証済、write_yaml/repo_root/fixture_path いずれも未 reference)、touchless |
+| ~~12~~ | ~~parser_test.rs~~ | **non-impacted** | 同上、touchless |
 | 13 | `crates/belt-core/tests/artifact_when_field.rs` | edit | fixture_path を common 経由に |
 | 14 | `crates/belt-core/tests/scenarios_contract.rs` | edit | repo_root を common 経由に |
 | 15 | `crates/belt-core/tests/bug_fix_refresh.rs` | edit | repo_root + narrative helpers を common 経由に |
@@ -173,6 +173,7 @@ Layer 4: Documentation
 - `docs/testing/audit-template.md` (Duplication Candidates wording patch)
 
 **non-impacted (明示)**:
+- `crates/belt-core/tests/model_test.rs` / `parser_test.rs` (helper 未使用 grep 検証済、common 経由 import 不要、assertion body 完全 unchanged)
 - `crates/belt-agent/tests/**` (F3 scope)
 - `crates/belt/tests/**` (F3 scope、belt binary cli_test.rs の variant B helper は touchless)
 - `crates/*/src/**` excluding `src/uri.rs` test mod (production runtime unchanged)
@@ -183,15 +184,16 @@ Layer 4: Documentation
 ### Module-level (behavior / contract 変化)
 
 - **No production code change**: `src/uri.rs` の `#[cfg(test)] mod tests` 削除は cfg-gated、production binary に残留ゼロ
-- **Test surface delta**: baseline 408 test → F2b 完了時点予測 **411-417** test
-  - Item 1: ±0 (keep)
+- **Test surface delta**: baseline 408 test → F2b 完了時点予測 **409-411** test (arithmetic: 408 + [+1, +3])
+  - Item 1: ±0 (keep、parameterize 2 test のみ)
   - Item 2: -12 (inline delete) + 7 (integration 追加) = **-5**
-  - Item 3: +4-5 (git_clean)
+  - Item 3: +4-5 (git_clean、うち 1 test は missing-work_dir で spawn failure 経路)
   - Item 4a/b/c: ±0 (helper dedup、test count 不変)
   - Item 5: ±0 (docs)
   - Item 6: +2-3 (integration)
   - Item 7: ±0 (Item 1/2/3/6 で吸収)
-- **Scenario count delta**: baseline 114 → 127-132 (uri +7, gate +4-5, error +1-2, expander +2-3)
+  - Sum: +0 + (-5) + (+4〜+5) + 0 + 0 + (+2〜+3) + 0 = **+1 to +3** → 408 + 1 = 409, 408 + 3 = 411
+- **Scenario count delta**: baseline 114 → **128-131** (uri +7, gate +4-5, error +1-2, expander +2-3; sum = +14〜+17)
 - **File count delta**: +4 new test file (common/ 以下), -0 (uri_test.rs keep, gate_test.rs keep, expander_with_test.rs keep), -1 (src/uri.rs #[cfg(test)] 削除だが file 自体は残る)
 
 ## Impact Analysis
@@ -225,7 +227,7 @@ Layer 4: Documentation
 |---|---|---|
 | `scenarios_contract.rs::strip_string_literals` then `strip_block_comments` 順序 | F2a Phase B2 fix + drift test 4 本で lock 済 | F2b では mechanism 変更なし、test helper 内の raw string 使用は drift test で自動検証 |
 | `BeltError::VerifyRequired` / `MaxRetriesExceeded` の `#[error("...")]` 文面 (error.rs:30,34) | spec engine-guards.md:43 の `attempts/max_retries` ratio format | Item 1 で scenario 化 + parameterize assertion (`starts_with` / formatter interpolation) で rewording 耐性 + regression 感度両立 |
-| `BeltUri::parse` の 9 error variant (`MissingScheme` 〜 `PathTraversal` 〜 `Malformed`) | 現 inline 12 test が variant 全 cover | Item 2 全量移植後、uri_test.rs が唯一の variant coverage、削除 = 移植漏れ検知 loss リスク |
+| `BeltUri::parse` の **7** error variant (`MissingScheme` / `UnknownSelector` / `EmptyPipeline` / `EmptyRunId` / `EmptyPath` / `PathTraversal` / `Malformed`) + happy path 3 variant (Run/Latest/WorkspaceLatest) | 現 inline 12 test が 7 error variant + 3 happy + 2 cross (absolute path / workspace-missing-latest) を cover | Item 2 全量移植後、uri_test.rs が唯一の variant coverage、削除 = 移植漏れ検知 loss リスク。serde `Serialize/Deserialize` impl (src/uri.rs:161-172) は integration 側 `to_string_roundtrip` で Display 経路のみ cover、serde 経路は別途 roundtrip test 追加を plan で検討 |
 | `GateCheck::GitClean` XNOR logic (`is_clean == expect_clean`) | `gate.rs:271` の現実装 | Item 3 test で clean/dirty × expect_clean/expect_dirty の 4 組合せ + git error 1 の 5 variant を lock |
 | `write_yaml(dir: &TempDir, name: &str, content: &str) -> PathBuf` signature | 3 belt-core file で identical | Item 4a 抽出時、common/helpers.rs の signature を variant A (File::create + write_all) に統一、3 call site 全て動作変更なし |
 | `expand_pipeline` public API の with-substitution semantics | memory `feedback_expander_parent_scope_rule.md` の parent-inherit 値 rewrite 禁止 rule | Item 6 integration test で parent-scope isolation を公開 API 経由で lock、inline unit test と重複しない scope |
@@ -259,13 +261,13 @@ Layer 4: Documentation
 
 ### 基本構造 (deliverable 存在と shape)
 
-- [ ] **MV-01**: `crates/belt-core/tests/common/mod.rs` が新規作成、`#![allow(dead_code)]` preamble + `pub mod helpers; pub mod narrative;` [+ `pub mod parity;`] 記述
+- [ ] **MV-01**: `crates/belt-core/tests/common/mod.rs` が新規作成、preamble は `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::missing_panics_doc, dead_code, reason = "test helpers use panic-on-mismatch per workspace convention")]` + `pub mod helpers; pub mod narrative;` [+ `pub mod parity;`] 記述。dead_code 抑制は blanket (contributor rule として "helper 追加時は 1 caller 以上を同 commit") で mitigate、per-item narrow 化は future refinement
 - [ ] **MV-02**: `common/helpers.rs` に `write_yaml` / `repo_root` / `fixture_path` 3 helpers が variant A signature で export 済み
 - [ ] **MV-03**: `common/narrative.rs` に 4 helper fns (`find_phase` / `find_produce` / `has_file_exists_gate` / `has_named_consume`) + 4 assert_* fns が export
-- [ ] **MV-04**: 全 helper caller (belt-core/tests/ 内 9+ file) が common 経由 import に変更
+- [ ] **MV-04**: 全 helper caller (belt-core/tests/ 内 9+ file) が common 経由 import に変更。各 caller file の top-level に `mod common;` 宣言 (Cargo は auto-include しない、各 integration test binary が individually 再 compile)。grep 検証: `grep -l '^mod common' crates/belt-core/tests/*.rs` の結果が helper-using file 集合と一致
 - [ ] **MV-05**: `crates/belt-core/src/uri.rs` line 174-310 の `#[cfg(test)] mod tests` ブロック全削除、production code (line 1-172) unchanged
-- [ ] **MV-06**: `crates/belt-core/tests/uri_test.rs` が 5 → 12 test、7 edge case 追加 (parse_unknown_selector / parse_empty_pipeline / parse_empty_run_id / parse_empty_path / parse_absolute_path_rejected / parse_workspace_missing_latest / to_string_roundtrip_all_variants)
-- [ ] **MV-07**: `crates/belt-core/tests/gate_test.rs` に git_clean test 4-5 本追加 (clean+expect_clean / dirty+expect_dirty / clean+expect_dirty / dirty+expect_clean / git command error)
+- [ ] **MV-06**: `crates/belt-core/tests/uri_test.rs` が 5 → 12 test、7 edge case 追加 (parse_unknown_selector / parse_empty_pipeline / parse_empty_run_id / parse_empty_path / parse_absolute_path_rejected / parse_workspace_missing_latest / to_string_roundtrip_all_variants)。UriParseError 7 variant 全 cover: MissingScheme / UnknownSelector / EmptyPipeline / EmptyRunId / EmptyPath / PathTraversal / Malformed
+- [ ] **MV-07**: `crates/belt-core/tests/gate_test.rs` に git_clean test 4-5 本追加。4 happy variants (clean+expect_clean / dirty+expect_dirty / clean+expect_dirty / dirty+expect_clean)。5th variant (spawn failure) は**非存在 work_dir** (tempdir.close() 後 or 存在しない path) で `Command::current_dir().output()` の spawn error をトリガー (非 git tempdir では `git status` exit=128 でも `Ok(output)` → clean 判定で variant 5 非到達、**production 実装の既存 contract**)
 - [ ] **MV-08**: `crates/belt-core/tests/engine_test.rs` の `error_verify_required_message` / `error_max_retries_exceeded_message` 2 test に scenario doc-comment 付与 + assertion parameterize (`starts_with` / `format!()` 化)
 - [ ] **MV-09**: `crates/belt-core/tests/expander_with_test.rs` に integration test 2-3 本追加 (既存 preamble コメント保持)
 - [ ] **MV-10**: `docs/testing/lock-ledger.md` の bug_fix_refresh.rs entry stub が feature_dev_refresh.rs template 並みに expand (+35-40 行、test-fn-count + 9 shape dimensions)
@@ -275,10 +277,10 @@ Layer 4: Documentation
 ### SSOT ↔ Rust binding 機械検証
 
 - [ ] **MV-13**: `cargo test -p belt-core --test scenarios_contract` が全 pass (F2a baseline 14 test + F2b 無変更)
-- [ ] **MV-14**: belt-core.yml の uri category = 12 scenarios、対応 doc-comment が uri_test.rs 12 test に付与
-- [ ] **MV-15**: belt-core.yml の gate category = 13-14 scenarios、対応 doc-comment が gate_test.rs (既存 22 + 新規 4-5) に付与
-- [ ] **MV-16**: belt-core.yml の error category = 4-5 scenarios、うち 1-2 が Display format lock (engine_test.rs の 2 Display test)
-- [ ] **MV-17**: belt-core.yml の expander category = 6-7 scenarios、うち 2-3 が expander_with_test.rs の新規 integration test 向け
+- [ ] **MV-14** (**human-review**): belt-core.yml の uri category = 12 scenarios、対応 doc-comment が uri_test.rs 12 test に付与。※ scenarios_contract は global set 照合のみで category / file 配置は非検証、人間 review で確認
+- [ ] **MV-15** (**human-review**): belt-core.yml の gate category = 13-14 scenarios、対応 doc-comment が gate_test.rs (既存 22 + 新規 4-5) に付与。category/file 配置は人間確認
+- [ ] **MV-16** (**human-review**): belt-core.yml の error category = 4-5 scenarios、うち 1-2 が Display format lock (engine_test.rs の 2 Display test)
+- [ ] **MV-17** (**human-review**): belt-core.yml の expander category = 6-7 scenarios、うち 2-3 が expander_with_test.rs の新規 integration test 向け
 - [ ] **MV-18**: `lock_ledger_locks_files_exist` assert が全 `locks-file:` 行で pass、bug_fix_refresh entry expansion 後も 4 shape-lock file 全実在
 
 ### Helper consolidation correctness
@@ -291,15 +293,15 @@ Layer 4: Documentation
 
 ### Item-level behavior correctness
 
-- [ ] **MV-24**: Item 1 Display 2 test の parameterize assertion: `error_verify_required_message` が `msg.starts_with("verify required for phase '")` 以上の semantic 検証、literal `"verify required"` 固定依存を除去
-- [ ] **MV-25**: Item 1 Display 2 test: `error_max_retries_exceeded_message` が `msg.contains(&format!("{attempts}/{max_retries}"))` で動的 format 検証、literal `"3/3"` 固定依存を除去
+- [ ] **MV-24**: Item 1 Display 2 test の parameterize assertion: `error_verify_required_message` が **動的 phase_id lock** (`msg.contains(&format!("for phase '{phase_id}'"))`)、wrong phase_id が silent pass しないこと確認。literal `"verify required"` 固定依存除去
+- [ ] **MV-25**: Item 1 Display 2 test: `error_max_retries_exceeded_message` が **動的 phase_id + ratio 両 lock** (`msg.contains(&format!("for phase '{phase_id}'"))` AND `msg.contains(&format!("{attempts}/{max_retries}"))`)、phase_id 欠落 / ratio 違いが silent pass しないこと確認。literal `"3/3"` 固定依存除去
 - [ ] **MV-26**: Item 2 uri integration 12 test が inline 12 test の semantic coverage を 1:1 再現 (移植表で確認)
-- [ ] **MV-27**: Item 3 gate git_clean 4-5 test が clean/dirty 両 branch + expect_clean/expect_dirty XNOR + git command error の 5 variant をカバー
+- [ ] **MV-27**: Item 3 gate git_clean 4-5 test が clean/dirty 両 branch + expect_clean/expect_dirty XNOR の 4 variant + (optional) 5th variant = **missing work_dir** による spawn failure path。非 git tempdir (exit=128 + stdout=empty) は production contract で "clean" 判定 → variant として使わない
 - [ ] **MV-28**: Item 6 expander_with_test.rs integration test が **public API `expand_pipeline`** (parse_pipeline 経由または直接) を entry point とし、`substitute_arg_in_value` 等 private API を直接叩かない (unit test との layering 分離)
 
 ### Decision Tree / Label application
 
-- [ ] **MV-29**: engine Display 2 test → kept (Q5 路由)、label なし、新 scenario `belt-core-error-display-preserves-phase-id-and-counter` (or similar) を belt-core.yml に追加
+- [ ] **MV-29**: engine Display 2 test → kept (Q5 路由)、label なし、新 scenario `belt-core-error-display-verify-required-preserves-phase-id` + `belt-core-error-display-max-retries-preserves-phase-id-and-counter` を belt-core.yml に追加。audit-report.md に "F2a forward label=brittle-format-match → F2b parameterize → Q5 kept" の transition 根拠を記録
 - [ ] **MV-30**: uri inline 5 overlap test → `redundant-with-<integration-test-id>` label + delete
 - [ ] **MV-31**: uri inline 7 edge case test → Q5 経由 kept (scenario 追加 + integration 移植後 delete)、label なし
 - [ ] **MV-32**: audit-report.md に 9 label の使用頻度 summary、使用された label と使用されなかった label を明記 (v2 bump 必要性の signal)
@@ -307,12 +309,12 @@ Layer 4: Documentation
 
 ### 一貫性 / regression
 
-- [ ] **MV-34**: `cargo test --workspace` 全 pass (predicted 411-417)
+- [ ] **MV-34**: `cargo test --workspace` 全 pass (predicted 409-411)
 - [ ] **MV-35**: `cargo clippy --workspace -- -D warnings` clean (`dead_code` 警告は common/mod.rs の preamble で抑止)
 - [ ] **MV-36**: `cargo fmt --all -- --check` clean
 - [ ] **MV-37**: pilot 3 file (cli_test.rs / config_test.rs / feature_dev_refresh.rs) の既存 test unchanged (Phase B0-C 全 commit で existing test body が touch されていないこと `git diff` で確認)
 - [ ] **MV-38**: shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の test count 不変、assertion body 不変 (helper import のみ書き換え)
-- [ ] **MV-39**: production code (`crates/*/src/**` excluding `src/uri.rs` 削除部分) unchanged、`git diff` で新規変更ゼロ
+- [ ] **MV-39**: production code unchanged、`git diff main -- 'crates/*/src/**' ':(exclude)crates/belt-core/src/uri.rs'` が empty (pathspec で uri.rs 完全除外、`grep -v` だと削除行中の文字列 match で誤って残存)。別途 `git diff main -- crates/belt-core/src/uri.rs` が `#[cfg(test)] mod tests` 削除 hunk のみであることを人間 review
 
 ### Narrative notes
 
@@ -323,6 +325,11 @@ Layer 4: Documentation
 - [ ] **MV-41**: `feature/2026-04-17-belt-test-foundation-f2b` branch 存在 (`git branch --list`)、current branch 一致
 - [ ] **MV-42**: baseline `cargo test --workspace` = 408 pass を design commit 前に再確認
 - [ ] **MV-43**: F2b pipeline args: `{codex: true, e2e: false}`、monkey-test / dogfood skip
+
+### Helper extraction specifics (MV-47, MV-48 追加)
+
+- [ ] **MV-47**: `common/helpers.rs` は workspace clippy の `unwrap_used` / `expect_used` / `panic` 警告を silence するため crate root の `#![allow(...)]` で cover (common/mod.rs preamble で足りる、各 sub-module で重複宣言不要)
+- [ ] **MV-48**: `git_clean` test が spawn-failure variant を含む場合、non-git tempdir ではなく **non-existent work_dir** で trigger (非 git tempdir は production contract で "clean" 判定のため error path が statically reachable でない)
 
 ### doc-drift 予防
 
@@ -367,17 +374,17 @@ F2b deliverable を input parameter として Normal / Boundary / Abnormal / Sta
 |---|---|
 | Normal | clean git repo + expect_clean=true → pass / dirty repo + expect_clean=false → pass |
 | Boundary | clean repo 直後に git add した file を untrack (dirty detection precision) / empty repo (no commits) の clean 判定 |
-| Abnormal | tempdir が git repo でない → `git status` fail → passed=false + detail "failed to run git" / git コマンド非存在 (PATH 外) も同 fail path |
+| Abnormal | **non-existent work_dir** (tempdir削除後) で `Command::current_dir().output()` spawn failure → `passed=false` + detail "failed to run git: <os error>". 非 git tempdir は production contract で "clean" 判定のため Abnormal 不適 |
 | State-transition | clean → touch file → dirty の状態遷移を 1 test 内で連続確認 |
 
-### P5: engine Display 2 test scenario 化 + parameterize
+### P5: engine Display 2 test scenario 化 + parameterize (Normal のみ 実 assertion、Boundary/Abnormal/State-transition は aspirational)
 
 | 観点 | 対象 case |
 |---|---|
-| Normal | `BeltError::VerifyRequired { phase_id: "build" }` → msg starts_with "verify required for phase 'build'" / `MaxRetriesExceeded { phase_id, attempts: 3, max_retries: 3 }` → msg contains `format!("{attempts}/{max_retries}")` |
-| Boundary | phase_id 最長 255 chars / attempts/max_retries が `0/0` (境界値) / `u32::MAX/u32::MAX` |
-| Abnormal | phase_id が empty string ("") での format、Unicode/emoji 含 phase_id |
-| State-transition | Display format 文面変更 (rewording) で test 失敗してはならない semantic invariant: phase_id が msg に含まれる && `{attempts}/{max_retries}` format が含まれる |
+| Normal (asserted) | `BeltError::VerifyRequired { phase_id: "build" }` → `msg.contains(&format!("for phase '{phase_id}'"))` (動的 phase_id lock) / `MaxRetriesExceeded { phase_id, attempts: 3, max_retries: 3 }` → `msg.contains(&format!("for phase '{phase_id}'"))` AND `msg.contains(&format!("{attempts}/{max_retries}"))` (phase_id + ratio 両 lock) |
+| Boundary (aspirational) | phase_id 最長 255 chars / attempts/max_retries が `0/0` (境界値) / `u32::MAX/u32::MAX` — F3 候補 (F2b Item 1 delta ±0 で未 asserted) |
+| Abnormal (aspirational) | phase_id が empty string ("") での format、Unicode/emoji 含 phase_id — F3 候補 |
+| State-transition (semantic invariant) | Display format 文面変更 (rewording) で test 失敗してはならない semantic invariant: phase_id が quoted form で msg に含まれる && `{attempts}/{max_retries}` ratio format が含まれる。parameterize で lock 済 |
 
 ### P6: expander_with_test.rs 2-3 integration test
 
@@ -387,6 +394,14 @@ F2b deliverable を input parameter として Normal / Boundary / Abnormal / Sta
 | Boundary | with 値が bool / null / string 型 / empty string、1 sub-phase / 10 sub-phase |
 | Abnormal | with が parent arg 名と collision、循環参照 yml (uses: self) |
 | State-transition | parent arg を sub で override (scope isolation)、memory `feedback_expander_parent_scope_rule.md` の rule 遵守 |
+
+**Non-overlap matrix** (Plan phase で詳細化、integration 2-3 test が inline 26 + 既存 integration 2 と重複しないことを lock):
+
+| integration test (F2b 新規) | 対応する inline semantic | integration で newly 覆う public boundary | assertion focus |
+|---|---|---|---|
+| `expand_pipeline_with_string_substitution_end_to_end` | `substitute_*` inline | YAML ファイル parse → expand_pipeline 関数の外部入出力 | ExpandedPhase.invoker.args に string value propagate |
+| `expand_pipeline_with_bool_and_null_substitution_preserves_types` | `substitute_*` (bool/null case) | 同上、型 preservation を YAML level で | Value::Bool / Value::Null が ExpandedPhase で正しく表現 |
+| `expand_pipeline_parent_scope_not_rewritten_by_sub_substitution` | inline parent-scope rule | public API レベルで feedback_expander_parent_scope_rule.md の regression lock | parent phase の args が sub substitution で変更されないこと |
 
 ### P7: lock-ledger bug_fix_refresh entry expansion
 
@@ -410,7 +425,7 @@ F2b deliverable を input parameter として Normal / Boundary / Abnormal / Sta
 
 | 特性 | 要件 | 計測 |
 |---|---|---|
-| Performance | scenarios_contract.rs 全 test が < 2 秒、gate git_clean test × 5 個で git spawn 合計 < 5 秒 | `cargo test --test scenarios_contract --test gate_test -- --nocapture` 実時間 |
+| Performance | scenarios_contract.rs 全 test が < 2 秒 (warm cache、`cargo test --no-run` 後の binary-level runtime)、gate git_clean test × 4-5 個で git spawn 合計 < 5 秒 | `cargo test --test scenarios_contract --no-run && target/debug/deps/scenarios_contract-<hash> --nocapture` 実時間 |
 | Maintainability | F3 作業者が F2b audit-report.md + lock-ledger の expanded bug_fix_refresh entry を読んで belt-agent audit を開始可能 | handover で referrable |
 | Determinism | F2b 追加 test 全 deterministic (時間/race 依存なし)、git_clean test は tempdir 内で完結、bash loop 50 回 pass | `for i in {1..50}; do cargo test --workspace \|\| exit 1; done; echo OK` |
 | Portability | F1/F2a と同条件、git CLI が PATH 上 (CI runner 前提) | release.yml cross build + local test |
@@ -473,6 +488,11 @@ F2b deliverable を input parameter として Normal / Boundary / Abnormal / Sta
   - label 集計: Q5 kept (engine Display 2 + uri 7 edge 経由 via integration) + redundant-with-X (uri 5 overlap)
   - Forward-to-F3 list: belt-agent/tests/, cross-crate duplication (regate_*, verify_verdict_*, status_*), binary crate helper unification
   - audit-template.md patch: parser_test.rs 誤記訂正 notation 追記、Decision Tree / labels unchanged (v1 unchanged)
+  - **Side Findings section (required)**: Q3-B で発見した副次 target (item 4 helper dedup 中 / item 6 expander sweep 中 / etc.) を以下 format で記録:
+    ```
+    | file:test_fn | Decision Tree path (Q1→Q2→...) | label or kept judgment | disposition (fixed in F2b / forwarded to F3 / deferred out of scope) |
+    ```
+    空でも section 見出し + "(none discovered)" 明示
 
 ### Commit 粒度 (目安 9-10 commits)
 
