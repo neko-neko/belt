@@ -17,7 +17,8 @@ Q2: 同等の behavior を検証する他 test が存在するか？
  └── no → Q3
 Q3: この test は behavior でなく internal structure (private state / format / default 値) を assert しているか？
  ├── behavior assert → Q4
- ├── internal assert → judgement = implementation-coupling  (→ 削除 or 抽象化)
+ ├── internal assert (shape lock: `*_refresh.rs` / `*_parity.rs` / `scenarios_contract.rs`) → judgement = kept without scenario ID (shape lock test は behavior scenario の対象外で、plugin/pipeline の構造自体を固定する役割)
+ ├── internal assert (shape lock 以外) → judgement = implementation-coupling  (→ 削除 or 抽象化)
 Q4: assertion は trivial (自明な default 等) または tautology か？
  ├── yes → judgement = trivial-default-assertion または tautology  (→ 削除)
  └── no → Q5
