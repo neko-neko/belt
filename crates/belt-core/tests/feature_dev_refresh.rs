@@ -1,4 +1,4 @@
-//! Integration tests for the refreshed feature-dev pipeline (9 phases).
+//! Integration tests for the refreshed feature-dev pipeline (10 phases).
 
 #![allow(
     clippy::expect_used,
@@ -26,7 +26,7 @@ fn feature_dev_pipeline_path() -> PathBuf {
 }
 
 #[test]
-fn feature_dev_has_nine_phases() -> Result<(), BeltError> {
+fn feature_dev_has_ten_phases() -> Result<(), BeltError> {
     let pipeline = parse_pipeline(&feature_dev_pipeline_path())?;
 
     let expected: &[&str] = &[
@@ -34,6 +34,7 @@ fn feature_dev_has_nine_phases() -> Result<(), BeltError> {
         "test-scenarios",
         "spec-review",
         "plan",
+        "pre-execute-handover",
         "execute",
         "code-review",
         "monkey-test",

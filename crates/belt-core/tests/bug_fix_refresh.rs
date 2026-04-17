@@ -2,8 +2,8 @@
 //!
 //! Shape contract (spec docs/specs/2026-04-15-debug-flow-refresh-design.md):
 //! - args = { e2e: bool, codex: bool } only (iterations / swarm / ui / smoke removed)
-//! - 8 phases: rca → fix-plan → fix-plan-review → execute → code-review →
-//!   monkey-test → dogfood → integrate
+//! - 9 phases: rca → fix-plan → fix-plan-review → pre-execute-handover → execute →
+//!   code-review → monkey-test → dogfood → integrate
 //! - All phases use skill: invoke (no pipeline:)
 //! - Review phases (fix-plan-review, code-review) pass codex
 //! - code-review has regate: [execute]; no other phase has regate
@@ -52,6 +52,7 @@ const EXPECTED_PHASES: &[&str] = &[
     "rca",
     "fix-plan",
     "fix-plan-review",
+    "pre-execute-handover",
     "execute",
     "code-review",
     "monkey-test",
@@ -94,12 +95,18 @@ fn phase_count_and_order() {
 
 #[test]
 fn all_phases_use_skill_invoke() {
+    // Pure-checkpoint phases (phase.invoke.is_none()) are exempt: they carry
+    // no implementation work, only a file_exists gate. E.g. `pre-execute-handover`
+    // is a context-reset barrier between plan and execute. The contract under
+    // test is: *if* a phase invokes anything, it must be a /-prefixed skill
+    // (not a sub-pipeline, not a cmd). Pure checkpoints bypass this check by
+    // design.
     let pipeline = bug_fix_pipeline();
-    for phase in &pipeline.phases {
+    for phase in pipeline.phases.iter().filter(|p| p.invoke.is_some()) {
         let invoker = phase
             .invoke
             .as_ref()
-            .unwrap_or_else(|| panic!("phase '{}' must have invoke", phase.id));
+            .expect("filter guarantees invoke.is_some()");
         match invoker {
             Invoker::Skill { skill, .. } => {
                 assert!(
@@ -214,14 +221,23 @@ fn rca_scenarios_present_when_e2e_true() {
 
 #[test]
 fn all_phases_have_max_retries_3_and_confirm_true() {
+    // Pure-checkpoint phases (phase.invoke.is_none()) are exempt from the
+    // max_retries invariant: `max_retries` makes sense only when there is
+    // implementation work to retry. Pure checkpoints (e.g. `pre-execute-handover`)
+    // have no invoke and no retry-able body; their `max_retries` stays at the
+    // serde default (0). The `confirm: true` invariant still applies to all
+    // phases because a checkpoint phase is exactly where we want a human
+    // confirm beat.
     let pipeline = bug_fix_pipeline();
     for phase in &pipeline.phases {
-        assert_eq!(
-            phase.max_retries, 3,
-            "phase '{}' max_retries must be 3",
-            phase.id
-        );
         assert!(phase.confirm, "phase '{}' confirm must be true", phase.id);
+        if phase.invoke.is_some() {
+            assert_eq!(
+                phase.max_retries, 3,
+                "phase '{}' max_retries must be 3",
+                phase.id
+            );
+        }
     }
 }
 
