@@ -1,0 +1,44 @@
+scope: "belt-core pure library public API. F1 で config module のみ本格 (6 scenarios)。F2 で拡充予定: engine / view / lint / model / parser / expander / gate / error / uri の 9 module 公開 API"
+scenarios:
+  - id: belt-core-config-valid-toml-parses
+    category: config
+    severity: high
+    technique: equivalence-partition
+    given: "a valid belt.toml with pipeline_file field"
+    when: "parse_config() is called"
+    then: "returns Config with parsed pipeline_file path"
+  - id: belt-core-config-missing-file-yields-file-not-found
+    category: config
+    severity: high
+    technique: equivalence-partition
+    given: "a path to a nonexistent belt.toml"
+    when: "parse_config() is called"
+    then: "returns BeltError::FileNotFound variant"
+  - id: belt-core-config-invalid-toml-yields-config-parse
+    category: config
+    severity: high
+    technique: equivalence-partition
+    given: "a belt.toml with invalid TOML syntax"
+    when: "parse_config() is called"
+    then: "returns BeltError::ConfigParse variant"
+  - id: belt-core-config-missing-pipeline-file-field-yields-config-parse
+    category: config
+    severity: medium
+    technique: equivalence-partition
+    given: "a belt.toml without pipeline_file field"
+    when: "parse_config() is called"
+    then: "returns BeltError::ConfigParse variant"
+  - id: belt-core-config-resolves-relative-pipeline-path
+    category: config
+    severity: high
+    technique: equivalence-partition
+    given: "a belt.toml with relative pipeline_file value"
+    when: "resolve_pipeline_path(config, config_dir) is called"
+    then: "returns absolute path joining config_dir and pipeline_file"
+  - id: belt-core-config-resolves-subdirectory-pipeline-path
+    category: config
+    severity: medium
+    technique: equivalence-partition
+    given: "a belt.toml with relative pipeline_file containing a subdirectory (e.g. pipelines/main.yml)"
+    when: "resolve_pipeline_path(config_path, config) is called"
+    then: "returns config_dir joined with the subdirectory-qualified relative path"

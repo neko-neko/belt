@@ -14,6 +14,7 @@ fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
     path
 }
 
+/// scenario: belt-lint-valid-pipeline-ok
 #[test]
 fn lint_valid_pipeline_exits_zero() {
     let dir = TempDir::new().unwrap();
@@ -40,6 +41,7 @@ phases:
         .stderr(predicates::str::contains("ok"));
 }
 
+/// scenario: belt-lint-duplicate-phase-id-detected
 #[test]
 fn lint_invalid_pipeline_exits_one() {
     let dir = TempDir::new().unwrap();
@@ -66,6 +68,7 @@ phases:
         .stderr(predicates::str::contains("duplicate"));
 }
 
+/// scenario: belt-lint-nonexistent-file-rejected
 #[test]
 fn lint_nonexistent_file_exits_one() {
     Command::cargo_bin("belt")
@@ -76,6 +79,7 @@ fn lint_nonexistent_file_exits_one() {
         .code(1);
 }
 
+/// scenario: belt-lint-config-resolves-pipeline-file
 #[test]
 fn lint_with_config_resolves_pipeline() {
     let dir = TempDir::new().unwrap();
@@ -106,6 +110,7 @@ phases:
         .stderr(predicates::str::contains("ok"));
 }
 
+/// scenario: belt-lint-config-and-positional-mutually-exclusive
 #[test]
 fn lint_config_and_positional_file_errors() {
     let dir = TempDir::new().unwrap();

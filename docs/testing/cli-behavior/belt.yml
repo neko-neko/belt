@@ -1,0 +1,37 @@
+scope: "belt human CLI (belt lint subcommand). F1 で pilot (全 5 scenarios)。F2/F3 で拡充予定 (他 belt subcommand 追加時)"
+scenarios:
+  - id: belt-lint-valid-pipeline-ok
+    category: lint
+    severity: critical
+    technique: equivalence-partition
+    given: "a syntactically valid pipeline.yml"
+    when: "belt lint <path> is invoked"
+    then: "exit code 0 and stderr contains 'ok'"
+  - id: belt-lint-duplicate-phase-id-detected
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline.yml with duplicate phase IDs"
+    when: "belt lint <path> is invoked"
+    then: "exit code 1 and stderr contains 'duplicate'"
+  - id: belt-lint-config-resolves-pipeline-file
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a belt.toml pointing to a valid pipeline.yml via --config flag"
+    when: "belt --config <belt.toml> lint is invoked without positional path"
+    then: "exit code 0 and stderr contains 'ok' (pipeline path resolved via config)"
+  - id: belt-lint-nonexistent-file-rejected
+    category: lint
+    severity: medium
+    technique: equivalence-partition
+    given: "a path to a nonexistent file"
+    when: "belt lint <path> is invoked"
+    then: "exit code 1 and stderr contains file-not-found message"
+  - id: belt-lint-config-and-positional-mutually-exclusive
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "both --config and positional path are provided"
+    when: "belt lint --config <config> <path> is invoked"
+    then: "exit code 1 and stderr indicates mutual exclusion"

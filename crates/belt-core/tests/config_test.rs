@@ -11,6 +11,7 @@ use std::io::Write;
 use std::path::Path;
 use tempfile::{NamedTempFile, TempDir};
 
+/// scenario: belt-core-config-valid-toml-parses
 #[test]
 fn parse_valid_config() {
     let mut f = NamedTempFile::new().expect("failed to create temp file");
@@ -20,6 +21,7 @@ fn parse_valid_config() {
     assert_eq!(config.pipeline, "pipeline.yml");
 }
 
+/// scenario: belt-core-config-missing-file-yields-file-not-found
 #[test]
 fn parse_config_missing_file() {
     let result = parse_config(Path::new("/nonexistent/belt.toml"));
@@ -30,6 +32,7 @@ fn parse_config_missing_file() {
     ));
 }
 
+/// scenario: belt-core-config-invalid-toml-yields-config-parse
 #[test]
 fn parse_config_invalid_toml() {
     let mut f = NamedTempFile::new().expect("failed to create temp file");
@@ -40,6 +43,7 @@ fn parse_config_invalid_toml() {
     assert!(matches!(result.unwrap_err(), BeltError::ConfigParse { .. }));
 }
 
+/// scenario: belt-core-config-missing-pipeline-file-field-yields-config-parse
 #[test]
 fn parse_config_missing_pipeline_field() {
     let mut f = NamedTempFile::new().expect("failed to create temp file");
@@ -50,6 +54,7 @@ fn parse_config_missing_pipeline_field() {
     assert!(matches!(result.unwrap_err(), BeltError::ConfigParse { .. }));
 }
 
+/// scenario: belt-core-config-resolves-relative-pipeline-path
 #[test]
 fn resolve_pipeline_path_relative_to_config() {
     let dir = TempDir::new().expect("failed to create temp dir");
@@ -61,6 +66,7 @@ fn resolve_pipeline_path_relative_to_config() {
     assert_eq!(resolved, dir.path().join("pipeline.yml"));
 }
 
+/// scenario: belt-core-config-resolves-subdirectory-pipeline-path
 #[test]
 fn resolve_pipeline_path_with_subdirectory() {
     let dir = TempDir::new().expect("failed to create temp dir");
