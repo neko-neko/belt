@@ -70,3 +70,13 @@ git log --since="$AUDITED_AT" --oneline -- \
 ```
 
 出力が非空なら F1 pilot 判定は stale。F2 着手時に pilot audit を再実施し audit-report.md を refresh する。
+
+### Trigger 対象外 (F2a で明示)
+
+「touch されている」判定は **既存 test fn の modify** を指す。以下は re-audit trigger の対象外:
+
+- pilot file に**新規 test fn を追加**する変更 (既存 fn の assertion / setup / teardown 変更なし)
+- pilot file に doc-comment (`/// scenario: <id>`) を付与する変更 (behavior 不変)
+- pilot file の preamble (`#![allow(...)] reason = "..."`) 更新
+
+理由: 新規追加 fn は F2a の「復帰 scenario + 対応 test」pattern であり、F1 pilot 判定済 fn の挙動を変えないため re-audit は不要。逆に、既存 fn の body 変更 (assertion 差し替え / fixture 変更 / 実装 side 変更による意味の shift) のみが audit 結果 stale 化の signal となる。
