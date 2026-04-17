@@ -1,6 +1,6 @@
 # Resume Mode
 
-Driver-side behaviour when the belt protocol receives a resume invocation.
+Driver-side behavior when the belt protocol receives a resume invocation.
 
 ## Detection
 
@@ -9,7 +9,7 @@ If the Skill invoke `args` string contains the literal prefix
 driver is in **resume mode**. Example args string:
 
 ```
-resume run_id=01JBC5R1MZQFVY9T8H0K3P7Q2N
+resume run_id=01947abc-0000-7000-8000-000000000000
 ```
 
 Exact format; do not accept synonyms (`resume_run=`, `run=`, etc.).
@@ -24,8 +24,8 @@ Exact format; do not accept synonyms (`resume_run=`, `run=`, etc.).
 4. If `.belt/runs/<id>/handover.md` exists, read it and incorporate the
    `## Resume hint` section into the LLM context before resuming normal
    workflow.
-5. Continue with the normal protocol loop: `belt-agent next` → `verify` /
-   `regate` / `step` as usual.
+5. Continue with the normal protocol loop: `belt-agent next --run <id>` →
+   `verify --run <id>` / `regate --run <id>` / `step --run <id>` as usual.
 
 ## Cross-pipeline applicability
 
