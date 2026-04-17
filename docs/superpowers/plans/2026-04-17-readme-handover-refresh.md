@@ -258,13 +258,13 @@ Expected: exactly 1 match.
 Run: `rg -n '# start a new feature|# start a bug investigation|# standalone code review|# standalone spec review' README.md`
 Expected: 0 matches.
 
-- [ ] **Step 5: Verify handover/resume appear exactly once in the Usage block**
+- [ ] **Step 5: Verify handover/resume appear as standalone lines in both the Continuity 3-step block and the new Usage sub-block**
 
 Run: `rg -nc '^/belt:handover$' README.md`
-Expected: exactly 1 match (in Usage).
+Expected: exactly 2 matches — one inside the Continuity section's three-step handover code block (added by Task 1), one inside the new Usage Pause-and-resume sub-block (added by this task).
 
 Run: `rg -nc '^/belt:resume$' README.md`
-Expected: exactly 1 match (in Usage).
+Expected: exactly 2 matches — same two locations as above.
 
 - [ ] **Step 6: Commit**
 
@@ -296,13 +296,13 @@ Run: `rg -n '/belt:handover. → ./clear. → ./belt:resume' README.md`
 Expected: at least 1 match (the `Command` cell of the table).
 
 Run: `rg -n '^/belt:handover$' README.md`
-Expected: exactly 1 match (the Usage block only).
+Expected: exactly 2 matches — one in the Continuity section's three-step code block (from Task 1), one in the Usage Pause-and-resume sub-block (from Task 3).
 
 Run: `rg -n '^/clear$' README.md`
 Expected: exactly 1 match (line 2 of the Intra-run handover three-step code block).
 
 Run: `rg -n '^/belt:resume$' README.md`
-Expected: exactly 1 match (the Usage block only).
+Expected: exactly 2 matches — same two locations as above (Continuity three-step block + Usage Pause-and-resume sub-block).
 
 Run: `rg -n '/belt:handover.*/belt:resume.*Requires .belt-agent' README.md`
 Expected: exactly 1 match (the Plugins table row).
