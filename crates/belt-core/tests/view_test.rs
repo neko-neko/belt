@@ -9,7 +9,9 @@
 use belt_core::engine::Engine;
 use belt_core::model::{Artifact, Invoker, RunState, RunStatus};
 use belt_core::view::{PhaseMetadata, PhaseState, PipelineStatus, build_status_view};
+use filetime::{FileTime, set_file_mtime};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
     RunState {
@@ -682,10 +684,17 @@ fn glob_resolution_picks_newest_after_phase_start() {
     let older = temp.path().join("docs-plans-2026-01-01-old-design.md");
     let newer = temp.path().join("docs-plans-2026-04-11-new-design.md");
     std::fs::write(&older, "older").expect("write older");
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-    std::thread::sleep(std::time::Duration::from_millis(20));
     std::fs::write(&newer, "newer").expect("write newer");
+    let base = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    set_file_mtime(&older, FileTime::from_unix_time(base - 4, 0)).unwrap();
+    set_file_mtime(&newer, FileTime::from_unix_time(base + 4, 0)).unwrap();
+    let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
     let glob_pattern = format!("{}/docs-plans-*-design.md", temp.path().display());
 
@@ -757,9 +766,15 @@ fn glob_resolution_zero_matches_reports_missing() {
     // Create a stale file BEFORE phase_start so it gets filtered out.
     let stale = temp.path().join("stale.md");
     std::fs::write(&stale, "stale").expect("write stale");
-    std::thread::sleep(std::time::Duration::from_millis(20));
+    let base = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    set_file_mtime(&stale, FileTime::from_unix_time(base - 4, 0)).unwrap();
     let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-    std::thread::sleep(std::time::Duration::from_millis(20));
 
     let glob_pattern = format!("{}/*.md", temp.path().display());
 
@@ -821,16 +836,22 @@ fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
     std::fs::create_dir_all(&run_dir).expect("mkdir run_dir");
 
     let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
-    std::thread::sleep(std::time::Duration::from_millis(20));
 
     let b = temp.path().join("b.md");
     let a = temp.path().join("a.md");
     std::fs::write(&b, "b").expect("write b");
     std::fs::write(&a, "a").expect("write a");
 
-    let same = filetime::FileTime::now();
-    filetime::set_file_mtime(&a, same).expect("set a mtime");
-    filetime::set_file_mtime(&b, same).expect("set b mtime");
+    let base = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    let same = FileTime::from_unix_time(base + 2, 0);
+    set_file_mtime(&a, same).expect("set a mtime");
+    set_file_mtime(&b, same).expect("set b mtime");
 
     let glob_pattern = format!("{}/*.md", temp.path().display());
 
@@ -897,7 +918,14 @@ fn concrete_path_skips_filter() {
     std::fs::write(&concrete, "report").expect("write concrete");
 
     // phase_start is AFTER file creation -- concrete paths bypass the mtime filter.
-    std::thread::sleep(std::time::Duration::from_millis(20));
+    let base = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    set_file_mtime(&concrete, FileTime::from_unix_time(base - 4, 0)).unwrap();
     let phase_start: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
 
     let metadata = vec![belt_core::view::PhaseMetadata {
