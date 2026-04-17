@@ -125,3 +125,33 @@ fn lint_config_and_positional_file_errors() {
         .assert()
         .code(1);
 }
+
+/// scenario: belt-lint-invalid-yaml-rejected
+#[test]
+fn lint_rejects_invalid_yaml_with_parse_error() {
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    let mut file = NamedTempFile::new().expect("create temp file");
+    writeln!(file, "phases:\n  - id: a\n    bad_indent").expect("write invalid yaml");
+
+    let output = Command::cargo_bin("belt")
+        .expect("belt binary built")
+        .args(["lint", file.path().to_str().expect("utf8 path")])
+        .output()
+        .expect("run belt lint");
+
+    let code = output.status.code().expect("exit code");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(
+        code, 1,
+        "invalid YAML must exit 1, got {code}: stderr={stderr}"
+    );
+    assert!(
+        stderr.to_lowercase().contains("parse")
+            || stderr.to_lowercase().contains("yaml")
+            || stderr.to_lowercase().contains("expected"),
+        "stderr should indicate parse error; got: {stderr}"
+    );
+}
