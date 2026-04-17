@@ -4,7 +4,7 @@ Convention for phase-scoped narrative notes produced by narrative-producing phas
 
 ## Purpose
 
-After the user resets session context with `/clear`, reading the narrative note restores each phase's decisions, concerns, directives, and observations. Domain artifacts (`design.md`, `plan.md`, `rca-report.md`, etc.) record **what was produced**, while narrative notes record **why the call was made, what remains unresolved, and what the next phase must assume**.
+After the user resets session context with `/clear` or `/belt:resume`, reading the narrative note restores each phase's decisions, concerns, directives, and observations. Domain artifacts (`design.md`, `plan.md`, `rca-report.md`, etc.) record **what was produced**, while narrative notes record **why the call was made, what remains unresolved, and what the next phase must assume**.
 
 ## Path
 

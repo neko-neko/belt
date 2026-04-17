@@ -113,6 +113,8 @@ Every call to `verify` increments the current phase's attempts counter
 regardless of verdict. `regate` is an in-place re-verification of earlier
 phases' gates; it does not modify any phase's attempts counter.
 
+When invoked with `resume run_id=<id>` args, follow [`./references/resume-mode.md`](./references/resume-mode.md).
+
 ## Step Troubleshooting
 
 When `step` returns `advanced: false`, read the `reason` field:

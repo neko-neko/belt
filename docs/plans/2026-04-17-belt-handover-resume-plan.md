@@ -289,7 +289,7 @@ Create `plugins/belt-agent/skills/protocol/references/resume-mode.md`:
 ````markdown
 # Resume Mode
 
-Driver-side behaviour when the belt protocol receives a resume invocation.
+Driver-side behavior when the belt protocol receives a resume invocation.
 
 ## Detection
 
@@ -298,7 +298,7 @@ If the Skill invoke `args` string contains the literal prefix
 driver is in **resume mode**. Example args string:
 
 ```
-resume run_id=01JBC5R1MZQFVY9T8H0K3P7Q2N
+resume run_id=01947abc-0000-7000-8000-000000000000
 ```
 
 Exact format; do not accept synonyms (`resume_run=`, `run=`, etc.).
@@ -313,8 +313,8 @@ Exact format; do not accept synonyms (`resume_run=`, `run=`, etc.).
 4. If `.belt/runs/<id>/handover.md` exists, read it and incorporate the
    `## Resume hint` section into the LLM context before resuming normal
    workflow.
-5. Continue with the normal protocol loop: `belt-agent next` → `verify` /
-   `regate` / `step` as usual.
+5. Continue with the normal protocol loop: `belt-agent next --run <id>` →
+   `verify --run <id>` / `regate --run <id>` / `step --run <id>` as usual.
 
 ## Cross-pipeline applicability
 
@@ -422,14 +422,14 @@ Handover Progress:
 - [ ] Step 3: Query latest run via `belt-agent status`
 - [ ] Step 4: Draft the Resume hint (Pause reason / First action / Transient context)
 - [ ] Step 5: Write .belt/runs/<run_id>/handover.md
-- [ ] Step 6: Tell the user "Handover written. Run /clear then /belt:resume."
+- [ ] Step 6: Tell the user "Handover written. Run /clear then /belt:resume to continue."
 ```
 
 ### Step detail
 
 1. If `command -v belt-agent` fails, abort with `"belt-agent CLI not found. Install or fix PATH."`
 2. If `git rev-parse --git-dir` fails, abort with `"Not inside a git worktree; belt handover requires a git-based pipeline workspace."`
-3. Run `belt-agent status` with no `--run` flag. Parse the JSON for `run_id`, `pipeline`, `branch`, `current_phase`. If no run is returned, abort with `"No belt run in progress; nothing to hand over."`
+3. Run `belt-agent status` with no `--run` flag. Parse the JSON for `run_id` and `branch` (the two fields written to frontmatter). If no run is returned, abort with `"No belt run in progress; nothing to hand over."`
 4. Draft the Resume hint in the LLM's head. Three bullets, each 1–3 lines:
    - **Pause reason**: why stopping here now (context heat, end of day, waiting on a decision)
    - **First action on resume**: the very next concrete step (for example: run `belt-agent status`, read `phase-plan.md`, start execute Task 1)
@@ -571,7 +571,7 @@ warning — the user decides whether to proceed.
 ```
 Skill(
   skill="belt:feature-dev",
-  args="resume run_id=01JBC5R1MZQFVY9T8H0K3P7Q2N"
+  args="resume run_id=01947abc-0000-7000-8000-000000000000"
 )
 ```
 
@@ -606,7 +606,7 @@ the working tree.
 
 ## References
 
-- `plugins/belt-agent/skills/protocol/references/resume-mode.md` — driver-side behaviour under `resume run_id=<id>` args
+- `plugins/belt-agent/skills/protocol/references/resume-mode.md` — driver-side behavior under `resume run_id=<id>` args
 - `plugins/belt/skills/handover/SKILL.md` — the counterpart writer
 ````
 

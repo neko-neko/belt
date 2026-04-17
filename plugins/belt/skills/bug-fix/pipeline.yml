@@ -1,6 +1,6 @@
 name: bug-fix
 version: 1
-description: "Quality-gated debugging pipeline (8 phases)"
+description: "Quality-gated debugging pipeline (9 phases)"
 
 args:
   e2e:
@@ -67,6 +67,15 @@ phases:
     validate: ./criteria/fix-plan-review.md
     confirm: true
     max_retries: 3
+
+  - id: pre-execute-handover
+    description: >-
+      Context checkpoint before execute. Run `/belt:handover`, then `/clear`,
+      then `/belt:resume` in a new session. The gate passes once the handover
+      note exists under `.belt/runs/{run_id}/`.
+    confirm: true
+    gate:
+      - file_exists: ".belt/runs/{run_id}/handover.md"
 
   - id: execute
     description: "TDD implementation following the fix plan"

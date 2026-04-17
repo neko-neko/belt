@@ -1,6 +1,6 @@
 name: feature-dev
 version: 1
-description: "Quality-gated development pipeline (9 phases)"
+description: "Quality-gated development pipeline (10 phases)"
 
 args:
   e2e:
@@ -87,6 +87,15 @@ phases:
     validate: ./criteria/plan.md
     confirm: true
     max_retries: 3
+
+  - id: pre-execute-handover
+    description: >-
+      Context checkpoint before execute. Run `/belt:handover`, then `/clear`,
+      then `/belt:resume` in a new session. The gate passes once the handover
+      note exists under `.belt/runs/{run_id}/`.
+    confirm: true
+    gate:
+      - file_exists: ".belt/runs/{run_id}/handover.md"
 
   - id: execute
     description: "Execute implementation plan via TDD subagents"
