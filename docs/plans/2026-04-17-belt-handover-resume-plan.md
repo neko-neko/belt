@@ -422,14 +422,14 @@ Handover Progress:
 - [ ] Step 3: Query latest run via `belt-agent status`
 - [ ] Step 4: Draft the Resume hint (Pause reason / First action / Transient context)
 - [ ] Step 5: Write .belt/runs/<run_id>/handover.md
-- [ ] Step 6: Tell the user "Handover written. Run /clear then /belt:resume."
+- [ ] Step 6: Tell the user "Handover written. Run /clear then /belt:resume to continue."
 ```
 
 ### Step detail
 
 1. If `command -v belt-agent` fails, abort with `"belt-agent CLI not found. Install or fix PATH."`
 2. If `git rev-parse --git-dir` fails, abort with `"Not inside a git worktree; belt handover requires a git-based pipeline workspace."`
-3. Run `belt-agent status` with no `--run` flag. Parse the JSON for `run_id`, `pipeline`, `branch`, `current_phase`. If no run is returned, abort with `"No belt run in progress; nothing to hand over."`
+3. Run `belt-agent status` with no `--run` flag. Parse the JSON for `run_id` and `branch` (the two fields written to frontmatter). If no run is returned, abort with `"No belt run in progress; nothing to hand over."`
 4. Draft the Resume hint in the LLM's head. Three bullets, each 1–3 lines:
    - **Pause reason**: why stopping here now (context heat, end of day, waiting on a decision)
    - **First action on resume**: the very next concrete step (for example: run `belt-agent status`, read `phase-plan.md`, start execute Task 1)
