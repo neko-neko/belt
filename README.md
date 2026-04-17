@@ -268,7 +268,7 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agent` | Foundation: Belt Protocol driver skill + 5 analysis agents (phase-auditor, feature-implementer, code-explorer, code-architect, impact-analyzer) + shared references |
-| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:code-review` (4 observation reviewers), `/belt:spec-review` (3 observation reviewers), `/belt:monkey-test`, `/belt:test-scenarios`. Requires `belt-agent` |
+| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:code-review` (4 observation reviewers), `/belt:spec-review` (3 observation reviewers), `/belt:monkey-test`, `/belt:test-scenarios`, `/belt:handover`, `/belt:resume`. Requires `belt-agent` |
 
 ### External skill dependencies
 
