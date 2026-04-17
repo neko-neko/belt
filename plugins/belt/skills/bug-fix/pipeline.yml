@@ -1,6 +1,6 @@
 name: bug-fix
 version: 1
-description: "Quality-gated debugging pipeline (8 phases)"
+description: "Quality-gated debugging pipeline (9 phases)"
 
 args:
   e2e:
