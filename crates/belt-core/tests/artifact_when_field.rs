@@ -31,6 +31,7 @@ fn write_fixture(name: &str, content: &str) -> PathBuf {
     path
 }
 
+/// scenario: belt-core-artifact-when-parser-retains-field
 #[test]
 fn artifact_when_field_is_retained_on_parse() {
     let yaml = r#"
@@ -66,6 +67,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-artifact-when-expander-preserves-field
 #[test]
 fn expander_retains_artifact_when_field_via_clone() {
     let yaml = r#"
@@ -94,6 +96,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-artifact-when-view-active-produces-filters-by-expression
 #[test]
 fn view_filters_when_false_artifacts_from_status() {
     let yaml = r#"
@@ -145,6 +148,7 @@ phases:
     assert_eq!(names_empty, vec!["unconditional"]);
 }
 
+/// scenario: belt-core-artifact-when-resolve-artifact-ref-honors-source-when
 #[test]
 fn artifact_ref_returns_none_when_source_conditional_false() {
     let yaml = r#"
@@ -194,6 +198,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-artifact-when-lint-warns-undefined-arg-reference
 #[test]
 fn lint_warns_undefined_arg_in_artifact_when() {
     let yaml = r#"

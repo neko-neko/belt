@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a) + expander (4, F2a) + parser (4, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a) + expander (4, F2a) + parser (4, F2a) + artifact_when (5, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -695,3 +695,40 @@ scenarios:
     given: "a pipeline YAML exercising BELT-32 types: Invoker::Skill with args, Invoker::Pipeline with uses path, produces with name/path/description, consumes as Named and Qualified ArtifactRef, validate as mixed File + Inline ValidationSource"
     when: "parse_pipeline(path) is called and the result is lint-checked"
     then: "all three phases round-trip into the expected Invoker / Artifact / ArtifactRef / ValidationSource variants and lint_pipeline reports no Severity::Error diagnostics"
+
+  # --- artifact_when module ---
+  - id: belt-core-artifact-when-parser-retains-field
+    category: artifact_when
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML declaring produces entries both with and without a when: expression"
+    when: "parse_pipeline is called on the fixture"
+    then: "the parsed Artifact carries when = Some(\"args.e2e\") for the conditional entry and when = None for the unconditional entry"
+  - id: belt-core-artifact-when-expander-preserves-field
+    category: artifact_when
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline whose phase produces an Artifact with when: \"args.e2e\""
+    when: "expand_pipeline is called"
+    then: "the expanded phase's produces[0].when equals Some(\"args.e2e\"), proving the Clone-derive path retains the field across expansion"
+  - id: belt-core-artifact-when-view-active-produces-filters-by-expression
+    category: artifact_when
+    severity: high
+    technique: decision-table
+    given: "a phase with one conditional (when: args.e2e) and one unconditional Artifact, and an args map that is false, true, or empty"
+    when: "view::active_produces is called with each args map"
+    then: "args.e2e=false yields only the unconditional artifact, args.e2e=true yields both, and an empty args map (undefined flag) yields only the unconditional artifact"
+  - id: belt-core-artifact-when-resolve-artifact-ref-honors-source-when
+    category: artifact_when
+    severity: high
+    technique: decision-table
+    given: "a downstream phase consuming an artifact whose source declares when: args.e2e"
+    when: "engine::resolve_artifact_ref is called with args.e2e=false versus args.e2e=true"
+    then: "the false case returns None (conditional source filtered out) and the true case returns Some(ResolvedArtifactRef), keeping consumer resolution in lock-step with the filter"
+  - id: belt-core-artifact-when-lint-warns-undefined-arg-reference
+    category: artifact_when
+    severity: medium
+    technique: error-guessing
+    given: "an Artifact.when expression referencing an arg (args.undefined_flag) that is not declared in args"
+    when: "lint_pipeline is called"
+    then: "diagnostics contain a Severity::Warning whose message names the undefined arg identifier"
