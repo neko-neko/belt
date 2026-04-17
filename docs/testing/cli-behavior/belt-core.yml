@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -391,3 +391,159 @@ scenarios:
     given: "a pipeline file on disk containing invoke.agent"
     when: "lint_pipeline() is called (the CLI entry point used by 'belt lint')"
     then: "the rendered result (Err Display or Ok diagnostics Debug) contains both 'invoke.agent' and 'no longer supported', ensuring the raw-YAML migration hint is surfaced rather than the generic serde untagged-enum error"
+
+  # --- model module ---
+  - id: belt-core-model-parses-minimal-pipeline
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a minimal pipeline YAML (name, version, one phase, single cmd gate)"
+    when: "serde_saphyr deserialises it into Pipeline"
+    then: "pipeline.name, version, and phases[0].id match the YAML; description is None, args is empty, and phases[0].gate[0] is the GateCheck::Cmd variant carrying the expected cmd string"
+  - id: belt-core-model-parses-phase-with-all-fields-and-gate-variants
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a phase YAML exercising every field (when, confirm, max_retries, config map, produces list, validate, regate) plus all five gate shapes (cmd, file_exists, git_clean, has_output, uses with with-map)"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "every scalar/optional field and each gate variant deserialises into its matching GateCheck discriminant with original values preserved"
+  - id: belt-core-model-parses-gate-definition
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a standalone gate definition YAML with name, description, typed inputs (required string, number with default), and a checks list"
+    when: "serde_saphyr deserialises it into GateDefinition"
+    then: "name, description, inputs (including ArgType::String/Number, required flag, default value), and the checks list populate as declared"
+  - id: belt-core-model-parses-sub-pipeline-with-typed-inputs
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a sub-pipeline YAML with name, version, typed inputs including ArgType::List and ArgType::Number with default, and multiple phases"
+    when: "serde_saphyr deserialises it into SubPipeline"
+    then: "all top-level fields plus inputs (with correct ArgType variants and defaults) and phases (ids in order) populate as declared"
+  - id: belt-core-model-parses-pipeline-args-with-arg-types
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML declaring args with ArgType::Bool (default false) and ArgType::Number (default 4)"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Pipeline.args contains both entries with correct ArgType discriminants and default values preserved as typed JSON values"
+  - id: belt-core-model-cmd-timeout-default-and-explicit-and-zero
+    category: model
+    severity: high
+    technique: boundary-value
+    given: "a GateCheck::Cmd YAML with no timeout field, with an explicit positive timeout, or with timeout=0"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "missing field yields timeout=1800 (default), explicit value is preserved verbatim, and 0 is accepted and preserved (interpreted as no-timeout)"
+  - id: belt-core-model-cmd-timeout-does-not-affect-other-gate-variants
+    category: model
+    severity: medium
+    technique: equivalence-partition
+    given: "a gate list mixing a FileExists check and a Cmd check with explicit timeout"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "the FileExists variant deserialises without absorbing Cmd's timeout field and each variant retains its discriminant-specific fields"
+  - id: belt-core-model-validate-list-discriminates-inline-and-file-and-mixed
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a validate: list containing bare strings, {file: path} mappings, or a mixture of both"
+    when: "serde_saphyr deserialises the phase"
+    then: "bare strings become ValidationSource::Inline, {file: path} mappings become ValidationSource::File preserving the path, and mixed lists preserve order and discriminants per item"
+  - id: belt-core-model-validate-scalar-shorthand-path-prefix-rule
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a top-level scalar validate: value whose text starts with './', '/', a non-path dot prefix ('.hidden …'), or no path prefix at all"
+    when: "serde_saphyr deserialises the phase"
+    then: "strict prefix match promotes './' and '/' to ValidationSource::File (path preserved) while every other scalar — including dot-prefixed but non-path text — stays as ValidationSource::Inline"
+  - id: belt-core-model-validate-list-bare-string-stays-inline
+    category: model
+    severity: medium
+    technique: equivalence-partition
+    given: "a validate: list containing a bare string that happens to begin with './' and a {file: …} entry"
+    when: "serde_saphyr deserialises the phase"
+    then: "the bare string remains ValidationSource::Inline (list items never auto-promote to File), while the {file: …} sibling stays ValidationSource::File"
+  - id: belt-core-model-validate-empty-list-accepted
+    category: model
+    severity: low
+    technique: boundary-value
+    given: "a validate: [] declaration on a phase"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "the phase parses successfully with an empty validate Vec (no error, no default injection)"
+  - id: belt-core-model-produces-artifact-field-population-and-default
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose produces: declares an artifact with all fields (name, path, description), an artifact without description, or no produces field at all"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "full artifact preserves name/path/description, missing description becomes None, and an omitted produces field defaults to an empty Vec"
+  - id: belt-core-model-consumes-artifact-ref-named-qualified-and-mixed
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a consumes: list of bare strings (Named), {name, from} mappings (Qualified), or a mixture of both shapes in one list"
+    when: "serde_saphyr deserialises the phase"
+    then: "the untagged ArtifactRef enum discriminates each item correctly: Named preserves the string, Qualified preserves name+from, and list order is retained across mixed shapes"
+  - id: belt-core-model-consumes-defaults-to-empty-vec
+    category: model
+    severity: medium
+    technique: boundary-value
+    given: "a phase YAML with no consumes field"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Phase.consumes defaults to an empty Vec without requiring an explicit empty list"
+  - id: belt-core-model-invoker-skill-and-pipeline-variants
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a phase with invoke: containing either a skill entry with args map or a pipeline entry with with map"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Phase.invoke is Some(Invoker::Skill) preserving skill path and args values, or Some(Invoker::Pipeline) preserving pipeline path and with values, according to which key is present"
+  - id: belt-core-model-invoker-defaults-to-none
+    category: model
+    severity: medium
+    technique: boundary-value
+    given: "a phase YAML without an invoke field"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "Phase.invoke is None"
+  - id: belt-core-model-invoker-agent-and-agents-variants-rejected
+    category: model
+    severity: high
+    technique: error-guessing
+    given: "a phase whose invoke: carries a legacy agent: scalar or agents: list (pre-2026-04-16 subagent-boundary refactor shape)"
+    when: "serde_saphyr deserialises the pipeline"
+    then: "deserialisation returns Err — neither Invoker::Agent nor Invoker::Agents exists anymore, so both legacy shapes are firmly rejected"
+  - id: belt-core-model-artifact-ref-untagged-enum-discrimination
+    category: model
+    severity: high
+    technique: decision-table
+    given: "a YAML ArtifactRef list entry shaped as a bare string (Named), {name, from} mapping (Qualified), or {name, uri} mapping with a belt:// URI (External)"
+    when: "serde_saphyr deserialises Vec<ArtifactRef>"
+    then: "the untagged enum discriminates correctly per entry: Named carries the string, Qualified carries name+from, and External carries name plus a parsed BeltUri (e.g. BeltUri::Latest)"
+  - id: belt-core-model-run-state-round-trip-serialization
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "a RunState populated with regate_passed entries, optional branch, resolved_consumes mappings, and status=InProgress serialised to JSON"
+    when: "it is deserialised back via serde_json"
+    then: "regate_passed values, branch Option, resolved_consumes map, and status all round-trip byte-identically with no field loss"
+  - id: belt-core-model-run-state-backward-compat-missing-fields
+    category: model
+    severity: high
+    technique: equivalence-partition
+    given: "legacy state.json lacking regate_passed, branch, resolved_consumes, phase_attempts, phase_verify_passed, and status fields"
+    when: "serde_json deserialises it into RunState"
+    then: "deserialisation succeeds with regate_passed=empty HashMap, branch=None, resolved_consumes=empty, and status defaulting to RunStatus::InProgress"
+  - id: belt-core-model-run-status-serializes-as-lowercase-string
+    category: model
+    severity: medium
+    technique: equivalence-partition
+    given: "a RunStatus value of InProgress, Completed, or Failed"
+    when: "serde_json serialises it"
+    then: "output is the snake_case lowercase JSON string 'in_progress', 'completed', or 'failed' respectively"
+  - id: belt-core-model-run-status-default-is-in-progress
+    category: model
+    severity: low
+    technique: boundary-value
+    given: "RunStatus::default() is called"
+    when: "the default instance is inspected"
+    then: "it equals RunStatus::InProgress"

@@ -14,6 +14,8 @@ use belt_core::model::{
 use belt_core::uri::BeltUri;
 
 /// Parse a minimal pipeline YAML: name, version, one phase with a `cmd` gate.
+///
+/// scenario: belt-core-model-parses-minimal-pipeline
 #[test]
 fn parse_minimal_pipeline() {
     let yaml = r#"
@@ -43,6 +45,8 @@ phases:
 
 /// Parse a phase with ALL fields populated: when, confirm, `max_retries`, config,
 /// produces, multiple gate variants, validate, regate.
+///
+/// scenario: belt-core-model-parses-phase-with-all-fields-and-gate-variants
 #[test]
 fn parse_phase_all_fields() {
     let yaml = r#"
@@ -130,6 +134,8 @@ phases:
 }
 
 /// Parse a standalone `GateDefinition` YAML.
+///
+/// scenario: belt-core-model-parses-gate-definition
 #[test]
 fn parse_gate_definition() {
     let yaml = r#"
@@ -178,6 +184,8 @@ checks:
 }
 
 /// Parse a `SubPipeline` YAML with inputs (including `list` type).
+///
+/// scenario: belt-core-model-parses-sub-pipeline-with-typed-inputs
 #[test]
 fn parse_sub_pipeline() {
     let yaml = r#"
@@ -232,6 +240,8 @@ phases:
 }
 
 /// Parse a pipeline with typed `args` (bool and number).
+///
+/// scenario: belt-core-model-parses-pipeline-args-with-arg-types
 #[test]
 fn parse_pipeline_with_args() {
     let yaml = r#"
@@ -273,6 +283,8 @@ phases:
 }
 
 /// `cmd: "cargo test"` without timeout field deserializes with default 1800.
+///
+/// scenario: belt-core-model-cmd-timeout-default-and-explicit-and-zero
 #[test]
 fn cmd_default_timeout() {
     let yaml = r#"
@@ -294,6 +306,8 @@ phases:
 }
 
 /// `{ cmd: "make lint", timeout: 60 }` deserializes with explicit timeout.
+///
+/// scenario: belt-core-model-cmd-timeout-default-and-explicit-and-zero
 #[test]
 fn cmd_explicit_timeout() {
     let yaml = r#"
@@ -316,6 +330,8 @@ phases:
 }
 
 /// `{ cmd: "sleep 999", timeout: 0 }` deserializes with zero (no timeout).
+///
+/// scenario: belt-core-model-cmd-timeout-default-and-explicit-and-zero
 #[test]
 fn cmd_timeout_zero() {
     let yaml = r#"
@@ -338,6 +354,8 @@ phases:
 }
 
 /// Adding timeout to Cmd does not affect other `GateCheck` variants.
+///
+/// scenario: belt-core-model-cmd-timeout-does-not-affect-other-gate-variants
 #[test]
 fn cmd_timeout_does_not_affect_other_variants() {
     let yaml = r#"
@@ -367,6 +385,8 @@ phases:
 
 /// `RunState` deserialisation without `regate_passed` defaults to empty `HashMap`
 /// (backward compatibility with existing state.json files).
+///
+/// scenario: belt-core-model-run-state-backward-compat-missing-fields
 #[test]
 fn run_state_regate_passed_defaults_to_empty() {
     let json = r#"{
@@ -392,6 +412,8 @@ fn run_state_regate_passed_defaults_to_empty() {
 }
 
 /// `RunState` round-trips `regate_passed` through serialization.
+///
+/// scenario: belt-core-model-run-state-round-trip-serialization
 #[test]
 fn run_state_regate_passed_round_trip() {
     use std::collections::HashMap;
@@ -428,6 +450,8 @@ fn run_state_regate_passed_round_trip() {
 }
 
 /// Backwards compat: `validate: ["string"]` must still parse to `Inline`.
+///
+/// scenario: belt-core-model-validate-list-discriminates-inline-and-file-and-mixed
 #[test]
 fn parse_validate_inline_backwards_compat() {
     let yaml = r#"
@@ -448,6 +472,8 @@ phases:
 }
 
 /// New: `validate: [{ file: "./path" }]` parses to `File`.
+///
+/// scenario: belt-core-model-validate-list-discriminates-inline-and-file-and-mixed
 #[test]
 fn parse_validate_file_reference() {
     let yaml = r#"
@@ -468,6 +494,8 @@ phases:
 }
 
 /// Mixed inline and file references in one validate list.
+///
+/// scenario: belt-core-model-validate-list-discriminates-inline-and-file-and-mixed
 #[test]
 fn parse_validate_mixed_inline_and_file() {
     let yaml = r#"
@@ -498,6 +526,8 @@ phases:
 }
 
 /// Top-level scalar starting with `./` is treated as a file reference.
+///
+/// scenario: belt-core-model-validate-scalar-shorthand-path-prefix-rule
 #[test]
 fn parse_validate_scalar_shorthand_relative_file() {
     let yaml = r"
@@ -517,6 +547,8 @@ phases:
 }
 
 /// Top-level scalar starting with `/` is treated as a file reference.
+///
+/// scenario: belt-core-model-validate-scalar-shorthand-path-prefix-rule
 #[test]
 fn parse_validate_scalar_shorthand_absolute_file() {
     let yaml = r"
@@ -535,6 +567,8 @@ phases:
 }
 
 /// Top-level scalar without path prefix is treated as inline criterion.
+///
+/// scenario: belt-core-model-validate-scalar-shorthand-path-prefix-rule
 #[test]
 fn parse_validate_scalar_shorthand_inline() {
     let yaml = r#"
@@ -554,6 +588,8 @@ phases:
 
 /// Top-level scalar with a dot-prefix that is NOT a relative path ("." alone, "..foo", etc)
 /// must NOT be promoted to File — the prefix match is strict: `./` or `/`.
+///
+/// scenario: belt-core-model-validate-scalar-shorthand-path-prefix-rule
 #[test]
 fn parse_validate_scalar_shorthand_non_path_dot_prefix() {
     let yaml = r#"
@@ -572,6 +608,8 @@ phases:
 }
 
 /// List form is unchanged: bare strings are Inline, even if they start with ./
+///
+/// scenario: belt-core-model-validate-list-bare-string-stays-inline
 #[test]
 fn parse_validate_list_bare_string_stays_inline_even_with_dot_prefix() {
     let yaml = r#"
@@ -597,6 +635,8 @@ phases:
 }
 
 /// Empty list is accepted (existing behavior, no change).
+///
+/// scenario: belt-core-model-validate-empty-list-accepted
 #[test]
 fn parse_validate_empty_list_still_parses() {
     let yaml = r"
@@ -612,6 +652,8 @@ phases:
 }
 
 /// Parse a phase with one produces artifact (all fields populated).
+///
+/// scenario: belt-core-model-produces-artifact-field-population-and-default
 #[test]
 fn parse_phase_produces_single_artifact() {
     let yaml = r#"
@@ -637,6 +679,8 @@ phases:
 }
 
 /// Parse a phase with produces artifact where description is omitted.
+///
+/// scenario: belt-core-model-produces-artifact-field-population-and-default
 #[test]
 fn parse_phase_produces_without_description() {
     let yaml = r#"
@@ -655,6 +699,8 @@ phases:
 }
 
 /// Phase with no produces field defaults to empty vec.
+///
+/// scenario: belt-core-model-produces-artifact-field-population-and-default
 #[test]
 fn parse_phase_produces_default_empty() {
     let yaml = r#"
@@ -669,6 +715,8 @@ phases:
 }
 
 /// Parse consumes as a list of short (Named) references.
+///
+/// scenario: belt-core-model-consumes-artifact-ref-named-qualified-and-mixed
 #[test]
 fn parse_phase_consumes_named() {
     let yaml = r#"
@@ -694,6 +742,8 @@ phases:
 }
 
 /// Parse consumes as a list of qualified references.
+///
+/// scenario: belt-core-model-consumes-artifact-ref-named-qualified-and-mixed
 #[test]
 fn parse_phase_consumes_qualified() {
     let yaml = r#"
@@ -718,6 +768,8 @@ phases:
 }
 
 /// Parse consumes as a mixed list of short and qualified references.
+///
+/// scenario: belt-core-model-consumes-artifact-ref-named-qualified-and-mixed
 #[test]
 fn parse_phase_consumes_mixed() {
     let yaml = r#"
@@ -749,6 +801,8 @@ phases:
 }
 
 /// Phase with no consumes field defaults to empty vec.
+///
+/// scenario: belt-core-model-consumes-defaults-to-empty-vec
 #[test]
 fn parse_phase_consumes_default_empty() {
     let yaml = r#"
@@ -763,6 +817,8 @@ phases:
 }
 
 /// Parse a phase with `invoke: { skill: "/foo" }`.
+///
+/// scenario: belt-core-model-invoker-skill-and-pipeline-variants
 #[test]
 fn parse_invoke_skill_variant() {
     let yaml = r#"
@@ -790,6 +846,8 @@ phases:
 }
 
 /// Parse a phase with `invoke: { pipeline: "./sub.yml" }`.
+///
+/// scenario: belt-core-model-invoker-skill-and-pipeline-variants
 #[test]
 fn parse_invoke_pipeline_variant() {
     let yaml = r#"
@@ -817,6 +875,8 @@ phases:
 }
 
 /// Phase without `invoke` field: `invoke` is None.
+///
+/// scenario: belt-core-model-invoker-defaults-to-none
 #[test]
 fn parse_phase_invoke_default_none() {
     let yaml = r#"
@@ -830,6 +890,7 @@ phases:
     assert!(pipeline.phases[0].invoke.is_none());
 }
 
+/// scenario: belt-core-model-artifact-ref-untagged-enum-discrimination
 #[test]
 fn artifact_ref_external_deserializes_from_yaml() {
     let yaml = r#"
@@ -847,12 +908,14 @@ fn artifact_ref_external_deserializes_from_yaml() {
     }
 }
 
+/// scenario: belt-core-model-artifact-ref-untagged-enum-discrimination
 #[test]
 fn artifact_ref_named_still_works() {
     let refs: Vec<ArtifactRef> = serde_saphyr::from_str("- notes\n").unwrap();
     matches!(refs[0], ArtifactRef::Named(_));
 }
 
+/// scenario: belt-core-model-artifact-ref-untagged-enum-discrimination
 #[test]
 fn artifact_ref_qualified_still_works() {
     let yaml = r"
@@ -863,6 +926,7 @@ fn artifact_ref_qualified_still_works() {
     matches!(refs[0], ArtifactRef::Qualified { .. });
 }
 
+/// scenario: belt-core-model-run-status-serializes-as-lowercase-string
 #[test]
 fn run_status_serializes_as_lowercase_string() {
     assert_eq!(
@@ -879,12 +943,14 @@ fn run_status_serializes_as_lowercase_string() {
     );
 }
 
+/// scenario: belt-core-model-run-status-default-is-in-progress
 #[test]
 fn run_status_default_is_in_progress() {
     let default: RunStatus = Default::default();
     assert_eq!(default, RunStatus::InProgress);
 }
 
+/// scenario: belt-core-model-run-state-round-trip-serialization
 #[test]
 fn run_state_new_fields_roundtrip() {
     use std::collections::HashMap;
@@ -922,6 +988,7 @@ fn run_state_new_fields_roundtrip() {
     assert_eq!(decoded.status, RunStatus::InProgress);
 }
 
+/// scenario: belt-core-model-run-state-backward-compat-missing-fields
 #[test]
 fn run_state_deserializes_legacy_without_new_fields() {
     let legacy = r#"{
@@ -944,6 +1011,8 @@ fn run_state_deserializes_legacy_without_new_fields() {
 
 /// After the 2026-04-16 subagent-boundary refactor, `invoke.agent:` is
 /// no longer a valid `Invoker` variant and must fail YAML deserialisation.
+///
+/// scenario: belt-core-model-invoker-agent-and-agents-variants-rejected
 #[test]
 fn invoker_agent_variant_is_rejected() {
     let yaml = r"
@@ -962,6 +1031,8 @@ phases:
 }
 
 /// After the 2026-04-16 refactor, `invoke.agents:` is no longer valid.
+///
+/// scenario: belt-core-model-invoker-agent-and-agents-variants-rejected
 #[test]
 fn invoker_agents_variant_is_rejected() {
     let yaml = r"
