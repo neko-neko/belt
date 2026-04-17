@@ -228,42 +228,36 @@ cargo build -p belt-agent    # agent runtime
 
 ## Claude Code Plugins (Working Examples)
 
-belt ships 7 Claude Code plugins under `plugins/` — working examples and
+belt ships 2 Claude Code plugins under `plugins/` — working examples and
 production tooling for quality-gated AI-driven development.
 
 ### Plugins in this repo
 
 | Plugin | Purpose |
 |---|---|
-| `belt-agents` | Base layer: 5 analysis agents (phase-auditor, code-explorer, code-architect, impact-analyzer, feature-implementer) + Belt Protocol skill + references |
-| `feature-dev` | Quality-gated feature-development pipeline (design → implementation → review → integration). Phase structure is declared in the plugin's `pipeline.yml` |
-| `bug-fix` | Quality-gated debugging pipeline (RCA → fix → review → integration). Phase structure is declared in the plugin's `pipeline.yml` |
-| `code-review` | Multi-perspective code review (7 observations: quality / security / perf / test / ai-antipattern / impact / simplification) |
-| `spec-review` | Multi-perspective spec review (5 observations: requirements / design-judgment / feasibility / consistency / ui-design) |
-| `monkey-test` | Scripted E2E regression via agent-browser (Given/When/Then replay) |
-| `test-scenarios` | Test strategy (ISTQB + ISO 25010) + Given/When/Then scenarios |
+| `belt-agent` | Foundation: Belt Protocol driver skill + 5 analysis agents (phase-auditor, feature-implementer, code-explorer, code-architect, impact-analyzer) + shared references |
+| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:code-review` (4 observation reviewers), `/belt:spec-review` (3 observation reviewers), `/belt:monkey-test`, `/belt:test-scenarios`. Requires `belt-agent` |
 
 ### External skill dependencies
 
-`feature-dev` and `bug-fix` invoke skills from other plugins. `monkey-test`
-requires the `agent-browser` CLI. Install them before the belt plugins that
-use them:
+The belt skills invoke skills from other plugins. `/belt:monkey-test` requires
+the `agent-browser` CLI. Install these before the belt plugins that use them:
 
 | Dependency | Source | Required by |
 |---|---|---|
-| `/brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) | feature-dev `design` |
-| `/writing-plans` | obra/superpowers | feature-dev `plan`, bug-fix `fix-plan` |
-| `/subagent-driven-development` | obra/superpowers | feature-dev `execute`, bug-fix `execute` |
-| `/systematic-debugging` | obra/superpowers | bug-fix `rca` |
-| `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | feature-dev `integrate`, bug-fix `integrate` |
-| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | monkey-test plugin (always), feature-dev `monkey-test` phase, bug-fix `monkey-test` phase (when `--e2e`) |
-| `/dogfood` | vercel-labs/agent-browser | feature-dev `dogfood`, bug-fix `dogfood` (when `--e2e`) |
+| `/brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) | `/belt:feature-dev` `design` phase |
+| `/writing-plans` | obra/superpowers | `/belt:feature-dev` `plan` phase, `/belt:bug-fix` `fix-plan` phase |
+| `/subagent-driven-development` | obra/superpowers | `/belt:feature-dev` `execute` phase, `/belt:bug-fix` `execute` phase |
+| `/systematic-debugging` | obra/superpowers | `/belt:bug-fix` `rca` phase |
+| `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | `/belt:feature-dev` `integrate` phase, `/belt:bug-fix` `integrate` phase |
+| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:monkey-test` always, `/belt:feature-dev` `monkey-test` phase, `/belt:bug-fix` `monkey-test` phase (when `--e2e`) |
+| `/dogfood` | vercel-labs/agent-browser | `/belt:feature-dev` `dogfood` phase, `/belt:bug-fix` `dogfood` phase (when `--e2e`) |
 
 ### Install
 
 belt plugins are distributed via the Claude Code plugin marketplace. Install
 external plugin dependencies first, then add belt as a marketplace and install
-the plugins you need.
+the two belt plugins.
 
 ```
 # In Claude Code:
@@ -273,38 +267,30 @@ the plugins you need.
 /install-plugin max-sixty/worktrunk worktrunk
 /install-plugin vercel-labs/agent-browser agent-browser
 
-# 2. Add belt marketplace and install plugins
-/install-plugin neko-neko/belt belt-agents
-/install-plugin neko-neko/belt feature-dev
-/install-plugin neko-neko/belt bug-fix
-/install-plugin neko-neko/belt code-review
-/install-plugin neko-neko/belt spec-review
-/install-plugin neko-neko/belt monkey-test
-/install-plugin neko-neko/belt test-scenarios
+# 2. Add belt marketplace and install both belt plugins
+/install-plugin neko-neko/belt belt-agent
+/install-plugin neko-neko/belt belt
 ```
 
-Plugin discovery uses `.claude-plugin/marketplace.json` (Claude Code
-marketplace format) at belt repo root.
-
-### Internal dependencies (plugin-to-plugin)
-
-- `feature-dev` invokes `spec-review`, `code-review`, `test-scenarios`, `monkey-test`
-- `bug-fix` invokes `spec-review`, `code-review`, `monkey-test`
-- `feature-dev`, `bug-fix` require `belt-agents` (analysis agents referenced by criteria and supplements)
-- `code-review`, `spec-review`, `monkey-test`, `test-scenarios`, `belt-agents` are standalone
+`belt` requires `belt-agent`; install `belt-agent` first. Plugin discovery
+uses `.claude-plugin/marketplace.json` (Claude Code marketplace format) at
+belt repo root.
 
 ### Usage
 
 After install:
 
 ```
-/belt:feature-dev         # start a new feature
-/belt:bug-fix             # start a bug investigation
-/belt:code-review         # standalone code review
-/belt:spec-review         # standalone spec review
+/belt:feature-dev             # start a new feature
+/belt:bug-fix                 # start a bug investigation
+/belt:code-review             # standalone code review
+/belt:spec-review             # standalone spec review
 ```
 
-See each plugin's `SKILL.md` for phase details and arg reference.
+See each skill's `SKILL.md` (under `plugins/belt/skills/<skill>/`) for phase
+details and arg reference. Skill tool invocations inside criteria and
+supplements are always written fully-qualified (`/belt:code-review`,
+`belt-agent:phase-auditor`) — shorthand (`/code-review`) is not used.
 
 ## License
 

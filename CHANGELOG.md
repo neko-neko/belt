@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+### Changed (BREAKING)
+- Plugin consolidation: 7 plugins (`belt-agents`, `feature-dev`, `bug-fix`, `code-review`, `spec-review`, `monkey-test`, `test-scenarios`) → 2 plugins (`belt`, `belt-agent`).
+- Skill invocation renamed:
+  - `/feature-dev:feature-dev` → `/belt:feature-dev`
+  - `/bug-fix:bug-fix` → `/belt:bug-fix`
+  - `/code-review:code-review` → `/belt:code-review`
+  - `/spec-review:spec-review` → `/belt:spec-review`
+  - `/monkey-test:monkey-test` → `/belt:monkey-test`
+  - `/test-scenarios:test-scenarios` → `/belt:test-scenarios`
+- Agent namespace renamed:
+  - `belt-agents:<agent>` → `belt-agent:<agent>` (5 base analysis agents)
+  - `code-review:<reviewer>` → `belt:<reviewer>` (4 observation reviewers)
+  - `spec-review:<reviewer>` → `belt:<reviewer>` (3 observation reviewers)
+- Belt Protocol skill slug: `belt-agents:belt-agent` → `belt-agent:protocol`
+- Installation: `/install-plugin neko-neko/belt <plugin>` now takes 2 plugin names (`belt-agent` and `belt`) instead of 7.
+
 ## [0.1.0] - 2026-04-17
 
 ### Added

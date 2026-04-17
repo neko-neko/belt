@@ -229,6 +229,19 @@ README の Install section に optional step として記載。
 
 Release tooling は既存の「依存管理ポリシー > バージョン指定ポリシー」に従う。`cargo-dist` は 0.x ゆえ完全ピン、`cargo-release` は 1.x ゆえ caret 許容の対象だが、release 再現性を重視して patch-level まで明示する。
 
+## Plugin Architecture
+
+belt は Claude Code plugin として **2 plugin 構成**で配布する:
+
+| Plugin | 責務 | 呼び出し namespace |
+|---|---|---|
+| `belt` | user-invocable skills + それに紐づく reviewer agents | `/belt:<skill>`, `belt:<reviewer>` |
+| `belt-agent` | Belt Protocol driver skill + 汎用 analysis agents + shared references | `belt-agent:protocol`, `belt-agent:<agent>` |
+
+- `belt` は `belt-agent` を依存として要求する (Claude Code plugin manifest に hard dependency field が無いため、README / CHANGELOG で明示)
+- Skill tool invoke および agent reference は常に fully-qualified (`/belt:code-review`, `belt-agent:phase-auditor`) で記述する。Shorthand (`/code-review`) は使用禁止
+- CLI binary `belt-agent` と plugin `belt-agent` が同名だが、前者は executable、後者は Claude Code config。context で区別する
+
 ## Non-Goals (やらないこと)
 
 - 複雑な assertion DSL / N 回実行統計 / 可視化ダッシュボード
