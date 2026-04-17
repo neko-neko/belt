@@ -77,3 +77,23 @@ fn resolve_pipeline_path_with_subdirectory() {
     let resolved = resolve_pipeline_path(&config_path, &config);
     assert_eq!(resolved, dir.path().join("pipelines/main.yml"));
 }
+
+/// scenario: belt-core-config-preserves-absolute-pipeline-path
+#[test]
+fn preserves_absolute_pipeline_path() {
+    use belt_core::config::BeltConfig;
+    use std::path::PathBuf;
+
+    let config = BeltConfig {
+        pipeline: "/tmp/absolute/pipeline.yml".to_string(),
+    };
+    let config_path = Path::new("/some/config/dir/belt.toml");
+
+    let resolved = resolve_pipeline_path(config_path, &config);
+
+    assert_eq!(
+        resolved,
+        PathBuf::from("/tmp/absolute/pipeline.yml"),
+        "absolute pipeline path in belt.toml must be returned unchanged (not joined with config_dir)"
+    );
+}

@@ -42,6 +42,13 @@ scenarios:
     given: "a belt.toml with relative pipeline_file containing a subdirectory (e.g. pipelines/main.yml)"
     when: "resolve_pipeline_path(config_path, config) is called"
     then: "returns config_dir joined with the subdirectory-qualified relative path"
+  - id: belt-core-config-preserves-absolute-pipeline-path
+    category: config
+    severity: medium
+    technique: boundary-value
+    given: "a belt.toml with an absolute pipeline_file path (starts with /)"
+    when: "resolve_pipeline_path(config_path, config) is called"
+    then: "returns the absolute path unchanged, not joined with config_path's parent directory"
 
   # --- engine module ---
   - id: belt-core-engine-init-creates-run-with-first-active-phase
