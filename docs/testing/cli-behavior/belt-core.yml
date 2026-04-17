@@ -35,10 +35,10 @@ scenarios:
     given: "a belt.toml with relative pipeline_file value"
     when: "resolve_pipeline_path(config, config_dir) is called"
     then: "returns absolute path joining config_dir and pipeline_file"
-  - id: belt-core-config-preserves-absolute-pipeline-path
+  - id: belt-core-config-resolves-subdirectory-pipeline-path
     category: config
     severity: medium
-    technique: boundary-value
-    given: "a belt.toml with absolute pipeline_file value"
-    when: "resolve_pipeline_path(config, config_dir) is called"
-    then: "returns the absolute path unchanged"
+    technique: equivalence-partition
+    given: "a belt.toml with relative pipeline_file containing a subdirectory (e.g. pipelines/main.yml)"
+    when: "resolve_pipeline_path(config_path, config) is called"
+    then: "returns config_dir joined with the subdirectory-qualified relative path"
