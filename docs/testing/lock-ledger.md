@@ -125,5 +125,5 @@ doc-comment-walk-scope:
   - crates/belt-core/tests/
 ledger-source: docs/testing/lock-ledger.md
 audit-template-version: v1
-test-fn-count: 9 (1 positive + 1 ledger_locks_file_exists + 7 drift injection)
+test-fn-count: 10 (1 positive + 1 ledger_locks_files_exist + 1 audit_template_version + 7 drift injection)
 ```
