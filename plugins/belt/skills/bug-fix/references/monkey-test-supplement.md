@@ -1,10 +1,10 @@
-# Monkey Test Supplement (Phase 6 override for `/monkey-test:monkey-test`)
+# Monkey Test Supplement (Phase 6 override for `/belt:monkey-test`)
 
-**Invoked by:** `SKILL.md` Phase 6 (INVOKE 1 = Read this file; INVOKE 2 = `/monkey-test:monkey-test`). Only runs when `args.e2e=true`.
+**Invoked by:** `SKILL.md` Phase 6 (INVOKE 1 = Read this file; INVOKE 2 = `/belt:monkey-test`). Only runs when `args.e2e=true`.
 
 ## Scenarios source
 
-`/monkey-test:monkey-test` defaults to `docs/features/*/scenarios.yml` (feature-dev). In bug-fix, override to:
+`/belt:monkey-test` defaults to `docs/features/*/scenarios.yml` (feature-dev). In bug-fix, override to:
 
 ```
 docs/plans/*-rca-scenarios.yml

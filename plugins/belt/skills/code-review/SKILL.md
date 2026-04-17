@@ -30,10 +30,10 @@ If a design document exists in the current run's output directory (filename matc
 
 Dispatch observation agents in parallel via the Agent (Task) tool. Send all Task calls in **one single message** with multiple tool-use blocks so they run concurrently:
 
-- `Task(subagent_type: code-review:security-reviewer, prompt: <diff + path to write findings-security.json>)`
-- `Task(subagent_type: code-review:test-reviewer, prompt: <diff + path to write findings-test.json>)`
-- `Task(subagent_type: code-review:ai-antipattern-reviewer, prompt: <diff + path to write findings-ai-antipattern.json>)`
-- `Task(subagent_type: code-review:cross-cutting-reviewer, prompt: <diff + optional design-doc Impact Analysis + path to write findings-cross-cutting.json>)`
+- `Task(subagent_type: belt:security-reviewer, prompt: <diff + path to write findings-security.json>)`
+- `Task(subagent_type: belt:test-reviewer, prompt: <diff + path to write findings-test.json>)`
+- `Task(subagent_type: belt:ai-antipattern-reviewer, prompt: <diff + path to write findings-ai-antipattern.json>)`
+- `Task(subagent_type: belt:cross-cutting-reviewer, prompt: <diff + optional design-doc Impact Analysis + path to write findings-cross-cutting.json>)`
 
 If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the diff, the expected `findings-codex.json` format (same shape as observation agents, `source: "codex"`), and the output path `.belt/runs/<run_id>/review/findings-codex.json`.
 

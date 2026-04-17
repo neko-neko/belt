@@ -37,7 +37,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn bug_fix_dir() -> PathBuf {
-    repo_root().join("plugins/bug-fix/skills/bug-fix")
+    repo_root().join("plugins/belt/skills/bug-fix")
 }
 
 fn bug_fix_pipeline_path() -> PathBuf {

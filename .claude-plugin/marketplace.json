@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "belt",
-  "description": "Quality-gated AI development pipeline plugins: feature-dev, bug-fix, code-review, spec-review, and supporting agents",
+  "description": "Quality-gated AI development pipeline plugins built on the belt workflow engine",
   "owner": {
     "name": "neko-neko"
   },
@@ -13,39 +13,9 @@
       "category": "development"
     },
     {
-      "name": "feature-dev",
-      "description": "Quality-gated 9-phase development pipeline (design → test-scenarios → spec-review → plan → execute → code-review → monkey-test → dogfood → integrate)",
-      "source": "./plugins/feature-dev",
-      "category": "development"
-    },
-    {
-      "name": "bug-fix",
-      "description": "Quality-gated 8-phase debugging pipeline (rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate)",
-      "source": "./plugins/bug-fix",
-      "category": "development"
-    },
-    {
-      "name": "code-review",
-      "description": "Multi-perspective code review via consolidated code-reviewer agent (7 observations: quality, security, performance, test, ai-antipattern, impact, simplification)",
-      "source": "./plugins/code-review",
-      "category": "development"
-    },
-    {
-      "name": "spec-review",
-      "description": "Multi-perspective spec review via consolidated spec-reviewer agent (5 observations: requirements, design-judgment, feasibility, consistency, ui-design)",
-      "source": "./plugins/spec-review",
-      "category": "development"
-    },
-    {
-      "name": "monkey-test",
-      "description": "Scripted E2E regression via agent-browser. Replays Given/When/Then scenarios and emits human + machine-readable reports",
-      "source": "./plugins/monkey-test",
-      "category": "development"
-    },
-    {
-      "name": "test-scenarios",
-      "description": "Generate ISTQB + ISO 25010 test strategy and optional agent-browser scenarios.yml from a design document",
-      "source": "./plugins/test-scenarios",
+      "name": "belt",
+      "description": "User-invocable skills and their reviewer agents: /belt:feature-dev, /belt:bug-fix, /belt:code-review (4 reviewers), /belt:spec-review (3 reviewers), /belt:monkey-test, /belt:test-scenarios. Requires belt-agent plugin",
+      "source": "./plugins/belt",
       "category": "development"
     }
   ]

@@ -59,7 +59,7 @@ phases:
   - id: fix-plan-review
     description: "Plan review via spec-review"
     invoke:
-      skill: /spec-review:spec-review
+      skill: /belt:spec-review
       args:
         codex: "args.codex"
     consumes:
@@ -90,7 +90,7 @@ phases:
   - id: code-review
     description: "Multi-perspective code review"
     invoke:
-      skill: /code-review:code-review
+      skill: /belt:code-review
       args:
         codex: "args.codex"
     consumes:
@@ -114,7 +114,7 @@ phases:
     description: "Replay reproduction scenarios via agent-browser"
     when: "args.e2e"
     invoke:
-      skill: /monkey-test:monkey-test
+      skill: /belt:monkey-test
     consumes:
       - rca_report
       - rca_scenarios

@@ -11,7 +11,7 @@ audit: required
 - **verify_type**: automated
 - **verification**: `Glob("docs/plans/*-monkey-test-report.md")`
 - **pass_condition**: At least one match
-- **fail_diagnosis_hint**: `/monkey-test:monkey-test` invocation did not produce the report. Confirm Phase 6 supplement was loaded and scenarios source `docs/plans/*-rca-scenarios.yml` was resolvable
+- **fail_diagnosis_hint**: `/belt:monkey-test` invocation did not produce the report. Confirm Phase 6 supplement was loaded and scenarios source `docs/plans/*-rca-scenarios.yml` was resolvable
 - **depends_on_artifacts**: [docs/plans/*-monkey-test-report.md]
 
 ### MONKEY-TEST-02: Monkey test results JSON exists

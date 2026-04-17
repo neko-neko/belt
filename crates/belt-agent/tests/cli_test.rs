@@ -1656,7 +1656,7 @@ phases:
 }
 
 /// End-to-end walk through the migrated feature-dev pipeline using the
-/// real plugins/feature-dev/skills/feature-dev tree. This test is not meant to simulate
+/// real plugins/belt/skills/feature-dev tree. This test is not meant to simulate
 /// LLM behavior; it only drives belt-agent through init → next to prove that
 /// the new-format pipeline boots and surfaces the first phase correctly.
 #[test]
@@ -1667,7 +1667,7 @@ fn feature_dev_migrated_pipeline_boots() {
     let workspace = PathBuf::from(&manifest_dir).join("..").join("..");
     let pipeline = workspace
         .join("plugins")
-        .join("feature-dev")
+        .join("belt")
         .join("skills")
         .join("feature-dev")
         .join("pipeline.yml");

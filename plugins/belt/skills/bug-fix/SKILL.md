@@ -32,7 +32,7 @@ phase-specific overrides. Phases not listed (`fix-plan-review` / `execute` /
 
 ## Phase-specific Runtime Notes
 
-- **fix-plan-review**: `/spec-review:spec-review` is reused for fix-plan
+- **fix-plan-review**: `/belt:spec-review` is reused for fix-plan
   review. The grill-me prompt under the `design-judgment` observation does
   not fire by default (design decisions are already settled in rca /
   fix-plan). If it fires, treat it as a signal that upstream phases need
@@ -63,7 +63,7 @@ Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugi
 - **Never skip supplement loading when listed above**: without bug-fix specific overrides, behavior drifts.
 - **Never delegate root cause synthesis to subagents**: the orchestrator must reconstruct parallel exploration results.
 - **Never proceed without a failing reproduction test**: RCA blocker.
-- **Never filter or omit review findings**: triage of `/code-review:code-review` and `/spec-review:spec-review` output is the user's responsibility.
+- **Never filter or omit review findings**: triage of `/belt:code-review` and `/belt:spec-review` output is the user's responsibility.
 - **Never bypass the integrate A/B choice**: merge-vs-PR is always user-decided.
 - **Never hand-edit files under `docs/plans/<topic>-*`**: they are phase-produced; manual edits break belt's phase-start mtime filter.
 - **Never modify the consumed global skills**: overrides go through `references/*-supplement.md` only.

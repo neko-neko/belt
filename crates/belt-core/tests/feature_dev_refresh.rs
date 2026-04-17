@@ -21,7 +21,7 @@ fn feature_dev_pipeline_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("..");
     path.push("..");
-    path.push("plugins/feature-dev/skills/feature-dev/pipeline.yml");
+    path.push("plugins/belt/skills/feature-dev/pipeline.yml");
     path
 }
 

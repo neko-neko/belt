@@ -22,9 +22,9 @@ Locate the target spec document (most recent `*-design.md` under `docs/`, or use
 
 Dispatch observation agents in parallel via the Agent (Task) tool. Send all Task calls in **one single message**:
 
-- `Task(subagent_type: spec-review:feasibility-reviewer, prompt: <spec path + path to write findings-feasibility.json>)`
-- `Task(subagent_type: spec-review:ui-design-reviewer, prompt: <spec path + path to write findings-ui-design.json>)` — agent will early-exit with zero findings if spec has no UI content
-- `Task(subagent_type: spec-review:cross-cutting-spec-reviewer, prompt: <spec path + path to write findings-cross-cutting-spec.json>)`
+- `Task(subagent_type: belt:feasibility-reviewer, prompt: <spec path + path to write findings-feasibility.json>)`
+- `Task(subagent_type: belt:ui-design-reviewer, prompt: <spec path + path to write findings-ui-design.json>)` — agent will early-exit with zero findings if spec has no UI content
+- `Task(subagent_type: belt:cross-cutting-spec-reviewer, prompt: <spec path + path to write findings-cross-cutting-spec.json>)`
 
 If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the spec, expected findings format, and output path `.belt/runs/<run_id>/review/findings-codex.json`.
 

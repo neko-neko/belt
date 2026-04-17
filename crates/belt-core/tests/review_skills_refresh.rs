@@ -1,11 +1,11 @@
 //! Integration tests locking the 2026-04-16 review-skills subagent-boundary
 //! refactor (/code-review, /spec-review).
 //!
-//! Shape contract:
-//! - plugins/<plugin>/skills/<plugin>/pipeline.yml is DELETED
-//! - plugins/<plugin>/skills/<plugin>/belt.toml is DELETED
-//! - plugins/<plugin>/agents/<single>.md is DELETED (code-reviewer / spec-reviewer)
-//! - New per-observation agent files exist in plugins/<plugin>/agents/
+//! Shape contract (post-2026-04-17 consolidation):
+//! - plugins/belt/skills/<skill>/pipeline.yml is DELETED for review skills
+//! - plugins/belt/skills/<skill>/belt.toml is DELETED for review skills
+//! - plugins/belt/agents/<consolidated>.md is DELETED (code-reviewer / spec-reviewer)
+//! - New per-observation agent files exist flat under plugins/belt/agents/
 //! - Parent SKILL.md references parallel Task dispatch and cross-agent merge
 //! - Legacy per-observation agent files (from the pre-2026-04-15 era) remain
 //!   absent (locked by the untouched LEGACY list below).
@@ -24,8 +24,12 @@ fn repo_root() -> PathBuf {
     path
 }
 
-/// (plugin, expected agent file basenames after refactor)
-const REVIEW_PLUGINS: &[(&str, &[&str])] = &[
+/// (`skill_name`, expected agent file basenames after refactor)
+///
+/// After the 2026-04-17 consolidation, both review skills live under the
+/// single `belt` plugin, and the reviewer agents are flat under
+/// `plugins/belt/agents/`. `skill_name` identifies the skill directory.
+const REVIEW_SKILLS: &[(&str, &[&str])] = &[
     (
         "code-review",
         &[
@@ -46,49 +50,46 @@ const REVIEW_PLUGINS: &[(&str, &[&str])] = &[
 ];
 
 #[test]
-fn review_plugins_pipeline_yml_is_deleted() {
-    for (plugin, _agents) in REVIEW_PLUGINS {
+fn review_skills_pipeline_yml_is_deleted() {
+    for (skill, _agents) in REVIEW_SKILLS {
         let path = repo_root()
             .join("plugins")
-            .join(plugin)
+            .join("belt")
             .join("skills")
-            .join(plugin)
+            .join(skill)
             .join("pipeline.yml");
         assert!(
             !path.exists(),
-            "pipeline.yml must be deleted for {plugin}: {}",
+            "pipeline.yml must be deleted for {skill}: {}",
             path.display()
         );
     }
 }
 
 #[test]
-fn review_plugins_belt_toml_is_deleted() {
-    for (plugin, _agents) in REVIEW_PLUGINS {
+fn review_skills_belt_toml_is_deleted() {
+    for (skill, _agents) in REVIEW_SKILLS {
         let path = repo_root()
             .join("plugins")
-            .join(plugin)
+            .join("belt")
             .join("skills")
-            .join(plugin)
+            .join(skill)
             .join("belt.toml");
         assert!(
             !path.exists(),
-            "belt.toml must be deleted for {plugin}: {}",
+            "belt.toml must be deleted for {skill}: {}",
             path.display()
         );
     }
 }
 
 #[test]
-fn review_plugins_legacy_consolidated_agent_is_deleted() {
-    const LEGACY_CONSOLIDATED: &[(&str, &str)] = &[
-        ("code-review", "code-reviewer"),
-        ("spec-review", "spec-reviewer"),
-    ];
-    for (plugin, legacy) in LEGACY_CONSOLIDATED {
+fn review_skills_legacy_consolidated_agent_is_deleted() {
+    const LEGACY_CONSOLIDATED: &[&str] = &["code-reviewer", "spec-reviewer"];
+    for legacy in LEGACY_CONSOLIDATED {
         let path = repo_root()
             .join("plugins")
-            .join(plugin)
+            .join("belt")
             .join("agents")
             .join(format!("{legacy}.md"));
         assert!(
@@ -100,12 +101,12 @@ fn review_plugins_legacy_consolidated_agent_is_deleted() {
 }
 
 #[test]
-fn review_plugins_new_observation_agents_exist() {
-    for (plugin, agents) in REVIEW_PLUGINS {
+fn review_skills_new_observation_agents_exist() {
+    for (_skill, agents) in REVIEW_SKILLS {
         for agent in *agents {
             let path = repo_root()
                 .join("plugins")
-                .join(plugin)
+                .join("belt")
                 .join("agents")
                 .join(format!("{agent}.md"));
             assert!(
@@ -118,19 +119,19 @@ fn review_plugins_new_observation_agents_exist() {
 }
 
 #[test]
-fn review_plugins_parent_skill_md_references_parallel_dispatch() {
-    for (plugin, _agents) in REVIEW_PLUGINS {
+fn review_skills_parent_skill_md_references_parallel_dispatch() {
+    for (skill, _agents) in REVIEW_SKILLS {
         let path = repo_root()
             .join("plugins")
-            .join(plugin)
+            .join("belt")
             .join("skills")
-            .join(plugin)
+            .join(skill)
             .join("SKILL.md");
         let content = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
         assert!(
             content.contains("findings-") && content.contains("Task"),
-            "{plugin} SKILL.md must describe parallel Task dispatch with findings-*.json: {}",
+            "{skill} SKILL.md must describe parallel Task dispatch with findings-*.json: {}",
             path.display()
         );
     }

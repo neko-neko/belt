@@ -76,16 +76,16 @@ fn extract_filtering_prefix_bullets(content: &str, n: usize) -> String {
 }
 
 const CODE_REVIEW_AGENTS: &[&str] = &[
-    "plugins/code-review/agents/security-reviewer.md",
-    "plugins/code-review/agents/test-reviewer.md",
-    "plugins/code-review/agents/ai-antipattern-reviewer.md",
-    "plugins/code-review/agents/cross-cutting-reviewer.md",
+    "plugins/belt/agents/security-reviewer.md",
+    "plugins/belt/agents/test-reviewer.md",
+    "plugins/belt/agents/ai-antipattern-reviewer.md",
+    "plugins/belt/agents/cross-cutting-reviewer.md",
 ];
 
 const SPEC_REVIEW_AGENTS: &[&str] = &[
-    "plugins/spec-review/agents/feasibility-reviewer.md",
-    "plugins/spec-review/agents/ui-design-reviewer.md",
-    "plugins/spec-review/agents/cross-cutting-spec-reviewer.md",
+    "plugins/belt/agents/feasibility-reviewer.md",
+    "plugins/belt/agents/ui-design-reviewer.md",
+    "plugins/belt/agents/cross-cutting-spec-reviewer.md",
 ];
 
 fn assert_filtering_prefix_identical(agents: &[&str], prefix_bullets: usize) {

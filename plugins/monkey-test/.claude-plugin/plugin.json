@@ -1,6 +1,0 @@
-{
-  "name": "monkey-test",
-  "description": "Scripted E2E regression via agent-browser. Replays Given/When/Then scenarios and emits human + machine-readable reports",
-  "version": "0.1.0",
-  "author": { "name": "neko-neko" }
-}

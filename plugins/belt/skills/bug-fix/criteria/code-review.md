@@ -72,7 +72,7 @@ audit: required
   1. Verify file exists at `.belt/runs/<run_id>/review/findings.json`
   2. Parse as JSON and confirm the `findings` array field is present
 - **pass_condition**: File exists AND parses as valid JSON AND contains a `findings` array
-- **fail_diagnosis_hint**: The `/code-review:code-review` invocation was interrupted or the merge step was skipped. Re-invoke from the code-review phase
+- **fail_diagnosis_hint**: The `/belt:code-review` invocation was interrupted or the merge step was skipped. Re-invoke from the code-review phase
 - **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
 
 ### CODE-REVIEW-07: All findings in findings.json have a user-approved disposition

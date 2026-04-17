@@ -23,11 +23,11 @@ fn workspace_path(rel: &str) -> PathBuf {
 #[test]
 fn execute_criteria_identical_across_feature_dev_and_bug_fix() {
     let fd = fs::read_to_string(workspace_path(
-        "plugins/feature-dev/skills/feature-dev/criteria/execute.md",
+        "plugins/belt/skills/feature-dev/criteria/execute.md",
     ))
     .expect("feature-dev execute.md missing");
     let bf = fs::read_to_string(workspace_path(
-        "plugins/bug-fix/skills/bug-fix/criteria/execute.md",
+        "plugins/belt/skills/bug-fix/criteria/execute.md",
     ))
     .expect("bug-fix execute.md missing");
     assert_eq!(
@@ -39,11 +39,11 @@ fn execute_criteria_identical_across_feature_dev_and_bug_fix() {
 #[test]
 fn code_review_criteria_identical_across_feature_dev_and_bug_fix() {
     let fd = fs::read_to_string(workspace_path(
-        "plugins/feature-dev/skills/feature-dev/criteria/code-review.md",
+        "plugins/belt/skills/feature-dev/criteria/code-review.md",
     ))
     .expect("feature-dev code-review.md missing");
     let bf = fs::read_to_string(workspace_path(
-        "plugins/bug-fix/skills/bug-fix/criteria/code-review.md",
+        "plugins/belt/skills/bug-fix/criteria/code-review.md",
     ))
     .expect("bug-fix code-review.md missing");
     assert_eq!(

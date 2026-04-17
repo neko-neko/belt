@@ -34,7 +34,7 @@ phases:
   - id: test-scenarios
     description: "Design comprehensive test cases and agent-browser scenarios"
     invoke:
-      skill: /test-scenarios:test-scenarios
+      skill: /belt:test-scenarios
       args:
         e2e: "args.e2e"
     consumes:
@@ -56,7 +56,7 @@ phases:
   - id: spec-review
     description: "Review test strategy (and scenarios if --e2e) via spec-review"
     invoke:
-      skill: /spec-review:spec-review
+      skill: /belt:spec-review
       args:
         codex: "args.codex"
     consumes:
@@ -110,7 +110,7 @@ phases:
   - id: code-review
     description: "Multi-perspective code review"
     invoke:
-      skill: /code-review:code-review
+      skill: /belt:code-review
       args:
         codex: "args.codex"
     consumes:
@@ -134,7 +134,7 @@ phases:
     description: "Replay pre-defined scenarios via agent-browser"
     when: "args.e2e"
     invoke:
-      skill: /monkey-test:monkey-test
+      skill: /belt:monkey-test
     consumes:
       - design_doc
       - test_strategy

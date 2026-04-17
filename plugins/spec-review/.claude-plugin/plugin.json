@@ -1,6 +1,0 @@
-{
-  "name": "spec-review",
-  "description": "Multi-perspective spec review (5 observations: requirements, design-judgment, feasibility, consistency, ui-design) + grill-me dialogue via consolidated spec-reviewer agent",
-  "version": "0.1.0",
-  "author": { "name": "neko-neko" }
-}

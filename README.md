@@ -298,10 +298,10 @@ marketplace format) at belt repo root.
 After install:
 
 ```
-/feature-dev:feature-dev         # start a new feature
-/bug-fix:bug-fix                 # start a bug investigation
-/code-review:code-review         # standalone code review
-/spec-review:spec-review         # standalone spec review
+/belt:feature-dev         # start a new feature
+/belt:bug-fix             # start a bug investigation
+/belt:code-review         # standalone code review
+/belt:spec-review         # standalone spec review
 ```
 
 See each plugin's `SKILL.md` for phase details and arg reference.
