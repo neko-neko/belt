@@ -19,6 +19,7 @@ fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
     path
 }
 
+/// scenario: belt-core-lint-detects-duplicate-phase-ids
 #[test]
 fn lint_detects_duplicate_phase_ids() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -47,6 +48,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-detects-invalid-regate-target
 #[test]
 fn lint_detects_invalid_regate_target() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -75,6 +77,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-detects-undefined-arg-in-when
 #[test]
 fn lint_detects_undefined_arg_in_when() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -106,6 +109,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-clean-pipeline-passes
 #[test]
 fn clean_pipeline_passes_lint() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -145,6 +149,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-invoke-pipeline-path-resolution
 #[test]
 fn lint_detects_missing_invoke_pipeline_file() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -174,6 +179,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-invoke-pipeline-path-resolution
 #[test]
 fn lint_accepts_valid_invoke_pipeline_path() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -215,6 +221,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-invoke-skill-validation
 #[test]
 fn lint_detects_invoke_skill_without_description() {
     // An `invoke: { skill: ... }` phase executes at the current phase rather
@@ -247,6 +254,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-invoke-skill-validation
 #[test]
 fn lint_detects_invoke_skill_without_leading_slash() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -277,6 +285,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-invoke-skill-validation
 #[test]
 fn lint_accepts_invoke_skill_with_leading_slash() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -302,6 +311,7 @@ phases:
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
 }
 
+/// scenario: belt-core-lint-invoke-skill-validation
 #[test]
 fn lint_detects_invoke_skill_empty() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -330,6 +340,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-detects-duplicate-produces-name-within-phase
 #[test]
 fn lint_detects_duplicate_produces_name_in_one_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -363,6 +374,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-consumes-resolution
 #[test]
 fn lint_detects_unresolved_consumes_named() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -398,6 +410,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-consumes-resolution
 #[test]
 fn lint_detects_unresolved_consumes_qualified_unknown_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -434,6 +447,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-consumes-resolution
 #[test]
 fn lint_accepts_consumes_resolved_to_earlier_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -475,6 +489,7 @@ phases:
     assert!(errors.is_empty(), "expected no errors, got: {errors:?}");
 }
 
+/// scenario: belt-core-lint-consumes-resolution
 #[test]
 fn lint_detects_consumes_from_later_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -508,6 +523,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-validate-file-existence
 #[test]
 fn lint_detects_validate_file_missing() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -538,6 +554,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-validate-file-existence
 #[test]
 fn lint_accepts_validate_file_present() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -569,6 +586,8 @@ phases:
 
 /// A completely empty phase (no invoke, gate, validate, or confirm) is an
 /// authoring mistake — belt-core lint rejects it per spec DD-8.
+///
+/// scenario: belt-core-lint-empty-phase-rule
 #[test]
 fn lint_rejects_completely_empty_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -598,6 +617,8 @@ phases:
 }
 
 /// Phase with only `gate:` passes the empty-phase rule.
+///
+/// scenario: belt-core-lint-empty-phase-rule
 #[test]
 fn lint_accepts_phase_with_only_gate() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -629,6 +650,8 @@ phases:
 }
 
 /// Phase with only `validate:` passes the empty-phase rule.
+///
+/// scenario: belt-core-lint-empty-phase-rule
 #[test]
 fn lint_accepts_phase_with_only_validate() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -660,6 +683,8 @@ phases:
 }
 
 /// Phase with only `confirm: true` passes the empty-phase rule.
+///
+/// scenario: belt-core-lint-empty-phase-rule
 #[test]
 fn lint_accepts_phase_with_only_confirm() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -689,6 +714,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-validate-file-existence
 #[test]
 fn lint_validate_inline_strings_unaffected() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -725,6 +751,8 @@ phases:
 ///   - `Ok(diags)` containing a parse-level error that mentions the URI.
 ///   - `Err(_)` (parse-level rejection propagated).
 /// All three satisfy the intent: invalid URI grammar is surfaced.
+///
+/// scenario: belt-core-lint-rejects-invalid-belt-uri-grammar
 #[test]
 fn lint_rejects_invalid_uri_grammar() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -770,6 +798,8 @@ phases:
 /// `<pipeline>.yml` nor `<pipeline>/pipeline.yml` exists next to the current
 /// pipeline file. This is authoring-time feedback — the producer may live in a
 /// different repo, so the check is advisory, not fatal.
+///
+/// scenario: belt-core-lint-warns-on-belt-uri-unknown-sibling-pipeline
 #[test]
 fn lint_warns_on_belt_uri_with_unknown_sibling_pipeline() {
     let tmp = tempfile::tempdir().unwrap();
@@ -794,6 +824,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-warns-on-produces-without-gate
 #[test]
 fn lint_warns_on_produces_without_gate() {
     let tmp = tempfile::tempdir().unwrap();
@@ -825,6 +856,8 @@ phases:
 
 /// After 2026-04-16, pipeline.yml authors must not use `invoke.agent:`.
 /// Lint should produce a targeted diagnostic pointing to the migration.
+///
+/// scenario: belt-core-lint-rejects-removed-invoke-keys
 #[test]
 fn lint_rejects_invoke_agent_key() {
     let yaml = r"
@@ -845,6 +878,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-rejects-removed-invoke-keys
 #[test]
 fn lint_rejects_invoke_agents_key() {
     let yaml = r"
@@ -865,6 +899,7 @@ phases:
     );
 }
 
+/// scenario: belt-core-lint-rejects-removed-invoke-keys
 #[test]
 fn lint_rejects_invoke_iterations_key() {
     let yaml = r"
@@ -888,6 +923,8 @@ phases:
 /// CLI-path regression: `lint_pipeline` (the entry point called by `belt lint`)
 /// must surface the migration-hint diagnostic for invoke.agent, not the
 /// generic serde untagged-enum error.
+///
+/// scenario: belt-core-lint-pipeline-surfaces-migration-hint
 #[test]
 fn lint_pipeline_surfaces_invoke_agent_migration_hint() {
     use std::io::Write;

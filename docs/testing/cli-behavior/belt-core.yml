@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -284,3 +284,110 @@ scenarios:
     given: "a produces Artifact whose path is a glob vs a concrete path, evaluated against candidate files older than, newer than, or equal-mtime with the phase_start_times entry"
     when: "build_status_view resolves the artifact"
     then: "glob paths pick the newest match strictly after phase_start (filtering older files out, reporting exists=false when no match remains, and breaking mtime ties by ascending filename), while concrete paths bypass the phase_start filter and resolve purely by filesystem existence"
+
+  # --- lint module ---
+  - id: belt-core-lint-detects-duplicate-phase-ids
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML with two phases sharing the same id"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic mentioning 'duplicate' is emitted"
+  - id: belt-core-lint-detects-invalid-regate-target
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose regate: list references a nonexistent phase id"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic naming the unknown target is emitted"
+  - id: belt-core-lint-detects-undefined-arg-in-when
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a phase with when: 'args.X' where X is not declared in pipeline args"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic naming the undefined arg is emitted"
+  - id: belt-core-lint-clean-pipeline-passes
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a well-formed pipeline with declared args, gate, when, and regate all resolving correctly"
+    when: "lint_pipeline() is called"
+    then: "no Error-severity diagnostics are returned"
+  - id: belt-core-lint-invoke-pipeline-path-resolution
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase with invoke.pipeline pointing to either a nonexistent file or to an existing sibling sub-pipeline file"
+    when: "lint_pipeline() is called"
+    then: "missing file yields an Error-severity diagnostic naming the path and invoke/pipeline; existing file yields no errors"
+  - id: belt-core-lint-invoke-skill-validation
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase with invoke.skill that is missing a leading slash, empty, absent with no description, or properly formed with leading slash plus description"
+    when: "lint_pipeline() is called"
+    then: "missing-slash yields an Error mentioning 'slash', empty-string yields an Error mentioning 'empty', missing-description yields an Error mentioning 'leaf phase' or 'description', and a well-formed /skill invocation yields no errors"
+  - id: belt-core-lint-detects-duplicate-produces-name-within-phase
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose produces: list has two entries sharing the same name"
+    when: "lint_pipeline() is called"
+    then: "an Error-severity diagnostic containing 'duplicate' and the shared name is emitted"
+  - id: belt-core-lint-consumes-resolution
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a consumes: entry referencing a bare name with no matching produces, a {name, from} pair whose from-phase is unknown, a later phase's output (forward reference), or a correctly earlier-produced artifact (bare and qualified forms)"
+    when: "lint_pipeline() is called"
+    then: "unresolved bare and qualified references and forward references each yield an Error naming the offending token; valid backward references yield no errors"
+  - id: belt-core-lint-validate-file-existence
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase whose validate: entry is file: <path> where the path is either missing or present, or a list of inline string criteria"
+    when: "lint_pipeline() is called"
+    then: "missing file yields an Error naming the path and 'validate'; present file yields no errors; inline-string validate produces no errors"
+  - id: belt-core-lint-empty-phase-rule
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase declaring only description (no invoke, gate, validate, or confirm) vs a phase declaring exactly one of gate, validate, or confirm: true"
+    when: "lint_pipeline() is called"
+    then: "description-only yields an Error naming the phase id and 'neither invoke, gate, validate, nor confirm' (DD-8); any of gate-only, validate-only, or confirm-only passes the empty-phase rule"
+  - id: belt-core-lint-rejects-invalid-belt-uri-grammar
+    category: lint
+    severity: high
+    technique: error-guessing
+    given: "a consumes: entry whose uri: uses an unknown belt:// selector"
+    when: "lint_pipeline() is called"
+    then: "either an Ok(diagnostics) containing a URI/selector/invalid diagnostic, or an Err whose Display mentions URI or belt://; parse-layer rejection is also acceptable"
+  - id: belt-core-lint-warns-on-belt-uri-unknown-sibling-pipeline
+    category: lint
+    severity: medium
+    technique: equivalence-partition
+    given: "a consumes: entry with uri: belt://latest/<pipeline>/... where no sibling <pipeline>.yml nor <pipeline>/pipeline.yml exists next to the current pipeline file"
+    when: "lint_pipeline() is called"
+    then: "a diagnostic mentioning the unknown pipeline name is emitted (advisory, non-fatal)"
+  - id: belt-core-lint-warns-on-produces-without-gate
+    category: lint
+    severity: medium
+    technique: equivalence-partition
+    given: "a phase declaring produces: entries but whose gate does not protect those outputs"
+    when: "lint_pipeline() is called"
+    then: "a Warning-severity diagnostic mentioning 'not protected by gate' is emitted"
+  - id: belt-core-lint-rejects-removed-invoke-keys
+    category: lint
+    severity: high
+    technique: decision-table
+    given: "a phase whose invoke: block uses one of the removed keys agent, agents, or iterations (post-2026-04-16 migration)"
+    when: "lint_raw_pipeline_yaml() is called"
+    then: "returns Err whose Display mentions the removed key name; invoke.agent additionally mentions 'no longer supported' or 'removed'"
+  - id: belt-core-lint-pipeline-surfaces-migration-hint
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline file on disk containing invoke.agent"
+    when: "lint_pipeline() is called (the CLI entry point used by 'belt lint')"
+    then: "the rendered result (Err Display or Ok diagnostics Debug) contains both 'invoke.agent' and 'no longer supported', ensuring the raw-YAML migration hint is surfaced rather than the generic serde untagged-enum error"
