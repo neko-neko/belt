@@ -313,10 +313,15 @@ belt repo root.
 After install:
 
 ```
-/belt:feature-dev             # start a new feature
-/belt:bug-fix                 # start a bug investigation
-/belt:code-review             # standalone code review
-/belt:spec-review             # standalone spec review
+# Start a pipeline
+/belt:feature-dev
+/belt:bug-fix
+/belt:code-review
+/belt:spec-review
+
+# Pause & resume an in-progress run
+/belt:handover
+/belt:resume
 ```
 
 See each skill's `SKILL.md` (under `plugins/belt/skills/<skill>/`) for phase
