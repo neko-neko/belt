@@ -207,7 +207,7 @@ Replace the triple to match your platform:
 ### Verify (optional)
 
 ```bash
-gh release download v0.1.0 --repo neko-neko/belt --pattern '*.tar.xz'
+gh release download v0.2.0 --repo neko-neko/belt --pattern '*.tar.xz'
 gh attestation verify belt-x86_64-unknown-linux-gnu.tar.xz --repo neko-neko/belt
 gh attestation verify belt-agent-x86_64-unknown-linux-gnu.tar.xz --repo neko-neko/belt
 ```
