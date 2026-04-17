@@ -14,13 +14,13 @@ scenarios:
     given: "a pipeline.yml with duplicate phase IDs"
     when: "belt lint <path> is invoked"
     then: "exit code 1 and stderr contains 'duplicate'"
-  - id: belt-lint-invalid-yaml-rejected
+  - id: belt-lint-config-resolves-pipeline-file
     category: lint
     severity: high
     technique: equivalence-partition
-    given: "a pipeline.yml with YAML syntax errors"
-    when: "belt lint <path> is invoked"
-    then: "exit code 1 and stderr contains diagnostic"
+    given: "a belt.toml pointing to a valid pipeline.yml via --config flag"
+    when: "belt --config <belt.toml> lint is invoked without positional path"
+    then: "exit code 0 and stderr contains 'ok' (pipeline path resolved via config)"
   - id: belt-lint-nonexistent-file-rejected
     category: lint
     severity: medium
