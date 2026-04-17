@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a) + expander (4, F2a) + parser (4, F2a) + artifact_when (5, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a) + expander (4, F2a) + parser (4, F2a) + artifact_when (5, F2a) + uri (5, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -732,3 +732,40 @@ scenarios:
     given: "an Artifact.when expression referencing an arg (args.undefined_flag) that is not declared in args"
     when: "lint_pipeline is called"
     then: "diagnostics contain a Severity::Warning whose message names the undefined arg identifier"
+
+  # --- uri module ---
+  - id: belt-core-uri-latest-selector-parses
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://latest/<pipeline>/<path> string"
+    when: "BeltUri::parse() is called"
+    then: "returns Ok(BeltUri::Latest { pipeline, path }) with field values from URI segments"
+  - id: belt-core-uri-workspace-latest-selector-parses
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://workspace/<branch>/latest/<pipeline>/<path> string"
+    when: "BeltUri::parse() is called"
+    then: "returns Ok(BeltUri::WorkspaceLatest { branch, pipeline, path }) with field values from URI segments"
+  - id: belt-core-uri-run-selector-parses
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://run/<run_id>/<path> string"
+    when: "BeltUri::parse() is called"
+    then: "returns Ok(BeltUri::Run { run_id, path }) with field values from URI segments"
+  - id: belt-core-uri-missing-scheme-rejected
+    category: uri
+    severity: high
+    technique: error-guessing
+    given: "a URI string with non-belt:// scheme"
+    when: "BeltUri::parse() is called"
+    then: "returns Err(UriParseError::MissingScheme)"
+  - id: belt-core-uri-path-traversal-rejected
+    category: uri
+    severity: high
+    technique: error-guessing
+    given: "a belt:// URI with .. segment in path"
+    when: "BeltUri::parse() is called"
+    then: "returns Err(UriParseError::PathTraversal)"
