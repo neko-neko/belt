@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -612,3 +612,26 @@ scenarios:
     given: "a slice of GateCheck values evaluated together (all pass vs one timeout among passes vs heterogeneous cmd + file_exists)"
     when: "execute_gates and all_passed are called"
     then: "execute_gates returns one GateResult per input in order, all_passed(&results) is true iff every result has passed = true, and a single timed-out entry forces all_passed = false while other entries retain their individual passed/timed_out flags"
+
+  # --- error module ---
+  - id: belt-core-error-config-parse-renders-path-detail-and-code
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::ConfigParse{path, detail} constructed from a miette::Diagnostic"
+    when: "Display::to_string() and Diagnostic::code() are evaluated"
+    then: "Display yields 'config parse error in <path>: <detail>' and code() equals 'belt::config_parse'"
+  - id: belt-core-error-regate-required-renders-phase-and-code
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::RegateRequired{phase_id, targets} treated as a miette::Diagnostic"
+    when: "Display::to_string() and Diagnostic::code() are evaluated"
+    then: "Display yields 'regate required for phase <phase_id>: run regate before step' and code() equals 'belt::regate_required'"
+  - id: belt-core-error-regate-failed-renders-targets-and-code
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::RegateFailed{phase_id, targets} treated as a miette::Diagnostic"
+    when: "Display::to_string() and Diagnostic::code() are evaluated"
+    then: "Display yields 'regate failed for phase <phase_id>: targets <debug-formatted targets> did not pass' and code() equals 'belt::regate_failed'"
