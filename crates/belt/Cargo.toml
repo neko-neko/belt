@@ -13,6 +13,38 @@ publish = false
 [package.metadata.dist]
 dist = true
 
+# CHANGELOG placeholder 置換は belt クレートが representative として所有する
+# (workspace 共有 CHANGELOG のため、belt-agent 側は宣言しない)。
+[[package.metadata.release.pre-release-replacements]]
+file = "../../CHANGELOG.md"
+search = "Unreleased"
+replace = "{{version}}"
+
+[[package.metadata.release.pre-release-replacements]]
+file = "../../CHANGELOG.md"
+search = "ReleaseDate"
+replace = "{{date}}"
+
+# `...HEAD` の置換は `<!-- next-url -->` 注入 (new Unreleased URL を追加) よりも
+# 前に実行する必要がある。そうしないと 2 個の ...HEAD が存在し exactly=1 が失敗する。
+[[package.metadata.release.pre-release-replacements]]
+file = "../../CHANGELOG.md"
+search = "\\.\\.\\.HEAD"
+replace = "...{{tag_name}}"
+exactly = 1
+
+[[package.metadata.release.pre-release-replacements]]
+file = "../../CHANGELOG.md"
+search = "<!-- next-header -->"
+replace = "<!-- next-header -->\n\n## [Unreleased] - ReleaseDate"
+exactly = 1
+
+[[package.metadata.release.pre-release-replacements]]
+file = "../../CHANGELOG.md"
+search = "<!-- next-url -->"
+replace = "<!-- next-url -->\n[Unreleased]: https://github.com/neko-neko/belt/compare/{{tag_name}}...HEAD"
+exactly = 1
+
 [[bin]]
 name = "belt"
 path = "src/main.rs"

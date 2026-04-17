@@ -24,11 +24,8 @@ publish = false
 # verify (local cargo build) は default の true を保持
 # → pre-release 時に build 破綻を catch できる
 
-# CHANGELOG.md placeholder 置換 (keepachangelog)
-pre-release-replacements = [
-    { file = "CHANGELOG.md", search = "Unreleased",  replace = "{{version}}" },
-    { file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}" },
-    { file = "CHANGELOG.md", search = "<!-- next-header -->", replace = "<!-- next-header -->\n\n## [Unreleased] - ReleaseDate", exactly = 1 },
-    { file = "CHANGELOG.md", search = "<!-- next-url -->", replace = "<!-- next-url -->\n[Unreleased]: https://github.com/neko-neko/belt/compare/{{tag_name}}...HEAD", exactly = 1 },
-    { file = "CHANGELOG.md", search = "\\.\\.\\.HEAD", replace = "...{{tag_name}}", exactly = 1 },
-]
+# CHANGELOG.md placeholder 置換は workspace root の単一 CHANGELOG を更新する
+# ため、representative crate (belt) の `[package.metadata.release]` で宣言する。
+# cargo-release FAQ "Maintaining Changelog" 参照:
+# pre-release-replacements は package-configuration のため、workspace 共有
+# CHANGELOG の場合は 1 crate に委任し、他 crate が重複実行しないようにする。
