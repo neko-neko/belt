@@ -26,4 +26,4 @@ phase: plan
   contains frontmatter (`phase: plan`, `run_id: <run_id>`), and all 4 required
   sections. Decisions records task decomposition rationale and granularity choices.
   Directives records constraints for execute phase (e.g. commit granularity rules,
-  test-first enforcement). See `plugins/belt-agents/references/narrative-convention.md`.
+  test-first enforcement). See `plugins/belt-agent/references/narrative-convention.md`.

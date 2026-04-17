@@ -40,7 +40,7 @@ On first invocation, if no Evidence Plan exists:
 
 1. Check if `evidence_plan_path` points to an existing file
 2. If not, read the design doc and project files (package.json, Cargo.toml, etc.)
-3. Read `claude/agents/references/evidence-catalog.md`
+3. Read `./references/evidence-catalog.md`
 4. Evaluate each catalog entry's `condition` using Glob/Grep
 5. If the design doc or project context indicates evidence needs not covered by the catalog, generate additional evidence items with the same structure (Additional section)
 6. Return the full Evidence Plan content and summary to the orchestrator. **You do not write the file yourself** (Write is forbidden). The orchestrator persists the Evidence Plan to `docs/plans/` and commits it.

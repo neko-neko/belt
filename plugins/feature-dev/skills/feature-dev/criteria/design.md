@@ -34,4 +34,4 @@ All items must be satisfied for the phase to pass.
   Decisions section records chosen approach and rejected alternatives with rationale.
   Directives section records constraints for plan / execute phases. Empty sections
   may carry `(none)` placeholder but heading must be preserved.
-  See `plugins/belt-agents/references/narrative-convention.md`.
+  See `plugins/belt-agent/references/narrative-convention.md`.

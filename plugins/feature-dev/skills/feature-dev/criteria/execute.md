@@ -98,7 +98,7 @@ audit: required
 - **verify_type**: inspection
 - **verification**:
   1. Enumerate all requirements from the design document and assign IDs
-  2. Enumerate the impacted files/modules from the belt-agents:impact-analyzer output
+  2. Enumerate the impacted files/modules from the belt-agent:impact-analyzer output
   3. For each requirement ID, verify at least one corresponding test case exists
   4. For each impacted file/module, verify corresponding tests exist
   5. Verify no existing tests for impacted code have been deleted or disabled (detect additions of `.skip`, `.only`, test function commenting out, or deletion via `git diff`)
@@ -117,11 +117,11 @@ audit: required
   4. Verify each section is either populated or retains its heading (empty sections may carry `(none)` placeholder but heading must be present)
   5. Verify Decisions / Directives are specific enough for a `/clear`-ed LLM to reconstruct the phase outcome (not vague generalities)
 - **pass_condition**: Steps 1-4 all pass; Step 5 narrative is concrete (references task IDs / file paths / decisions made, not abstract statements)
-- **fail_diagnosis_hint**: If heading missing, add empty heading. If frontmatter missing, copy `run_id` from `belt-agent step` / `belt-agent status` JSON output. If content is vague, rewrite to cite concrete artifacts (task IDs, file paths, decision triggers). See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **fail_diagnosis_hint**: If heading missing, add empty heading. If frontmatter missing, copy `run_id` from `belt-agent step` / `belt-agent status` JSON output. If content is vague, rewrite to cite concrete artifacts (task IDs, file paths, decision triggers). See `plugins/belt-agent/references/narrative-convention.md` for schema
 - **depends_on_artifacts**: [.belt/runs/*/notes/phase-execute.md]
 
 ## Observation Collection
 
-The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.
+The belt-agent:phase-auditor MUST include `observations[]` in its verdict output.
 Record quality/warning-level findings even for criteria that PASS.
 Observations accumulate in the pipeline's audit trail.

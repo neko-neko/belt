@@ -41,11 +41,11 @@ S1 through S4.
 From the clarifying answers, derive three exploration prompts and launch three
 Agent calls in a SINGLE message:
 
-1. `belt-agents:code-explorer` — trace existing code flow related to the feature area;
+1. `belt-agent:code-explorer` — trace existing code flow related to the feature area;
    report dependencies, patterns, constraints.
-2. `belt-agents:code-architect` — identify architecture patterns, conventions, reusable
+2. `belt-agent:code-architect` — identify architecture patterns, conventions, reusable
    components in the feature area.
-3. `belt-agents:impact-analyzer` — reverse-trace the change target; report shared state,
+3. `belt-agent:impact-analyzer` — reverse-trace the change target; report shared state,
    implicit contracts, side-effect risks.
 
 If any agent fails, fall back to Grep/Read in the main context for that area

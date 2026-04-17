@@ -81,11 +81,11 @@ audit: required
   4. Verify Decisions records task decomposition rationale tracing back to RCA Fix Strategy
   5. Verify Directives records test-first requirements and regression scope for the execute phase
 - **pass_condition**: Steps 1-5 all pass
-- **fail_diagnosis_hint**: If Decisions lacks RCA traceability, re-read the RCA report's Fix Strategy and re-derive task boundaries. If Directives empty, articulate which regression test set must run during execute. See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **fail_diagnosis_hint**: If Decisions lacks RCA traceability, re-read the RCA report's Fix Strategy and re-derive task boundaries. If Directives empty, articulate which regression test set must run during execute. See `plugins/belt-agent/references/narrative-convention.md` for schema
 - **depends_on_artifacts**: [.belt/runs/*/notes/phase-fix-plan.md]
 
 ## Observation Collection
 
-The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.
+The belt-agent:phase-auditor MUST include `observations[]` in its verdict output.
 Record quality/warning-level findings even for criteria that PASS.
 Observations accumulate in the pipeline's audit trail.

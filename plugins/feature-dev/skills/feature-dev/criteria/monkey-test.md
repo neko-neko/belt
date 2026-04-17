@@ -25,4 +25,4 @@ phase: monkey-test
   exists with required frontmatter and 4 sections. Observations records scenario
   replay results (pass/fail per scenario). Concerns flags scenarios that revealed
   unexpected behavior worth dogfood follow-up. Directives carries forward regression
-  hotspots. See `plugins/belt-agents/references/narrative-convention.md`.
+  hotspots. See `plugins/belt-agent/references/narrative-convention.md`.

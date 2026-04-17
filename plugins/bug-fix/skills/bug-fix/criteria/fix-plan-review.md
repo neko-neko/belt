@@ -85,6 +85,6 @@ audit: required
 
 ## Observation Collection
 
-The belt-agents:phase-auditor MUST include `observations[]` in its verdict output. Record
+The belt-agent:phase-auditor MUST include `observations[]` in its verdict output. Record
 quality/warning-level findings even for criteria that PASS. Observations
 accumulate in the pipeline's audit trail.

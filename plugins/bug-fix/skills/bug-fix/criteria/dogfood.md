@@ -58,9 +58,9 @@ audit: required
   4. Verify Observations records Symmetry-Pair probe results and Impact Scope coverage
   5. Verify Concerns flags any Root Cause mechanism re-emergence signals; Directives carries forward regression guards for integrate
 - **pass_condition**: Steps 1-5 all pass
-- **fail_diagnosis_hint**: If Observations missing Symmetry-Pair results, re-derive from RCA report's symmetry analysis. If Concerns empty, explicitly affirm that no regression signals surfaced (or re-explore). See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **fail_diagnosis_hint**: If Observations missing Symmetry-Pair results, re-derive from RCA report's symmetry analysis. If Concerns empty, explicitly affirm that no regression signals surfaced (or re-explore). See `plugins/belt-agent/references/narrative-convention.md` for schema
 - **depends_on_artifacts**: [.belt/runs/*/notes/phase-dogfood.md]
 
 ## Observation Collection
 
-The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.
+The belt-agent:phase-auditor MUST include `observations[]` in its verdict output.

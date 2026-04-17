@@ -37,7 +37,7 @@ directly.
 - **spec-review**: grill-me dialogue for `requirements` / `design-judgment`
   findings; direct selection triage for the remaining observations.
 - **execute**: orchestrator must reconstruct plan tasks into self-contained
-  implementation specs before dispatching `belt-agents:feature-implementer`
+  implementation specs before dispatching `belt-agent:feature-implementer`
   subagents. Do not forward broad research verbatim.
 - **integrate**: prompt user for mode (A: `wt merge` / B: `gh pr create`)
   before executing `/worktrunk`.
@@ -54,7 +54,7 @@ Each note contains four sections (`## Decisions` / `## Concerns` /
 `## Directives` / `## Observations`) and minimal frontmatter (`phase`,
 `run_id`).
 
-Full convention: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
+Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugins/belt-agent/references/narrative-convention.md)
 
 `/clear` itself is the user's call — Claude Code runtime constraints prevent
 automation. Use narrative notes as an option when context has grown large
@@ -77,4 +77,4 @@ code-review).
 - `./references/monkey-test-supplement.md` — monkey-test phase context injection
 - `./references/dogfood-supplement.md` — dogfood phase overrides and hints
 - `./references/worktrunk-supplement.md` — integrate phase A/B choice logic
-- `plugins/belt-agents/references/narrative-convention.md` — narrative note schema (shared with bug-fix)
+- `plugins/belt-agent/references/narrative-convention.md` — narrative note schema (shared with bug-fix)

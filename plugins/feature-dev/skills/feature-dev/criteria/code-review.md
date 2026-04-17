@@ -62,7 +62,7 @@ audit: required
   4. Verify Decisions records which review findings were accepted / rejected and why
   5. Verify Directives flags carry-over concerns for downstream phases (e.g. regression tests to run in monkey-test)
 - **pass_condition**: Steps 1-5 all pass; narrative records specific review outcomes not abstract "code reviewed"
-- **fail_diagnosis_hint**: If Decisions lacks accept/reject rationale, re-read review findings and enumerate. If Directives empty, consider whether monkey-test / dogfood needs specific regression coverage. See `plugins/belt-agents/references/narrative-convention.md` for schema
+- **fail_diagnosis_hint**: If Decisions lacks accept/reject rationale, re-read review findings and enumerate. If Directives empty, consider whether monkey-test / dogfood needs specific regression coverage. See `plugins/belt-agent/references/narrative-convention.md` for schema
 - **depends_on_artifacts**: [.belt/runs/*/notes/phase-code-review.md]
 
 ### CODE-REVIEW-06: Merged findings.json exists at the canonical path
@@ -121,6 +121,6 @@ audit: required
 
 ## Observation Collection
 
-The belt-agents:phase-auditor MUST include `observations[]` in its verdict output.
+The belt-agent:phase-auditor MUST include `observations[]` in its verdict output.
 Record quality/warning-level findings even for criteria that PASS.
 Observations accumulate in the pipeline's audit trail.

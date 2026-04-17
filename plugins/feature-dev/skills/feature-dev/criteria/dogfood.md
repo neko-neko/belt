@@ -29,4 +29,4 @@ phase: dogfood
   exists with required frontmatter and 4 sections. Observations records exploratory
   findings beyond scripted scenarios. Concerns flags unresolved risks for integrate
   phase. Directives carries forward any must-verify items discovered during
-  exploration. See `plugins/belt-agents/references/narrative-convention.md`.
+  exploration. See `plugins/belt-agent/references/narrative-convention.md`.

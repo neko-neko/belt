@@ -94,6 +94,6 @@ run_id: 01947abc-1234-7890-def0-123456789abc
 
 ## Observations
 
-- `narrative-convention.md` sits alongside existing references under `plugins/belt-agents/references/`.
+- `narrative-convention.md` sits alongside existing references under `plugins/belt-agent/references/`.
 - Criteria have been made per-plugin during the plugin migration (parity test detects drift).
 ```

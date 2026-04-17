@@ -1,5 +1,5 @@
 ---
-name: belt-agent
+name: protocol
 description: Belt Protocol for driving belt-agent CLI. Defines command loop, response interpretation, invoke/artifact/validate semantics, and safety constraints for LLM agents driving belt pipelines.
 user-invocable: false
 ---
@@ -95,7 +95,7 @@ Phases may use either:
 When a validate entry is a file reference, the orchestrator MUST read the
 file before `step --confirm`. The file contains the actual criteria; the
 scalar in pipeline.yml is just the pointer. See
-`plugins/belt-agents/references/audit-protocol.md` for the expected
+`plugins/belt-agent/references/audit-protocol.md` for the expected
 criteria file format.
 
 ## Decision Rules
@@ -147,7 +147,7 @@ and output directories:
     {
       "id": "review",
       "status": "current",
-      "invoke": { "pipeline": "../spec-review/pipeline.yml", "with": {} },
+      "invoke": { "pipeline": "./nested-pipeline.yml", "with": {} },
       "consumes": ["design_doc"]
     }
   ]

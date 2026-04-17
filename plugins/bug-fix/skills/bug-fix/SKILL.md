@@ -39,7 +39,7 @@ phase-specific overrides. Phases not listed (`fix-plan-review` / `execute` /
   to be revisited.
 - **execute**: orchestrator must reconstruct fix plan tasks into
   self-contained implementation specs before dispatching
-  `belt-agents:feature-implementer` subagents. Do not forward RCA / Fix
+  `belt-agent:feature-implementer` subagents. Do not forward RCA / Fix
   Plan excerpts verbatim.
 - **integrate**: prompt user for mode (A: `wt merge` / B: `gh pr create`)
   before executing `/worktrunk`.
@@ -55,7 +55,7 @@ These phases produce a narrative note so context can be restored after `/clear`
 Each note contains four sections (`## Decisions` / `## Concerns` /
 `## Directives` / `## Observations`) and minimal frontmatter.
 
-Full convention: [`plugins/belt-agents/references/narrative-convention.md`](plugins/belt-agents/references/narrative-convention.md)
+Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugins/belt-agent/references/narrative-convention.md)
 
 ## Red Flags
 
@@ -77,4 +77,4 @@ Full convention: [`plugins/belt-agents/references/narrative-convention.md`](plug
 - `./references/monkey-test-supplement.md` — monkey-test phase override
 - `./references/dogfood-supplement.md` — dogfood phase override and CLI-only degradation
 - `./references/worktrunk-supplement.md` — integrate phase A/B choice logic
-- `plugins/belt-agents/references/narrative-convention.md` — narrative note schema (shared with feature-dev)
+- `plugins/belt-agent/references/narrative-convention.md` — narrative note schema (shared with feature-dev)
