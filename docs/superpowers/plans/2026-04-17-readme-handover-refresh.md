@@ -112,8 +112,8 @@ original trial-and-error trace:
 belt-agent init bug-fix.yml --inherits-from <prior-run-id>
 ```
 
-Both are `/clear` that keeps what matters — handover keeps the run,
-inheritance keeps the conclusions.
+Both are `/clear` that keeps what matters —
+handover keeps the run, inheritance keeps the conclusions.
 ````
 
 - [ ] **Step 3: Verify structural markers exist**
