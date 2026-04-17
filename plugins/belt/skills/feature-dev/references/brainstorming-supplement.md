@@ -102,7 +102,7 @@ and Phase 5 (code-review) review.
 Before committing `design.md`:
 
 1. Invoke `worktrunk:worktrunk` with `wt switch -c feature/<YYYY-MM-DD-topic>`
-   (base = current branch at Phase 1 start; resume from handover if set).
+   (base = current branch at Phase 1 start).
 2. Let worktrunk's pre-start hook install dependencies.
 3. Run baseline tests.
    - Pass → commit `design.md` inside the new worktree.
