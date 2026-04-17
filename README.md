@@ -130,7 +130,9 @@ summary compaction, prior failed attempts bias the next try. Sometimes you
 want a fresh agent that has seen only what matters — not a long-memory one
 that has seen everything.
 
-belt enables this in three layers:
+### Cold-start principles
+
+belt is built on two cold-start guarantees:
 
 - **Per-command neutrality** — every `belt-agent` call works from a cold
   start. No conversation history is required; the run state on disk is the
@@ -138,13 +140,42 @@ belt enables this in three layers:
 - **Narrative artifacts** — phase outputs are deterministic files protected
   by gates, not LLM memory. A new session reads them; it does not
   reconstruct them.
-- **Cross-run inheritance** — `belt-agent init --inherits-from <run_id>`
-  lets a new run consume a prior run's artifacts via `belt://` URIs:
-  - `belt://latest/<pipeline>/<path>` — most recent COMPLETED run on the
-    current branch
-  - `belt://workspace/<branch>/latest/<pipeline>/<path>` — branch-scoped
-    variant
-  - `belt://run/<run_id>/<path>` — explicit run reference
+
+### Two resumption modes
+
+On top of those principles, belt offers two complementary ways to continue
+work without carrying a polluted context:
+
+|                 | Intra-run handover                           | Cross-run inheritance                   |
+|-----------------|----------------------------------------------|-----------------------------------------|
+| When            | Same run, new session                        | New run, reads prior artifacts          |
+| What is carried | Resume hint + existing state.json            | Gated artifacts via `belt://` URIs      |
+| Command         | `/belt:handover` → `/clear` → `/belt:resume` | `belt-agent init --inherits-from <run>` |
+| Typical use     | Context bloat mid-pipeline                   | Fresh run consumes prior conclusions    |
+
+**Intra-run handover.** When a pipeline run is mid-flight and the session's
+context has grown polluted, `/belt:handover` writes a short Resume hint
+(pause reason, first action, transient context) under the current run
+directory. After `/clear`, `/belt:resume` reads the hint and `state.json`
+and the next session picks up exactly where it left off:
+
+```
+/belt:handover
+/clear
+/belt:resume
+```
+
+The pipeline is never re-initialized; the resumed session continues the
+current phase with a fresh context but the same run.
+
+**Cross-run inheritance.** `belt-agent init --inherits-from <run_id>` lets
+a new run consume a prior run's artifacts via `belt://` URIs:
+
+- `belt://latest/<pipeline>/<path>` — most recent COMPLETED run on the
+  current branch
+- `belt://workspace/<branch>/latest/<pipeline>/<path>` — branch-scoped
+  variant
+- `belt://run/<run_id>/<path>` — explicit run reference
 
 A typical use case: a long bug investigation produces `rca.md` and stops.
 A fresh agent later picks up the conclusions without inheriting the
@@ -154,7 +185,8 @@ original trial-and-error trace:
 belt-agent init bug-fix.yml --inherits-from <prior-run-id>
 ```
 
-This is `/clear` that keeps the conclusions.
+Both are `/clear` that keeps what matters —
+handover keeps the run, inheritance keeps the conclusions.
 
 ## Key Concepts
 
@@ -236,7 +268,7 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agent` | Foundation: Belt Protocol driver skill + 5 analysis agents (phase-auditor, feature-implementer, code-explorer, code-architect, impact-analyzer) + shared references |
-| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:code-review` (4 observation reviewers), `/belt:spec-review` (3 observation reviewers), `/belt:monkey-test`, `/belt:test-scenarios`. Requires `belt-agent` |
+| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:code-review` (4 observation reviewers), `/belt:spec-review` (3 observation reviewers), `/belt:monkey-test`, `/belt:test-scenarios`, `/belt:handover`, `/belt:resume`. Requires `belt-agent` |
 
 ### External skill dependencies
 
@@ -281,10 +313,15 @@ belt repo root.
 After install:
 
 ```
-/belt:feature-dev             # start a new feature
-/belt:bug-fix                 # start a bug investigation
-/belt:code-review             # standalone code review
-/belt:spec-review             # standalone spec review
+# Start a pipeline
+/belt:feature-dev
+/belt:bug-fix
+/belt:code-review
+/belt:spec-review
+
+# Pause & resume an in-progress run
+/belt:handover
+/belt:resume
 ```
 
 See each skill's `SKILL.md` (under `plugins/belt/skills/<skill>/`) for phase
