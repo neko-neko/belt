@@ -172,7 +172,7 @@ Resume Progress:
 
 ```markdown
 ---
-run_id: 01JBC5R1MZQFVY9T8H0K3P7Q2N
+run_id: 01947abc-0000-7000-8000-000000000000
 branch: feature/2026-04-17-belt-handover-resume
 created_at: 2026-04-17T18:23:44Z
 ---

@@ -606,7 +606,7 @@ the working tree.
 
 ## References
 
-- `plugins/belt-agent/skills/protocol/references/resume-mode.md` — driver-side behaviour under `resume run_id=<id>` args
+- `plugins/belt-agent/skills/protocol/references/resume-mode.md` — driver-side behavior under `resume run_id=<id>` args
 - `plugins/belt/skills/handover/SKILL.md` — the counterpart writer
 ````
 
