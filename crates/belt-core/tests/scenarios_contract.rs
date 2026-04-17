@@ -124,33 +124,116 @@ fn strip_block_comments(src: &str) -> String {
     out
 }
 
-/// Strip string literals (simple version: `"..."` on single line, no escape handling beyond \").
-/// Good enough for CI test source which avoids complex string literal shapes.
+/// Strip string literals (regular `"..."` and raw strings `r"..."` / `r#"..."#` /
+/// `r##"..."##` etc) from Rust source. Replaces string contents with spaces,
+/// preserving line numbers.
+///
+/// Supports:
+/// - Regular strings with `\"` / `\\` escape handling (single-line only — strings
+///   are terminated at `\n` as a safety net).
+/// - Raw strings `r"..."`, `r#"..."#`, `r##"..."##`, etc, including multiline.
+///   Closing tag matches the exact hash count recorded at the opening.
+#[allow(
+    clippy::many_single_char_names,
+    reason = "byte-scan indices (i, j, k, m) are idiomatic for a tokenizer and match the plan's verbatim algorithm"
+)]
 fn strip_string_literals(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
-    let mut in_str = false;
-    let mut prev_escape = false;
-    for c in src.chars() {
-        if !in_str && c == '"' {
-            in_str = true;
-            out.push(' ');
-            continue;
-        }
-        if in_str {
-            if c == '"' && !prev_escape {
-                in_str = false;
-                out.push(' ');
-            } else if c == '\n' {
-                out.push('\n');
-                in_str = false; // safety: strings don't span lines in CI sources
-            } else {
-                out.push(' ');
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+
+        // Raw string: r"..." / r#"..."# / r##"..."## ...
+        if b == b'r' {
+            let mut hashes = 0;
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] == b'#' {
+                hashes += 1;
+                j += 1;
             }
-            prev_escape = c == '\\' && !prev_escape;
+            if j < bytes.len() && bytes[j] == b'"' {
+                // Emit 'r' + hashes + '"' as spaces (preserve line breaks via newline detection below)
+                for _ in 0..=(hashes + 1) {
+                    out.push(' ');
+                }
+                let content_start = j + 1;
+                let mut k = content_start;
+                // Close tag: `"` followed by the same number of `#`
+                let close_needed = hashes;
+                let mut found_close_at = None;
+                while k < bytes.len() {
+                    if bytes[k] == b'"' {
+                        let mut m = k + 1;
+                        let mut count = 0;
+                        while m < bytes.len() && bytes[m] == b'#' && count < close_needed {
+                            count += 1;
+                            m += 1;
+                        }
+                        if count == close_needed {
+                            found_close_at = Some((k, m));
+                            break;
+                        }
+                    }
+                    k += 1;
+                }
+                let Some((close_quote, close_end)) = found_close_at else {
+                    // Unterminated raw string: rest of file is inside string.
+                    // Safety: emit spaces/newlines to end to avoid infinite loop.
+                    for byte_in_tail in &bytes[content_start..] {
+                        if *byte_in_tail == b'\n' {
+                            out.push('\n');
+                        } else {
+                            out.push(' ');
+                        }
+                    }
+                    return out;
+                };
+                for byte_in_content in &bytes[content_start..close_quote] {
+                    if *byte_in_content == b'\n' {
+                        out.push('\n');
+                    } else {
+                        out.push(' ');
+                    }
+                }
+                // Emit closing `"` + hashes as spaces
+                for _ in close_quote..close_end {
+                    out.push(' ');
+                }
+                i = close_end;
+                continue;
+            }
+        }
+
+        // Regular string: "..."
+        if b == b'"' {
+            out.push(' ');
+            let mut j = i + 1;
+            let mut prev_escape = false;
+            while j < bytes.len() {
+                let c = bytes[j];
+                if c == b'"' && !prev_escape {
+                    out.push(' ');
+                    j += 1;
+                    break;
+                }
+                if c == b'\n' {
+                    // Safety: regular strings should not span lines in test sources.
+                    out.push('\n');
+                    j += 1;
+                    break;
+                }
+                out.push(' ');
+                prev_escape = c == b'\\' && !prev_escape;
+                j += 1;
+            }
+            i = j;
             continue;
         }
-        out.push(c);
-        prev_escape = false;
+
+        // Default: copy byte as char (ASCII assumption for test sources)
+        out.push(b as char);
+        i += 1;
     }
     out
 }
@@ -334,5 +417,59 @@ fn drift_positive_single_line_doc_comment_matches() {
         matched.as_slice(),
         &["belt-lint-valid-pipeline-ok"],
         "valid single-line /// scenario: must match"
+    );
+}
+
+#[test]
+fn drift_multiline_raw_string_is_stripped() {
+    let src = r##"
+let s = r#"
+    /// scenario: belt-core-multiline-raw-false-positive
+    some content
+"#;
+"##;
+    let stripped = strip_string_literals(&strip_block_comments(src));
+    let has_match = stripped
+        .lines()
+        .any(|line| match_scenario_line(line).is_some());
+    assert!(
+        !has_match,
+        "multiline raw string containing /// scenario: must be stripped"
+    );
+}
+
+#[test]
+fn drift_raw_string_with_hash_is_stripped() {
+    let src = r###"
+let s = r##"
+    /// scenario: belt-core-raw-hash-false-positive
+"##;
+"###;
+    let stripped = strip_string_literals(&strip_block_comments(src));
+    let has_match = stripped
+        .lines()
+        .any(|line| match_scenario_line(line).is_some());
+    assert!(
+        !has_match,
+        "raw string with hashes containing /// scenario: must be stripped"
+    );
+}
+
+#[test]
+fn drift_doc_comment_outside_string_still_matches_after_fix() {
+    let src = r##"
+/// scenario: belt-core-positive-outside-string
+fn test_fn() {
+    let _s = r#"
+        /// scenario: belt-core-inside-string-false-positive
+    "#;
+}
+"##;
+    let stripped = strip_string_literals(&strip_block_comments(src));
+    let matched: Vec<_> = stripped.lines().filter_map(match_scenario_line).collect();
+    assert_eq!(
+        matched.as_slice(),
+        &["belt-core-positive-outside-string"],
+        "fix must preserve doc-comment match outside raw strings (false-negative check)"
     );
 }
