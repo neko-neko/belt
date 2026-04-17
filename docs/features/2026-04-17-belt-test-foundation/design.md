@@ -9,12 +9,14 @@ F1 は「belt の test 資産を audit する多段 feature 群 (F1 → F2 → F
 ```
 Layer 1: SSOT (docs/testing/)
     - docs/testing/README.md          目的・境界宣言
-    - docs/testing/scenarios/*.yml    CLI behavioral SSOT (3 crate 分割)
+    - docs/testing/cli-behavior/*.yml    CLI behavioral SSOT (3 crate 分割)
     - docs/testing/lock-ledger.md     plugin shape lock test 台帳
     - docs/testing/audit-template.md  F2/F3 用 audit 判定手順
 
 Layer 2: Binding (crates/belt-core/tests/scenarios_contract.rs)
     - scenarios.yml ↔ Rust doc-comment `/// scenario: <id>` の機械検証
+      (walk scope = `crates/belt/tests/`, `crates/belt-agent/tests/`,
+       `crates/belt-core/tests/` の全 `.rs` を recursive walk)
     - lock-ledger.md の `locks-file:` frontmatter と実ファイル存在検証
 
 Layer 3: Pilot (3 test files + flaky fix)
@@ -27,7 +29,7 @@ Layer 3: Pilot (3 test files + flaky fix)
 ### Data Flow
 
 ```
-docs/testing/scenarios/{belt,belt-agent,belt-core}.yml
+docs/testing/cli-behavior/{belt,belt-agent,belt-core}.yml
              │
              ├──(`/// scenario: <id>` doc-comment)──▶ tests/*.rs
              │
@@ -42,9 +44,33 @@ docs/testing/audit-template.md ──(人間参照、F2/F3 が consume)
 | # | Path | Type | Purpose |
 |---|------|------|---------|
 | 1 | `docs/testing/README.md` | new md | 目的 / `docs/features/` との境界 / 運用 entry point |
-| 2 | `docs/testing/scenarios/belt.yml` | new yaml | `belt lint` CLI scenarios (pilot 範囲 = 5 test 相当) |
-| 3 | `docs/testing/scenarios/belt-agent.yml` | new yaml | stub (F3 で拡充)、schema 準拠 + scope 宣言 |
-| 4 | `docs/testing/scenarios/belt-core.yml` | new yaml | `config` module scenarios (pilot 範囲 = 6 test 相当) + 他 module stub |
+| 2 | `docs/testing/cli-behavior/belt.yml` | new yaml | `belt lint` CLI scenarios (pilot 範囲 = 5 test 相当) |
+| 3 | `docs/testing/cli-behavior/belt-agent.yml` | new yaml | stub (F3 で拡充)、schema 準拠 + `scope:` top-level field 宣言 |
+| 4 | `docs/testing/cli-behavior/belt-core.yml` | new yaml | `config` module scenarios (pilot 範囲 = 6 test 相当) + 他 module は `scope:` 宣言のみ + `scenarios: []` |
+
+### Stub YAML skeleton (Deliverables #3 / #4 の他 module 分)
+
+```yaml
+# docs/testing/cli-behavior/belt-agent.yml — F1 stub
+scope: "F3 で拡充予定。対象 = belt-agent CLI 全 subcommand (init, next, verify, regate, step, status) の JSON contract + state.json shape"
+scenarios: []
+```
+
+```yaml
+# docs/testing/cli-behavior/belt-core.yml — config module 本格 + 他 module stub
+scope: "F2 で拡充予定。F1 では config module のみ本格 (6 scenarios)。F2 対象 = engine / view / lint / model / parser / expander / gate / error / uri の 9 module 公開 API"
+scenarios:
+  - id: belt-core-config-valid-toml-parse
+    category: config
+    severity: high
+    technique: equivalence-partition
+    given: "a valid belt.toml with pipeline_file field"
+    when: "parse_config() is called"
+    then: "returns Config with resolved pipeline path"
+  # … config module の 6 scenario (F1 で実列挙)
+```
+
+`scope: <string>` は本 F1 で introduce する optional top-level field。既存 scenarios.yml schema に additive で追加 (`technique:` と同じく既存 consumer は ignore)。
 | 5 | `docs/testing/lock-ledger.md` | new md | 5 既存 lock test + 1 新規 (scenarios_contract) の台帳 |
 | 6 | `docs/testing/audit-template.md` | new md | F2/F3 用 audit 判定手順・decision tree・reason label 列挙 |
 | 7 | `crates/belt-core/tests/scenarios_contract.rs` | new rs | binding 機械検証 lock test |
@@ -77,7 +103,7 @@ docs/testing/audit-template.md ──(人間参照、F2/F3 が consume)
 4. **`CARGO_MANIFEST_DIR + ../..` repo_root 慣習**: scenarios_contract.rs 内でも踏襲 (helper コピペは S2-Q3 方針で許容)
 5. **`cargo test` 単独完結**: scenarios.yml ファイル読込は fs::read_to_string、外部 dep 不要
 6. **Panic-on-mismatch**: scenarios_contract.rs の assertion は panic + clear message で統一
-7. **scenarios.yml schema の additive 拡張**: 既存 required field (id/category/severity/given/when/then) + optional `preconditions` / `postconditions` は維持、**`technique: <istqb>` optional field を追加**。`/belt:monkey-test` / `/dogfood` 既存 consumer は required field のみ読むので後方互換
+7. **scenarios.yml schema の additive 拡張**: 既存 required field (id/category/severity/given/when/then) + optional `preconditions` / `postconditions` は維持、**`technique: <istqb>` optional field + `scope: <string>` optional top-level field を追加**。`/belt:monkey-test` / `/dogfood` 既存 consumer は required field のみ読むので後方互換。`scope` は belt-agent.yml / belt-core.yml の stub module 用 self-documenting key
 8. **feature_dev_refresh.rs pattern の踏襲**: scenarios_contract.rs は `REVIEW_SKILLS` 風の const table + for-loop assertion 構造を模倣
 9. **Lock test の belt-core/tests/ 寄生配置維持**: scenarios_contract.rs も belt-core/tests/ 下に配置 (pragmatic、依存関係上自然)
 10. **worktree `feature/2026-04-17-belt-test-foundation`**: `/worktrunk` で作成済、baseline `cargo test --workspace` = 387 pass 確認済
@@ -89,9 +115,9 @@ docs/testing/audit-template.md ──(人間参照、F2/F3 が consume)
 
 - **新規**:
   - `docs/testing/README.md`
-  - `docs/testing/scenarios/belt.yml`
-  - `docs/testing/scenarios/belt-agent.yml`
-  - `docs/testing/scenarios/belt-core.yml`
+  - `docs/testing/cli-behavior/belt.yml`
+  - `docs/testing/cli-behavior/belt-agent.yml`
+  - `docs/testing/cli-behavior/belt-core.yml`
   - `docs/testing/lock-ledger.md`
   - `docs/testing/audit-template.md`
   - `crates/belt-core/tests/scenarios_contract.rs`
@@ -171,9 +197,9 @@ docs/testing/audit-template.md ──(人間参照、F2/F3 が consume)
 ### 基本構造 (deliverable 存在と shape)
 
 - [ ] **MV-01**: `docs/testing/README.md` 存在、`docs/testing/` の責務 (CLI behavioral SSOT / lock meta) と `docs/features/<topic>/` との境界を明記
-- [ ] **MV-02**: `docs/testing/scenarios/belt.yml` 存在、scenarios.yml schema に準拠 (id/category/severity/given/when/then 必須 + optional technique)
-- [ ] **MV-03**: `docs/testing/scenarios/belt-agent.yml` 存在 (F1 では stub + scope 宣言のみ許容、schema 準拠)
-- [ ] **MV-04**: `docs/testing/scenarios/belt-core.yml` 存在、`config` module scenarios 本格 + 他 module stub、schema 準拠
+- [ ] **MV-02**: `docs/testing/cli-behavior/belt.yml` 存在、scenarios.yml schema に準拠 (id/category/severity/given/when/then 必須 + optional technique)
+- [ ] **MV-03**: `docs/testing/cli-behavior/belt-agent.yml` 存在 (F1 では stub + scope 宣言のみ許容、schema 準拠)
+- [ ] **MV-04**: `docs/testing/cli-behavior/belt-core.yml` 存在、`config` module scenarios 本格 + 他 module stub、schema 準拠
 - [ ] **MV-05**: `docs/testing/lock-ledger.md` 存在、5 既存 lock test + 1 新規 (scenarios_contract) の entry、各 entry に `locks-file:` frontmatter
 - [ ] **MV-06**: `docs/testing/audit-template.md` 存在、decision tree + reason label 列挙 + duplication 候補表
 - [ ] **MV-07**: `crates/belt-core/tests/scenarios_contract.rs` 存在、workspace 全体の `cargo test` で 4+ test pass
@@ -196,12 +222,12 @@ docs/testing/audit-template.md ──(人間参照、F2/F3 が consume)
 ### Lock pilot (feature_dev_refresh.rs)
 
 - [ ] **MV-17**: `feature_dev_refresh.rs` は**コード変更せず、lock-ledger.md に entry 追加のみ** (S2-Q5 方針)
-- [ ] **MV-18**: lock-ledger.md の `feature_dev_refresh.rs` entry に「lock 対象 = pipeline.yml shape の 11 項目」「cross-file coupling = shared_criteria_parity / shared_filter_parity / bug_fix_refresh / review_skills_refresh」明記
+- [ ] **MV-18**: lock-ledger.md の `feature_dev_refresh.rs` entry に (A) **`feature_dev_refresh.rs` の 11 個 `#[test]` 関数名** (`feature_dev_pipeline_parses_successfully`, `feature_dev_args_are_exactly_codex_and_e2e`, `feature_dev_narrative_phases_produce_notes`, …) を列挙、かつ (B) それら test fn が lock する pipeline.yml の側面 (args {codex,e2e} set / narrative 6 phase id / max_retries / `scenarios.when = args.e2e` typed / regate=[execute]) を dimension name で列挙、(C) cross-file coupling = shared_criteria_parity / shared_filter_parity / bug_fix_refresh / review_skills_refresh を明記
 
 ### Flaky 先潰し (view_test.rs)
 
-- [ ] **MV-19**: `view_test.rs` の `thread::sleep(Duration::from_millis(20))` 6 箇所を `filetime::set_file_mtime` で置換
-- [ ] **MV-20**: 置換後 `cargo test -p belt-core --test view_test` が 100 回連続実行で 100 回 pass (flaky 消失確認)
+- [ ] **MV-19**: `view_test.rs` の `thread::sleep(Duration::from_millis(20))` 6 箇所を `filetime::set_file_mtime` で置換。strict ordering を仮定する assertion 箇所は **mtime delta 2 秒以上** に設定し、macOS HFS+ の 1 秒 granularity でも順序保証 (weak ordering 箇所も decisive に differ する値を設定)
+- [ ] **MV-20**: 置換後 `for i in {1..100}; do cargo test -p belt-core --test view_test --quiet || exit 1; done; echo OK` が 100 回連続 pass (fail 検知は `|| exit 1` で即時 propagate、silent pass なし)
 
 ### 一貫性・regression
 
@@ -223,13 +249,19 @@ docs/testing/audit-template.md ──(人間参照、F2/F3 が consume)
 ### doc-drift 予防
 
 - [ ] **MV-29**: `docs/testing/README.md` が CLAUDE.md / AGENTS.md の「docs/ 構造」節 (存在すれば) と矛盾しない
-- [ ] **MV-30**: 30+ spec/plan が verbatim 参照する 3 pilot file path は F1 で改名しない (既存 link 維持)
+- [ ] **MV-30**: 30+ spec/plan が verbatim 参照する 3 pilot file path は F1 で改名しない (既存 link 維持)。検証: Phase 5 execute 最初のタスクで `grep -rl "cli_test.rs\|config_test.rs\|feature_dev_refresh.rs" docs/ | sort > .belt/runs/{run_id}/artifacts/mv30-before.txt` を capture、Phase 6 code-review で `grep -rl ... > after.txt && diff mv30-before.txt after.txt` = empty を確認
+
+### 追加 MV (CCS-05 / CCS-06 由来)
+
+- [ ] **MV-31** (CCS-05): `view_test.rs` の assertion 行 (`assert_eq!` / `assert!` / `assert_ne!`) の tokenization が置換前後で diff ゼロ。`filetime::set_file_mtime` call と `thread::sleep` 削除のみが差分で、assertion ロジック (comparison operator / expected field set / target value source) は不変
+- [ ] **MV-32** (CCS-06): `audit-report.md` frontmatter に `audited_at: <ISO 8601 UTC>` / `audited_commit: <F1 執筆時 HEAD sha>` / `audit_template_version: v1` が記載。scenarios_contract.rs 側で frontmatter 存在 + `audit_template_version` が audit-template.md の宣言 version と一致するかを assertion
+- [ ] **MV-33** (CCS-06): `audit-template.md` に F2 着手時の re-audit trigger 手順 (`git log --since="<audited_at>" -- <pilot_file>` が非空なら pilot audit 再実施) を記載
 
 ## Test Perspectives
 
 F1 deliverables を入力 parameter として、Normal / Boundary / Abnormal / State-transition の 4 観点で test 対象を列挙。Phase 2 (test-scenarios) はこれを元に `test-strategy.md` を書き、Phase 5 execute 中の `scenarios_contract.rs` がこれらを assertion 化する。
 
-### P1: `docs/testing/scenarios/*.yml`
+### P1: `docs/testing/cli-behavior/*.yml`
 
 | 観点 | 対象 case |
 |---|---|
@@ -274,14 +306,28 @@ F1 deliverables を入力 parameter として、Normal / Boundary / Abnormal / S
 | Abnormal | `filetime::set_file_mtime` が Unix 以外の FS (NFS / tmpfs) で失敗 → test 側で `#[cfg(unix)]` gate は不要 (workspace MVP が Unix 限定、CLAUDE.md 明示) |
 | State-transition | mtime 操作順序 (produce phase 開始 → 書込 → read) が既存 assertion と一致 |
 
-### P6: `audit-template.md` (reason labels)
+### P6: `audit-template.md` (reason labels — v1 fixed enumeration)
+
+F1 で固定する v1 label 集合 (9 個):
+
+1. `redundant-with-<test-id>` — 他 test が同 behavior をカバー
+2. `trivial-default-assertion` — default 値確認のみで情報量ゼロ
+3. `tautology` — assertion が論理的常真
+4. `state-transition-overlap-with-<test-id>` — state transition が既存 test と重複
+5. `implementation-coupling` — private state を assert、behavior でない
+6. `brittle-format-match` — 出力 format 軽微変更で fail する fragile assertion
+7. `dead-fixture` — fixture 生成のみで実効検証なし
+8. `unreachable-guard` — 入力ドメインに存在しない case を守る
+9. `obsolete-spec` — 仕様変更で lock 対象が消失したが test 残存
+
+F2/F3 で新 label が必要なら別 feature で audit-template.md を SemVer 風 migration (audit-report frontmatter の `audit_template_version` bump) で update。F1 では v1 固定。
 
 | 観点 | 対象 case |
 |---|---|
-| Normal | reason label 列挙 (redundant-with-X / trivial-default-assertion / tautology / state-transition-overlap / low-coverage-vs-cost / …) が audit-report で参照可能 |
-| Boundary | 1 label のみ / 全 label を使う audit (想定しないが許容) |
-| Abnormal | audit-report で audit-template 未列挙 label を使用 → scenarios_contract.rs 補助 test で検出 (optional、F1 scope では audit-report 手書き確認で足りる) |
-| State-transition | label 追加時 audit-template + audit-report 両方更新 (drift 予防) |
+| Normal | v1 9 label のみが audit-report で使用され、kept 以外の全 test に label 割当 |
+| Boundary | 9 label 全てが少なくとも 1 pilot test で使用される (happy case) / 1 label のみ使用 (偏り) |
+| Abnormal | audit-report で v1 9 label 以外を使用 → scenarios_contract.rs 補助 test で検出 (`audit_template_version` と label 集合の整合 check) |
+| State-transition | v1 → v2 migration (F2/F3 feature) 時に audit-template + audit-report + scenarios_contract.rs lock test が同期更新 |
 
 ### Non-Functional Requirements
 
@@ -289,8 +335,8 @@ F1 deliverables を入力 parameter として、Normal / Boundary / Abnormal / S
 |---|---|---|
 | Performance | `scenarios_contract.rs` 単独実行が < 1 秒 (lint スケール) | `cargo test --test scenarios_contract -- --nocapture` 実時間 |
 | Maintainability | audit-template.md + lock-ledger.md が F1 作者不在で F2/F3 実行可 | handover + 外部 reviewer (Phase 3 spec-review) で妥当性確認 |
-| Determinism | view_test.rs 置換後、100 回連続 `cargo test -p belt-core --test view_test` で 100/100 pass | bash loop で実測、MV-20 |
-| Portability | Unix 前提 (macOS + Linux)、Windows は MVP scope 外 | CLAUDE.md 方針継承、CI target 変更なし |
+| Determinism | view_test.rs 置換後、100 回連続 `cargo test -p belt-core --test view_test` で 100/100 pass (fail 検知は `\|\| exit 1` で即時 propagate) | bash loop `for i in {1..100}; do cargo test ... \|\| exit 1; done; echo OK` で実測、MV-20 |
+| Portability | `x86_64-unknown-linux-gnu` / `aarch64-unknown-linux-gnu` (glibc >= 2.35) + `x86_64-apple-darwin` / `aarch64-apple-darwin` (macOS 14+)。dist-workspace.toml の 4 target triple と粒度整合。Windows は MVP scope 外 | CLAUDE.md 方針継承、release.yml の cross build pass + ローカル `cargo test --workspace` pass を合算 signal (CI test matrix は future work) |
 | Security | docs + test-only feature、production code 変更なし、新 dep ゼロ → 供給チェーン / 秘密情報影響なし | `cargo audit` / `cargo deny` 結果に差分なしで足りる |
 | Accessibility | internal developer tool、外部非公開 | N/A |
 
