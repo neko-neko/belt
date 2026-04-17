@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1 で config module のみ本格 (6 scenarios)。F2 で拡充予定: engine / view / lint / model / parser / expander / gate / error / uri の 9 module 公開 API"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -42,3 +42,138 @@ scenarios:
     given: "a belt.toml with relative pipeline_file containing a subdirectory (e.g. pipelines/main.yml)"
     when: "resolve_pipeline_path(config_path, config) is called"
     then: "returns config_dir joined with the subdirectory-qualified relative path"
+
+  # --- engine module ---
+  - id: belt-core-engine-init-creates-run-with-first-active-phase
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline YAML with one or more active phases"
+    when: "Engine::init is called with empty args"
+    then: "returns RunState with current_phase = first phase id, persists state.json, creates output_dir and notes/ directory under runs/<run_id>/"
+  - id: belt-core-engine-init-canonicalizes-pipeline-file-path
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline path containing relative segments, symlinks, or already absolute form"
+    when: "Engine::init is called"
+    then: "state.pipeline_file is an absolute canonical path with no '..' or '/./' segments and symlinks resolved to the real target"
+  - id: belt-core-engine-init-records-optional-branch-verbatim
+    category: engine
+    severity: medium
+    technique: equivalence-partition
+    given: "a caller invoking Engine::init_with_branch with Some(name) or the legacy Engine::init"
+    when: "the engine initialises a run"
+    then: "state.branch equals the supplied Option value verbatim (Some when provided, None for legacy init)"
+  - id: belt-core-engine-init-auto-sets-verify-for-gateless-first-phase
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "a pipeline whose first active phase has no gate vs a pipeline whose first phase has gate checks"
+    when: "Engine::init is called"
+    then: "phase_verify_passed[first] = Some(true) for the gateless case and is absent for the gated case"
+  - id: belt-core-engine-init-error-paths
+    category: engine
+    severity: high
+    technique: error-guessing
+    given: "a pipeline where every phase's when: evaluates to false, or a path to a file that does not exist"
+    when: "Engine::init is called"
+    then: "no-active-phase case returns BeltError::InvalidPipeline; nonexistent path surfaces a parse-layer error (FileNotFound or YamlParse) and never BeltError::Io from canonicalize"
+  - id: belt-core-engine-step-advances-through-active-phases-and-completes
+    category: engine
+    severity: high
+    technique: state-transition
+    given: "a multi-phase pipeline with verify already recorded for each current phase"
+    when: "Engine::step is called repeatedly"
+    then: "current_phase advances through active phases, completed_phases accumulates in order, and after the last phase current_phase = COMPLETED, status = RunStatus::Completed (persisted to state.json), next returns None"
+  - id: belt-core-engine-step-skips-phases-whose-when-is-false
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "a pipeline containing a phase with when: args.X where X is false or absent"
+    when: "Engine::step advances past the prior phase"
+    then: "the conditional phase id is appended to skipped_phases, current_phase jumps to the next active phase, and phase_verify_passed contains no entry for the skipped phase"
+  - id: belt-core-engine-step-requires-verify-before-advancing-gate-phase
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "the current phase has at least one gate check and phase_verify_passed is absent or false"
+    when: "Engine::step is called"
+    then: "returns BeltError::VerifyRequired with phase_id equal to the current phase, and repeated calls remain rejected without mutating state"
+  - id: belt-core-engine-step-auto-verifies-gateless-next-phase-on-entry
+    category: engine
+    severity: medium
+    technique: state-transition
+    given: "Engine::step advances from a gated phase to a phase with no gate checks"
+    when: "the transition occurs"
+    then: "phase_verify_passed[next] is automatically set to true and a subsequent step succeeds without an explicit verify_verdict call; verify state does not carry from one gated phase to the next"
+  - id: belt-core-engine-verify-verdict-increments-attempts-and-records-outcome
+    category: engine
+    severity: high
+    technique: state-transition
+    given: "a run positioned on a gated phase"
+    when: "Engine::verify_verdict is called one or more times with true or false"
+    then: "phase_attempts[phase] increases by one per call regardless of verdict and phase_verify_passed[phase] reflects the latest boolean verdict"
+  - id: belt-core-engine-step-blocks-when-max-retries-exceeded
+    category: engine
+    severity: high
+    technique: boundary-value
+    given: "a phase declares max_retries = N > 0 and phase_attempts exceeds N after several verify_verdict calls"
+    when: "Engine::step is called"
+    then: "returns BeltError::MaxRetriesExceeded carrying phase_id, attempts, and max_retries; step stays blocked while verify_verdict continues to increment attempts"
+  - id: belt-core-engine-max-retries-zero-is-unlimited
+    category: engine
+    severity: medium
+    technique: boundary-value
+    given: "a gated phase with max_retries = 0 (the default) and many FAIL attempts followed by a PASS"
+    when: "Engine::step is called after the final PASS"
+    then: "step succeeds regardless of the attempt count (0 is interpreted as unlimited)"
+  - id: belt-core-engine-guard-order-verify-then-regate-then-max-retries
+    category: engine
+    severity: high
+    technique: decision-table
+    given: "a step() call where multiple guards would apply simultaneously"
+    when: "Engine::step evaluates guards"
+    then: "VerifyRequired is returned before RegateRequired, and RegateRequired is returned before MaxRetriesExceeded"
+  - id: belt-core-engine-regate-requires-record-before-step-and-resets-on-reverify
+    category: engine
+    severity: high
+    technique: state-transition
+    given: "a gated phase with regate: [<targets>] whose verify has passed"
+    when: "Engine::step is called without record_regate, with record_regate(false), with record_regate(true), or after a re-verify following a recorded regate"
+    then: "no record yields RegateRequired, false yields RegateFailed, true yields a successful advance, and any subsequent verify_verdict clears regate_passed so step is blocked again until regate is re-recorded; init leaves regate_passed empty and record_regate is idempotent"
+  - id: belt-core-engine-regate-handles-empty-or-skipped-or-gateless-targets
+    category: engine
+    severity: medium
+    technique: equivalence-partition
+    given: "a regate target list containing phases with empty gate, skipped (when:false) phases, or a current phase that is itself gateless"
+    when: "Engine::record_regate and Engine::step are exercised"
+    then: "empty-gate targets and skipped targets are treated as passed; a gateless current phase still requires regate to be recorded before step succeeds"
+  - id: belt-core-engine-state-round-trips-through-save-load
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a RunState mutated via init, verify_verdict, record_regate, or direct field writes and saved to disk"
+    when: "Engine::load_state is called with the same run_id"
+    then: "all observable fields (run_id, pipeline, pipeline_file, version, current_phase, completed_phases, skipped_phases, phase_verify_passed, regate_passed, status, phase_start_times, created_at, updated_at) are equal to the in-memory state, and the reloaded pipeline_file is usable by next_phase_info"
+  - id: belt-core-engine-latest-run-id-returns-most-recent-or-errors-when-empty
+    category: engine
+    severity: high
+    technique: boundary-value
+    given: "zero, one, or multiple runs persisted under <belt_dir>/runs/"
+    when: "Engine::latest_run_id is called"
+    then: "returns the UUIDv7-ordered most recent run_id when runs exist, and returns BeltError::State when no runs exist; load_state for an unknown id also returns BeltError::State"
+  - id: belt-core-engine-phase-start-times-set-on-entry-preserved-on-retry-and-persisted
+    category: engine
+    severity: medium
+    technique: state-transition
+    given: "init plus subsequent step() and verify_verdict() calls on a run with multiple phases"
+    when: "phase_start_times is inspected in-memory and after load_state"
+    then: "each phase has a UTC timestamp set when step() first enters it, retries (verify PASS or FAIL) do not update an existing entry, and the map round-trips through state.json with identical RFC3339 values"
+  - id: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose gate contains file_exists: '…{run_id}…' and whose produces[*].path contains '{run_id}'"
+    when: "Engine::next_phase_info is called"
+    then: "the returned PhaseInfo has output_dir set to an existing directory under runs/<run_id>/, and every {run_id} token in gate paths and produces[*].path is replaced with the current run_id (no template token remains)"
