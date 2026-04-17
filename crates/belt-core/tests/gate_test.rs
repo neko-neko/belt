@@ -11,6 +11,7 @@ use belt_core::gate::{all_passed, execute_gate, execute_gates};
 use belt_core::model::GateCheck;
 
 /// `cmd: "true"` exits 0 -> gate passes.
+/// scenario: belt-core-gate-cmd-zero-exit-passes
 #[test]
 fn cmd_gate_pass() {
     let check = GateCheck::Cmd {
@@ -26,6 +27,7 @@ fn cmd_gate_pass() {
 }
 
 /// `cmd: "false"` exits 1 -> gate fails.
+/// scenario: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
 #[test]
 fn cmd_gate_fail() {
     let check = GateCheck::Cmd {
@@ -47,6 +49,7 @@ fn cmd_gate_fail() {
 }
 
 /// `file_exists: "*.txt"` with a matching file -> gate passes.
+/// scenario: belt-core-gate-file-exists-glob-matches
 #[test]
 fn file_exists_gate_pass() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -67,6 +70,7 @@ fn file_exists_gate_pass() {
 }
 
 /// `file_exists: "*.txt"` with an empty directory -> gate fails.
+/// scenario: belt-core-gate-file-exists-no-match-fails
 #[test]
 fn file_exists_gate_fail() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -86,6 +90,7 @@ fn file_exists_gate_fail() {
 }
 
 /// `has_output: true` with a file in `output_dir` -> gate passes.
+/// scenario: belt-core-gate-has-output-non-empty-passes
 #[test]
 fn has_output_gate_pass() {
     let work = tempfile::tempdir().expect("tempdir");
@@ -105,6 +110,7 @@ fn has_output_gate_pass() {
 }
 
 /// `has_output: true` with an empty `output_dir` -> gate fails.
+/// scenario: belt-core-gate-has-output-empty-dir-fails
 #[test]
 fn has_output_gate_fail_empty_dir() {
     let work = tempfile::tempdir().expect("tempdir");
@@ -123,6 +129,7 @@ fn has_output_gate_fail_empty_dir() {
 }
 
 /// `GateResult` for non-cmd gates has `timed_out` = false.
+/// scenario: belt-core-gate-result-json-round-trip-and-timed-out-default
 #[test]
 fn gate_result_timed_out_default_false() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -135,6 +142,7 @@ fn gate_result_timed_out_default_false() {
 }
 
 /// `GateResult.timed_out` serializes to JSON correctly.
+/// scenario: belt-core-gate-result-json-round-trip-and-timed-out-default
 #[test]
 fn gate_result_timed_out_serializes() {
     let result = belt_core::gate::GateResult {
@@ -149,6 +157,7 @@ fn gate_result_timed_out_serializes() {
 }
 
 /// cmd completes within timeout — passes normally.
+/// scenario: belt-core-gate-cmd-zero-exit-passes
 #[test]
 fn cmd_with_timeout_passes() {
     let check = GateCheck::Cmd {
@@ -163,6 +172,7 @@ fn cmd_with_timeout_passes() {
 }
 
 /// cmd fails normally (non-zero exit) within timeout — FAIL, not timeout.
+/// scenario: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
 #[test]
 fn cmd_with_timeout_fails_normally() {
     let check = GateCheck::Cmd {
@@ -177,6 +187,7 @@ fn cmd_with_timeout_fails_normally() {
 }
 
 /// cmd with timeout: 0 completes normally (no timeout applied).
+/// scenario: belt-core-gate-cmd-zero-exit-passes
 #[test]
 fn cmd_with_timeout_zero_passes() {
     let check = GateCheck::Cmd {
@@ -190,6 +201,7 @@ fn cmd_with_timeout_zero_passes() {
 }
 
 /// cmd exceeds timeout — killed, `timed_out` = true.
+/// scenario: belt-core-gate-cmd-timeout-kills-and-reports
 #[test]
 fn cmd_timeout_kills_hanging_process() {
     let check = GateCheck::Cmd {
@@ -208,6 +220,7 @@ fn cmd_timeout_kills_hanging_process() {
 }
 
 /// Timeout `duration_ms` reflects the timeout value.
+/// scenario: belt-core-gate-cmd-timeout-kills-and-reports
 #[test]
 fn cmd_timeout_duration_reflects_timeout() {
     let check = GateCheck::Cmd {
@@ -223,6 +236,7 @@ fn cmd_timeout_duration_reflects_timeout() {
 }
 
 /// Fast command finishes before timeout.
+/// scenario: belt-core-gate-cmd-zero-exit-passes
 #[test]
 fn cmd_fast_finish_before_timeout() {
     let check = GateCheck::Cmd {
@@ -237,6 +251,7 @@ fn cmd_fast_finish_before_timeout() {
 }
 
 /// Spawn failure with timeout — not a timeout error.
+/// scenario: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
 #[test]
 fn cmd_spawn_failure_with_timeout() {
     let check = GateCheck::Cmd {
@@ -257,6 +272,7 @@ fn cmd_spawn_failure_with_timeout() {
 }
 
 /// stderr output preserved on normal failure with timeout.
+/// scenario: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
 #[test]
 fn cmd_stderr_output_on_failure_with_timeout() {
     let check = GateCheck::Cmd {
@@ -275,6 +291,7 @@ fn cmd_stderr_output_on_failure_with_timeout() {
 }
 
 /// Signal exit with timeout — not a timeout.
+/// scenario: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
 #[test]
 fn cmd_signal_exit_with_timeout() {
     let check = GateCheck::Cmd {
@@ -293,6 +310,7 @@ fn cmd_signal_exit_with_timeout() {
 }
 
 /// `all_passed` returns true only when every result passed.
+/// scenario: belt-core-gate-execute-gates-and-all-passed-aggregate
 #[test]
 fn all_passed_integration() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -317,6 +335,7 @@ fn all_passed_integration() {
 }
 
 /// One timeout among multiple checks fails the overall result.
+/// scenario: belt-core-gate-execute-gates-and-all-passed-aggregate
 #[test]
 fn execute_gates_one_timeout_fails_all() {
     let checks = vec![
@@ -341,6 +360,7 @@ fn execute_gates_one_timeout_fails_all() {
 }
 
 /// All checks pass with timeout set.
+/// scenario: belt-core-gate-execute-gates-and-all-passed-aggregate
 #[test]
 fn execute_gates_all_pass_with_timeout() {
     let checks = vec![
@@ -365,6 +385,7 @@ fn execute_gates_all_pass_with_timeout() {
 }
 
 /// `GateResult` round-trips through JSON serialization.
+/// scenario: belt-core-gate-result-json-round-trip-and-timed-out-default
 #[test]
 fn gate_result_deserialize_round_trip() {
     let original = belt_core::gate::GateResult {
@@ -384,6 +405,7 @@ fn gate_result_deserialize_round_trip() {
 }
 
 /// `GateResult` without `timed_out` field deserializes with default false.
+/// scenario: belt-core-gate-result-json-round-trip-and-timed-out-default
 #[test]
 fn gate_result_deserialize_missing_timed_out() {
     let json = r#"{"check_type":"cmd","passed":true,"detail":null,"duration_ms":100}"#;

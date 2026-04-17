@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -547,3 +547,68 @@ scenarios:
     given: "RunStatus::default() is called"
     when: "the default instance is inspected"
     then: "it equals RunStatus::InProgress"
+
+  # --- gate module ---
+  - id: belt-core-gate-cmd-zero-exit-passes
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a GateCheck::Cmd whose shell invocation exits with status 0 within the configured timeout (including timeout: 0 = unlimited and short cmds well below the timeout budget)"
+    when: "execute_gate is called"
+    then: "returns GateResult with check_type = 'cmd', passed = true, timed_out = false, and duration_ms Some(<elapsed>) strictly below the timeout budget"
+  - id: belt-core-gate-cmd-nonzero-or-spawn-or-signal-fails-without-timeout
+    category: gate
+    severity: high
+    technique: error-guessing
+    given: "a GateCheck::Cmd that (a) exits non-zero, (b) targets a nonexistent binary (sh -c returns 127), (c) writes to stderr then exits non-zero, or (d) is killed by a signal — all within the timeout budget"
+    when: "execute_gate is called"
+    then: "returns passed = false, timed_out = false, duration_ms set, and detail mentions the cause ('exit' code, 'not found', captured stderr text, or 'signal' depending on the failure mode)"
+  - id: belt-core-gate-cmd-timeout-kills-and-reports
+    category: gate
+    severity: high
+    technique: boundary-value
+    given: "a GateCheck::Cmd running `sleep 60` with timeout: N seconds (N small and positive)"
+    when: "execute_gate is called"
+    then: "the child is killed at the deadline, passed = false, timed_out = true, detail contains 'timed out', and duration_ms is within [N*1000, (N+2)*1000)"
+  - id: belt-core-gate-file-exists-glob-matches
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a work directory containing a file that matches the file_exists glob pattern (e.g. *.txt vs hello.txt)"
+    when: "execute_gate is called with GateCheck::FileExists"
+    then: "returns check_type = 'file_exists', passed = true, timed_out = false, and detail mentions 'matched'"
+  - id: belt-core-gate-file-exists-no-match-fails
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a work directory that has no file satisfying the file_exists glob"
+    when: "execute_gate is called with GateCheck::FileExists"
+    then: "returns check_type = 'file_exists', passed = false, and detail mentions 'no files'"
+  - id: belt-core-gate-has-output-non-empty-passes
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a GateCheck::HasOutput { has_output: true } and an output_dir containing at least one file"
+    when: "execute_gate is called"
+    then: "returns check_type = 'has_output', passed = true, and detail mentions 'non-empty'"
+  - id: belt-core-gate-has-output-empty-dir-fails
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a GateCheck::HasOutput { has_output: true } and an empty output_dir"
+    when: "execute_gate is called"
+    then: "returns check_type = 'has_output', passed = false, and detail mentions 'empty'"
+  - id: belt-core-gate-result-json-round-trip-and-timed-out-default
+    category: gate
+    severity: medium
+    technique: equivalence-partition
+    given: "a GateResult value, or a JSON payload missing the timed_out field, or a non-cmd gate execution"
+    when: "GateResult is serialized/deserialized via serde_json and non-cmd execute_gate is observed"
+    then: "timed_out serializes as the expected boolean, a round-trip preserves every field, JSON without timed_out deserializes with default false, and non-cmd gates always report timed_out = false"
+  - id: belt-core-gate-execute-gates-and-all-passed-aggregate
+    category: gate
+    severity: high
+    technique: decision-table
+    given: "a slice of GateCheck values evaluated together (all pass vs one timeout among passes vs heterogeneous cmd + file_exists)"
+    when: "execute_gates and all_passed are called"
+    then: "execute_gates returns one GateResult per input in order, all_passed(&results) is true iff every result has passed = true, and a single timed-out entry forces all_passed = false while other entries retain their individual passed/timed_out flags"
