@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.0] - 2026-04-17
+
 ### Changed (BREAKING)
 - Plugin consolidation: 7 plugins (`belt-agents`, `feature-dev`, `bug-fix`, `code-review`, `spec-review`, `monkey-test`, `test-scenarios`) → 2 plugins (`belt`, `belt-agent`).
 - Skill invocation renamed:
@@ -41,5 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 7 Claude Code plugins under `plugins/` (belt-agents, feature-dev, bug-fix, code-review, spec-review, monkey-test, test-scenarios) as working examples of belt-driven quality-gated AI development.
 
 <!-- next-url -->
-[Unreleased]: https://github.com/neko-neko/belt/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/neko-neko/belt/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/neko-neko/belt/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/neko-neko/belt/releases/tag/v0.1.0
