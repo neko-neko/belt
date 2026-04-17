@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -177,3 +177,110 @@ scenarios:
     given: "a phase whose gate contains file_exists: '…{run_id}…' and whose produces[*].path contains '{run_id}'"
     when: "Engine::next_phase_info is called"
     then: "the returned PhaseInfo has output_dir set to an existing directory under runs/<run_id>/, and every {run_id} token in gate paths and produces[*].path is replaced with the current run_id (no template token remains)"
+
+  # --- view module ---
+  - id: belt-core-view-phase-state-classified-by-membership
+    category: view
+    severity: high
+    technique: decision-table
+    given: "a RunState whose current_phase, completed_phases, and skipped_phases name a subset of the pipeline's phases"
+    when: "build_status_view is called"
+    then: "every phase is classified as Completed (in completed_phases), Skipped (in skipped_phases), Current (equals current_phase), or Pending (otherwise), preserving the pipeline's declared phase order"
+  - id: belt-core-view-completed-sentinel-clears-current-phase
+    category: view
+    severity: high
+    technique: state-transition
+    given: "a RunState whose current_phase equals the COMPLETED sentinel, with completed_phases (and optionally skipped_phases) covering every active phase"
+    when: "build_status_view is called"
+    then: "PipelineStatus is Completed, current_phase is None, and each phase shows Completed or Skipped (never Current) in declaration order"
+  - id: belt-core-view-progress-counts-sum-to-total
+    category: view
+    severity: high
+    technique: boundary-value
+    given: "a pipeline of N phases (N=1 for the single-phase boundary; N>=3 otherwise) with any mix of completed, skipped, and unvisited phases"
+    when: "build_status_view is called"
+    then: "progress.total == N, progress.completed + progress.skipped + progress.remaining == progress.total, and the individual tallies match the RunState membership counts (including the all-complete and all-pending extremes)"
+  - id: belt-core-view-metadata-fields-propagated-verbatim
+    category: view
+    severity: medium
+    technique: equivalence-partition
+    given: "a RunState carrying run_id, pipeline, pipeline_file, version, args map, created_at, and updated_at"
+    when: "build_status_view is called"
+    then: "PipelineStatus copies every metadata field (including args entries) into the view verbatim without transformation"
+  - id: belt-core-view-verify-passed-tri-state-reflects-record
+    category: view
+    severity: high
+    technique: decision-table
+    given: "phase_verify_passed for the current phase is absent, true, or false"
+    when: "build_status_view is called"
+    then: "PhaseView.verify_passed is None, Some(true), or Some(false) respectively"
+  - id: belt-core-view-regate-passed-tri-state-reflects-record
+    category: view
+    severity: medium
+    technique: decision-table
+    given: "regate_passed for the current phase is absent or true"
+    when: "build_status_view is called"
+    then: "PhaseView.regate_passed is None when no record exists and Some(true) when recorded as passed"
+  - id: belt-core-view-attempt-count-defaults-to-zero-and-reflects-record
+    category: view
+    severity: medium
+    technique: boundary-value
+    given: "phase_attempts lacks an entry for the phase (zero boundary) or records a positive count"
+    when: "build_status_view is called"
+    then: "PhaseView.attempt is 0 when absent and equals the recorded count otherwise"
+  - id: belt-core-view-outputs-lists-phase-directory-files-sorted-excluding-subdirs
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "the run's output directory for a phase is absent, empty, or contains a mix of files and subdirectories"
+    when: "build_status_view is called"
+    then: "PhaseView.outputs is empty when the directory is missing or empty, and otherwise lists only regular file names (subdirectories excluded) sorted ascending"
+  - id: belt-core-view-sub-pipeline-phase-id-sanitized-to-underscore-for-filesystem
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose id contains a '/' separator (e.g. 'review/triage') and corresponding per-phase files on disk (output directory, verify JSON)"
+    when: "build_status_view scans the filesystem for that phase"
+    then: "the filesystem lookup substitutes '/' with '_' (reading 'review_triage/' for outputs and 'verify/review_triage.json' for verify_checks) while the view's phase id retains the original slash form"
+  - id: belt-core-view-yaml-drift-preserves-orphan-completed-and-skipped-phases
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline definition that has added a new phase or removed phases that appear in the RunState's completed_phases or skipped_phases"
+    when: "build_status_view is called"
+    then: "newly added phases appear Pending in declaration order and removed-but-recorded phases are appended to the view with their recorded Completed or Skipped state preserved"
+  - id: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
+    category: view
+    severity: high
+    technique: state-transition
+    given: "an Engine with a run created via init (optionally advanced via verify_verdict and step, with files written under runs/<run_id>/<phase>/)"
+    when: "Engine::enriched_status is called with the run_id"
+    then: "the returned view reflects the current/completed/skipped phase states, progress counts, and per-phase outputs read from the run directory; when state.pipeline_file points at a missing pipeline the call returns an error"
+  - id: belt-core-view-verify-checks-read-from-verify-json-with-graceful-degradation
+    category: view
+    severity: high
+    technique: equivalence-partition
+    given: "the run directory's verify/<sanitized_phase>.json is absent, corrupt, or a well-formed VerifyReport"
+    when: "build_status_view is called"
+    then: "PhaseView.verify_checks is None when the file is absent or unparseable (graceful degradation) and Some(Vec<CheckView>) mirroring check_type/passed when parsing succeeds"
+  - id: belt-core-view-regate-checks-read-from-regate-json-with-graceful-degradation
+    category: view
+    severity: medium
+    technique: equivalence-partition
+    given: "the run directory's regate/<phase>.json is absent, corrupt, or a well-formed regate report"
+    when: "build_status_view is called"
+    then: "PhaseView.regate_checks is None when the file is absent or unparseable and Some(targets map) preserving the passed/checks structure when parsing succeeds"
+  - id: belt-core-view-phase-view-serializes-invoke-and-produces-as-structured-json
+    category: view
+    severity: medium
+    technique: equivalence-partition
+    given: "a PhaseMetadata carrying an Invoker::Skill and a produces Artifact list"
+    when: "build_status_view is called and the resulting PipelineStatus is serialized with serde_json"
+    then: "the view exposes invoke as Some and produces as a resolved list, and the JSON encoding contains the invoke object (with skill field), the produces array, and the artifact name"
+  - id: belt-core-view-glob-produces-path-resolves-to-newest-file-after-phase-start-with-alphabetical-tiebreak
+    category: view
+    severity: high
+    technique: decision-table
+    given: "a produces Artifact whose path is a glob vs a concrete path, evaluated against candidate files older than, newer than, or equal-mtime with the phase_start_times entry"
+    when: "build_status_view resolves the artifact"
+    then: "glob paths pick the newest match strictly after phase_start (filtering older files out, reporting exists=false when no match remains, and breaking mtime ties by ascending filename), while concrete paths bypass the phase_start filter and resolve purely by filesystem existence"

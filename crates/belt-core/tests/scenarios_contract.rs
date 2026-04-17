@@ -7,8 +7,12 @@
 
 //! Binding lock test: docs/testing/cli-behavior/*.yml ↔ Rust doc-comment `/// scenario: <id>`.
 //!
-//! Walks crates/{belt,belt-agent,belt-core}/tests/ recursively. Strips block comments
-//! (including block doc-comments `/** ... */`) before grep to avoid false positives.
+//! Walks crates/{belt,belt-agent,belt-core}/tests/ recursively. Strips string literals
+//! first (regular + raw) and then block comments (including block doc-comments
+//! `/** ... */`) before grep to avoid false positives. Ordering matters: running
+//! `strip_string_literals` before `strip_block_comments` prevents `/*` sequences
+//! inside string literals (e.g. `"docs/*.md"`) from opening a phantom block comment
+//! that would swallow later `/// scenario:` doc-comments.
 //!
 //! Source of truth:
 //! - docs/testing/cli-behavior/{belt,belt-agent,belt-core}.yml — scenario IDs
@@ -263,8 +267,8 @@ fn collect_rust_scenario_refs() -> HashSet<String> {
         walk_rs_files(&repo_root().join(crate_tests), &mut |path| {
             let src = fs::read_to_string(path)
                 .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-            let src = strip_block_comments(&src);
             let src = strip_string_literals(&src);
+            let src = strip_block_comments(&src);
             for line in src.lines() {
                 if let Some(id) = match_scenario_line(line) {
                     found.insert(id.to_string());
@@ -339,7 +343,7 @@ fn audit_template_version_v1_matches_expected() {
 #[test]
 fn drift_regex_rejects_typo_senario() {
     let src = "/// senario: foo";
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -349,7 +353,7 @@ fn drift_regex_rejects_typo_senario() {
 #[test]
 fn drift_regex_rejects_single_slash_prefix() {
     let src = "// scenario: foo";
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -362,7 +366,7 @@ fn drift_regex_rejects_single_slash_prefix() {
 #[test]
 fn drift_block_comment_with_scenario_is_stripped() {
     let src = "/* /// scenario: foo */";
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -375,7 +379,7 @@ fn drift_block_comment_with_scenario_is_stripped() {
 #[test]
 fn drift_block_doc_comment_is_stripped() {
     let src = "/** scenario: foo */";
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -385,7 +389,7 @@ fn drift_block_doc_comment_is_stripped() {
 #[test]
 fn drift_string_literal_is_stripped() {
     let src = r#"let s = "/// scenario: foo";"#;
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -398,7 +402,7 @@ fn drift_string_literal_is_stripped() {
 #[test]
 fn drift_inner_doc_comment_does_not_match() {
     let src = "//! scenario: foo";
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -411,7 +415,7 @@ fn drift_inner_doc_comment_does_not_match() {
 #[test]
 fn drift_positive_single_line_doc_comment_matches() {
     let src = "    /// scenario: belt-lint-valid-pipeline-ok";
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let matched: Vec<_> = stripped.lines().filter_map(match_scenario_line).collect();
     assert_eq!(
         matched.as_slice(),
@@ -428,7 +432,7 @@ let s = r#"
     some content
 "#;
 "##;
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -445,7 +449,7 @@ let s = r##"
     /// scenario: belt-core-raw-hash-false-positive
 "##;
 "###;
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let has_match = stripped
         .lines()
         .any(|line| match_scenario_line(line).is_some());
@@ -465,11 +469,31 @@ fn test_fn() {
     "#;
 }
 "##;
-    let stripped = strip_string_literals(&strip_block_comments(src));
+    let stripped = strip_block_comments(&strip_string_literals(src));
     let matched: Vec<_> = stripped.lines().filter_map(match_scenario_line).collect();
     assert_eq!(
         matched.as_slice(),
         &["belt-core-positive-outside-string"],
         "fix must preserve doc-comment match outside raw strings (false-negative check)"
+    );
+}
+
+#[test]
+fn drift_string_with_slash_star_does_not_swallow_later_doc_comment() {
+    // A string literal containing `/*` must NOT open a phantom block comment
+    // that swallows later `/// scenario:` lines. This regresses the case seen
+    // in view_test.rs where `"docs/plans/*-design.md"` caused strip_block_comments
+    // to eat everything until a (never-found) `*/`.
+    let src = r#"
+let path = "docs/plans/*-design.md";
+/// scenario: belt-core-positive-after-slash-star-in-string
+fn x() {}
+"#;
+    let stripped = strip_block_comments(&strip_string_literals(src));
+    let matched: Vec<_> = stripped.lines().filter_map(match_scenario_line).collect();
+    assert_eq!(
+        matched.as_slice(),
+        &["belt-core-positive-after-slash-star-in-string"],
+        "a `/*` sequence inside a string literal must not open a block comment"
     );
 }

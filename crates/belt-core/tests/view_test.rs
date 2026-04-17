@@ -46,6 +46,7 @@ fn phase_ids(ids: &[&str]) -> Vec<PhaseMetadata> {
         .collect()
 }
 
+/// scenario: belt-core-view-phase-state-classified-by-membership
 #[test]
 fn initial_state_first_current_rest_pending() {
     let state = make_state("build", &[], &[]);
@@ -65,6 +66,7 @@ fn initial_state_first_current_rest_pending() {
     assert_eq!(view.current_phase, Some("build".to_string()));
 }
 
+/// scenario: belt-core-view-phase-state-classified-by-membership
 #[test]
 fn partially_completed() {
     let state = make_state("deploy", &["build", "test"], &[]);
@@ -80,6 +82,7 @@ fn partially_completed() {
     assert_eq!(view.current_phase, Some("deploy".to_string()));
 }
 
+/// scenario: belt-core-view-completed-sentinel-clears-current-phase
 #[test]
 fn fully_completed() {
     let state = make_state("COMPLETED", &["build", "test", "deploy"], &[]);
@@ -100,6 +103,7 @@ fn fully_completed() {
     }
 }
 
+/// scenario: belt-core-view-phase-state-classified-by-membership
 #[test]
 fn skipped_phases() {
     let state = make_state("deploy", &["build"], &["test"]);
@@ -113,6 +117,7 @@ fn skipped_phases() {
     assert_eq!(view.phases[2].status, PhaseState::Current);
 }
 
+/// scenario: belt-core-view-completed-sentinel-clears-current-phase
 #[test]
 fn mixed_skip_and_completed() {
     let state = make_state("COMPLETED", &["build", "deploy"], &["test", "lint"]);
@@ -128,6 +133,7 @@ fn mixed_skip_and_completed() {
     assert_eq!(view.status, PipelineStatus::Completed);
 }
 
+/// scenario: belt-core-view-progress-counts-sum-to-total
 #[test]
 fn progress_normal() {
     let state = make_state("phase4", &["phase1", "phase2"], &["phase3"]);
@@ -142,6 +148,7 @@ fn progress_normal() {
     assert_eq!(view.progress.total, 5);
 }
 
+/// scenario: belt-core-view-progress-counts-sum-to-total
 #[test]
 fn progress_all_complete() {
     let state = make_state("COMPLETED", &["a", "b", "c"], &[]);
@@ -156,6 +163,7 @@ fn progress_all_complete() {
     assert_eq!(view.progress.total, 3);
 }
 
+/// scenario: belt-core-view-progress-counts-sum-to-total
 #[test]
 fn progress_all_pending() {
     let state = make_state("a", &[], &[]);
@@ -170,6 +178,7 @@ fn progress_all_pending() {
     assert_eq!(view.progress.total, 3);
 }
 
+/// scenario: belt-core-view-progress-counts-sum-to-total
 #[test]
 fn single_phase_pipeline() {
     let state = make_state("only", &[], &[]);
@@ -184,6 +193,7 @@ fn single_phase_pipeline() {
     assert_eq!(view.progress.remaining, 1);
 }
 
+/// scenario: belt-core-view-metadata-fields-propagated-verbatim
 #[test]
 fn metadata_fields_propagated() {
     let mut state = make_state("build", &[], &[]);
@@ -215,6 +225,7 @@ fn metadata_fields_propagated() {
 
 // --- Task 3: Verify / regate / attempt state tests ---
 
+/// scenario: belt-core-view-verify-passed-tri-state-reflects-record
 #[test]
 fn verify_not_run_is_none() {
     let state = make_state("build", &[], &[]);
@@ -224,6 +235,7 @@ fn verify_not_run_is_none() {
     assert!(view.phases[0].verify_passed.is_none());
 }
 
+/// scenario: belt-core-view-verify-passed-tri-state-reflects-record
 #[test]
 fn verify_pass_reflected() {
     let mut state = make_state("build", &[], &[]);
@@ -234,6 +246,7 @@ fn verify_pass_reflected() {
     assert_eq!(view.phases[0].verify_passed, Some(true));
 }
 
+/// scenario: belt-core-view-verify-passed-tri-state-reflects-record
 #[test]
 fn verify_fail_reflected() {
     let mut state = make_state("build", &[], &[]);
@@ -244,6 +257,7 @@ fn verify_fail_reflected() {
     assert_eq!(view.phases[0].verify_passed, Some(false));
 }
 
+/// scenario: belt-core-view-regate-passed-tri-state-reflects-record
 #[test]
 fn regate_pass_reflected() {
     let mut state = make_state("build", &[], &[]);
@@ -254,6 +268,7 @@ fn regate_pass_reflected() {
     assert_eq!(view.phases[0].regate_passed, Some(true));
 }
 
+/// scenario: belt-core-view-regate-passed-tri-state-reflects-record
 #[test]
 fn regate_not_run_is_none() {
     let state = make_state("build", &[], &[]);
@@ -263,6 +278,7 @@ fn regate_not_run_is_none() {
     assert!(view.phases[0].regate_passed.is_none());
 }
 
+/// scenario: belt-core-view-attempt-count-defaults-to-zero-and-reflects-record
 #[test]
 fn attempt_zero_when_not_run() {
     let state = make_state("build", &[], &[]);
@@ -272,6 +288,7 @@ fn attempt_zero_when_not_run() {
     assert_eq!(view.phases[0].attempt, 0);
 }
 
+/// scenario: belt-core-view-attempt-count-defaults-to-zero-and-reflects-record
 #[test]
 fn attempt_count_reflected() {
     let mut state = make_state("build", &[], &[]);
@@ -284,6 +301,7 @@ fn attempt_count_reflected() {
 
 // --- Task 4: Output directory scanning tests ---
 
+/// scenario: belt-core-view-outputs-lists-phase-directory-files-sorted-excluding-subdirs
 #[test]
 fn outputs_lists_files() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -300,6 +318,7 @@ fn outputs_lists_files() {
     assert_eq!(view.phases[0].outputs, vec!["a_summary.md", "report.json"]);
 }
 
+/// scenario: belt-core-view-outputs-lists-phase-directory-files-sorted-excluding-subdirs
 #[test]
 fn outputs_empty_when_no_dir() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -309,6 +328,7 @@ fn outputs_empty_when_no_dir() {
     assert!(view.phases[0].outputs.is_empty());
 }
 
+/// scenario: belt-core-view-outputs-lists-phase-directory-files-sorted-excluding-subdirs
 #[test]
 fn outputs_empty_when_dir_exists_but_empty() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -321,6 +341,7 @@ fn outputs_empty_when_dir_exists_but_empty() {
     assert!(view.phases[0].outputs.is_empty());
 }
 
+/// scenario: belt-core-view-outputs-lists-phase-directory-files-sorted-excluding-subdirs
 #[test]
 fn outputs_excludes_subdirectories() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -334,6 +355,7 @@ fn outputs_excludes_subdirectories() {
     assert_eq!(view.phases[0].outputs, vec!["file.txt"]);
 }
 
+/// scenario: belt-core-view-sub-pipeline-phase-id-sanitized-to-underscore-for-filesystem
 #[test]
 fn outputs_sub_pipeline_phase_uses_underscore_dir() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -349,6 +371,7 @@ fn outputs_sub_pipeline_phase_uses_underscore_dir() {
 
 // --- Task 5: YAML drift tests ---
 
+/// scenario: belt-core-view-yaml-drift-preserves-orphan-completed-and-skipped-phases
 #[test]
 fn yaml_drift_phase_added() {
     let state = make_state("test", &["build"], &[]);
@@ -361,6 +384,7 @@ fn yaml_drift_phase_added() {
     assert_eq!(view.phases[2].status, PhaseState::Current); // test
 }
 
+/// scenario: belt-core-view-yaml-drift-preserves-orphan-completed-and-skipped-phases
 #[test]
 fn yaml_drift_phase_removed_completed() {
     let state = make_state("test", &["old-phase", "build"], &[]);
@@ -375,6 +399,7 @@ fn yaml_drift_phase_removed_completed() {
     assert_eq!(view.phases[2].status, PhaseState::Completed);
 }
 
+/// scenario: belt-core-view-yaml-drift-preserves-orphan-completed-and-skipped-phases
 #[test]
 fn yaml_drift_phase_removed_skipped() {
     let state = make_state("test", &["build"], &["old-phase"]);
@@ -396,6 +421,7 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
         .join(name)
 }
 
+/// scenario: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
 #[test]
 fn engine_enriched_status_after_init() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -423,6 +449,7 @@ fn engine_enriched_status_after_init() {
     assert_eq!(view.progress.remaining, 3);
 }
 
+/// scenario: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
 #[test]
 fn engine_enriched_status_with_skipped_phase() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -450,6 +477,7 @@ fn engine_enriched_status_with_skipped_phase() {
     assert_eq!(view.progress.remaining, 1);
 }
 
+/// scenario: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
 #[test]
 fn engine_enriched_status_pipeline_not_found() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -471,6 +499,7 @@ fn engine_enriched_status_pipeline_not_found() {
 // --- BELT-30: verify_checks / regate_checks in status ---
 
 /// status includes `verify_checks` when verify file exists.
+/// scenario: belt-core-view-verify-checks-read-from-verify-json-with-graceful-degradation
 #[test]
 fn status_includes_verify_checks() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -493,6 +522,7 @@ fn status_includes_verify_checks() {
 }
 
 /// status returns `verify_checks` = None when no verify file.
+/// scenario: belt-core-view-verify-checks-read-from-verify-json-with-graceful-degradation
 #[test]
 fn status_verify_checks_none_when_no_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -506,6 +536,7 @@ fn status_verify_checks_none_when_no_file() {
 }
 
 /// status returns `verify_checks` = None on corrupt file (graceful degradation).
+/// scenario: belt-core-view-verify-checks-read-from-verify-json-with-graceful-degradation
 #[test]
 fn status_verify_checks_none_on_corrupt_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -520,6 +551,7 @@ fn status_verify_checks_none_on_corrupt_file() {
 }
 
 /// status reads verify file for sub-pipeline phase with sanitized ID.
+/// scenario: belt-core-view-sub-pipeline-phase-id-sanitized-to-underscore-for-filesystem
 #[test]
 fn status_verify_checks_sub_pipeline_phase() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -539,6 +571,7 @@ fn status_verify_checks_sub_pipeline_phase() {
 }
 
 /// status includes `regate_checks` when regate file exists.
+/// scenario: belt-core-view-regate-checks-read-from-regate-json-with-graceful-degradation
 #[test]
 fn status_includes_regate_checks() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -559,6 +592,7 @@ fn status_includes_regate_checks() {
 }
 
 /// status returns `regate_checks` = None when no regate file.
+/// scenario: belt-core-view-regate-checks-read-from-regate-json-with-graceful-degradation
 #[test]
 fn status_regate_checks_none_when_no_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -572,6 +606,7 @@ fn status_regate_checks_none_when_no_file() {
 }
 
 /// status returns `regate_checks` = None on corrupt file.
+/// scenario: belt-core-view-regate-checks-read-from-regate-json-with-graceful-degradation
 #[test]
 fn status_regate_checks_none_on_corrupt_file() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -585,6 +620,7 @@ fn status_regate_checks_none_on_corrupt_file() {
     assert!(view.phases[0].regate_checks.is_none());
 }
 
+/// scenario: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
 #[test]
 fn engine_enriched_status_output_files_visible() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -609,6 +645,7 @@ fn engine_enriched_status_output_files_visible() {
 // --- BELT-32: PhaseView invoke / produces / consumes serialization ---
 
 /// `PhaseView` serializes `invoke` as a nested JSON object when present.
+/// scenario: belt-core-view-phase-view-serializes-invoke-and-produces-as-structured-json
 #[test]
 fn phase_view_serializes_invoke_skill() {
     let state = RunState {
@@ -675,6 +712,7 @@ fn phase_view_serializes_invoke_skill() {
 // --- BELT-32 Plan B Task 2: glob resolution in build_status_view ---
 
 /// Glob resolution picks the newest matching file after the phase start time.
+/// scenario: belt-core-view-glob-produces-path-resolves-to-newest-file-after-phase-start-with-alphabetical-tiebreak
 #[test]
 fn glob_resolution_picks_newest_after_phase_start() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -757,6 +795,7 @@ fn glob_resolution_picks_newest_after_phase_start() {
 }
 
 /// If no files match the glob after the filter, existence is false.
+/// scenario: belt-core-view-glob-produces-path-resolves-to-newest-file-after-phase-start-with-alphabetical-tiebreak
 #[test]
 fn glob_resolution_zero_matches_reports_missing() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -829,6 +868,7 @@ fn glob_resolution_zero_matches_reports_missing() {
 }
 
 /// Equal mtimes break ties via ascending filename.
+/// scenario: belt-core-view-glob-produces-path-resolves-to-newest-file-after-phase-start-with-alphabetical-tiebreak
 #[test]
 fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -908,6 +948,7 @@ fn glob_resolution_equal_mtime_alphabetical_tiebreaker() {
 }
 
 /// Concrete (non-glob) path uses `std::fs::metadata` directly.
+/// scenario: belt-core-view-glob-produces-path-resolves-to-newest-file-after-phase-start-with-alphabetical-tiebreak
 #[test]
 fn concrete_path_skips_filter() {
     let temp = tempfile::tempdir().expect("tempdir");
