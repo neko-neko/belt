@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
+scope: "belt-core pure library public API. config (6, F1) + engine (19, F2a) + view (15, F2a) + lint (15, F2a) + model (22, F2a) + gate (9, F2a) + error (3, F2a) + expander (4, F2a)... F2a で 10 module 列挙済の方向で段階追加中"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -635,3 +635,33 @@ scenarios:
     given: "a BeltError::RegateFailed{phase_id, targets} treated as a miette::Diagnostic"
     when: "Display::to_string() and Diagnostic::code() are evaluated"
     then: "Display yields 'regate failed for phase <phase_id>: targets <debug-formatted targets> did not pass' and code() equals 'belt::regate_failed'"
+
+  # --- expander module ---
+  - id: belt-core-expander-invoke-pipeline-to-namespaced-ids
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a main pipeline with an `invoke: { pipeline: ... }` phase referencing a sub-pipeline with multiple phases, optionally alongside a leaf phase"
+    when: "expand_pipeline is called"
+    then: "sub-pipeline phases are expanded with `{parent_id}/{sub_phase_id}` namespaced IDs in declaration order; any sibling leaf phases preserve their original id and description"
+  - id: belt-core-expander-parent-gate-regate-inherited-by-last-sub-phase-only
+    category: expander
+    severity: high
+    technique: decision-table
+    given: "a parent phase with `invoke:` plus its own `gate:` and `regate:` and a sub-pipeline containing multiple sub-phases"
+    when: "expand_pipeline is called"
+    then: "parent gate entries are appended only to the LAST expanded sub-phase (others keep their own gates unchanged) and parent regate targets are attached only to the LAST sub-phase"
+  - id: belt-core-expander-parent-when-propagates-to-all-sub-phases
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a parent phase with `invoke:` and `when: <expr>` over a sub-pipeline whose sub-phases do not declare their own when"
+    when: "expand_pipeline is called"
+    then: "every expanded sub-phase carries when = Some(<expr>) verbatim"
+  - id: belt-core-expander-leaf-phase-without-description-yields-invalid-pipeline
+    category: expander
+    severity: high
+    technique: error-guessing
+    given: "a pipeline whose leaf (non-invoke) phase omits the `description` field"
+    when: "expand_pipeline is called"
+    then: "returns BeltError::InvalidPipeline"

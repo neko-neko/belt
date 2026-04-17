@@ -21,6 +21,8 @@ fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
 
 /// `invoke: { pipeline: ... }` phases are expanded to namespaced IDs, and
 /// leaf phases are preserved.
+///
+/// scenario: belt-core-expander-invoke-pipeline-to-namespaced-ids
 #[test]
 fn expand_invoke_pipeline_phase_to_namespaced_ids() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -72,6 +74,8 @@ phases:
 }
 
 /// Parent gate/regate are appended only to the LAST sub-phase.
+///
+/// scenario: belt-core-expander-parent-gate-regate-inherited-by-last-sub-phase-only
 #[test]
 fn parent_gate_appended_to_last_sub_phase() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -137,6 +141,8 @@ phases:
 }
 
 /// Parent `when` propagates to all sub-phases that lack their own.
+///
+/// scenario: belt-core-expander-parent-when-propagates-to-all-sub-phases
 #[test]
 fn when_propagated_to_sub_phases() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -184,6 +190,8 @@ phases:
 }
 
 /// A leaf phase without a description returns `InvalidPipeline`.
+///
+/// scenario: belt-core-expander-leaf-phase-without-description-yields-invalid-pipeline
 #[test]
 fn leaf_phase_without_description_returns_error() {
     let dir = TempDir::new().expect("failed to create tempdir");
@@ -211,6 +219,8 @@ phases:
 
 /// A phase using `invoke: { pipeline: "./sub.yml" }` expands into the
 /// sub-pipeline's phases with namespaced IDs.
+///
+/// scenario: belt-core-expander-invoke-pipeline-to-namespaced-ids
 #[test]
 fn expand_invoke_pipeline_variant() {
     let dir = TempDir::new().expect("failed to create tempdir");
