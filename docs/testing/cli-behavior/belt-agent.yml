@@ -1,0 +1,2 @@
+scope: "F3 で拡充予定。対象 = belt-agent CLI 全 subcommand (init, next, verify, regate, step, status) の JSON contract + state.json shape。F1 scope では列挙せず scope 宣言のみ"
+scenarios: []
