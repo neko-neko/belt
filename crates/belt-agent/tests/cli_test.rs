@@ -555,26 +555,26 @@ phases:
 }
 
 #[test]
-fn regate_substitutes_run_id_in_target_gate() {
-    // Regression: `belt-agent regate` was checking target-phase gates with
-    // unsubstituted `{run_id}` placeholders, so any phase whose regate
-    // target referenced a run-scoped path (e.g. a narrative note under
-    // `.belt/runs/{run_id}/notes/`) failed regate even when the file
-    // existed at the resolved path. `next_phase_info` substitutes for the
-    // current phase, but `expand_pipeline` does not (it has no runtime
-    // state); regate must apply the substitution itself.
+fn regate_resolves_uri_in_target_gate() {
+    // Two-phase pipeline: phase `design` produces a notes file via
+    // `belt://current/` URI and gates on it; phase `build` regates on
+    // `design`. After writing the note, completing `design`, and stepping
+    // into `build`, regate must resolve the URI and PASS.
     let dir = TempDir::new().unwrap();
     write_yaml(
         &dir,
         "pipeline.yml",
         r#"
-name: regate-run-id
+name: regate-uri
 version: 1
 phases:
   - id: design
     description: "Design"
+    produces:
+      - name: notes
+        path: "belt://current/notes/phase-design.md"
     gate:
-      - file_exists: ".belt/runs/{run_id}/notes/phase-design.md"
+      - file_exists: "belt://current/notes/phase-design.md"
   - id: build
     description: "Build"
     gate:
@@ -604,17 +604,9 @@ phases:
     let regate = run_belt_agent(&dir, &["regate", "--run", &run_id]);
     assert_eq!(
         regate["all_passed"], true,
-        "regate must pass when target file exists at resolved path"
+        "regate must pass when the belt://current URI resolves to an existing file"
     );
     assert_eq!(regate["targets"]["design"]["passed"], true);
-
-    let detail = regate["targets"]["design"]["checks"][0]["detail"]
-        .as_str()
-        .unwrap();
-    assert!(
-        !detail.contains("{run_id}"),
-        "regate detail must not retain unsubstituted placeholder: {detail}"
-    );
 }
 
 #[test]

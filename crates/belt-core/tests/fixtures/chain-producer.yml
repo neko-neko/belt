@@ -6,10 +6,10 @@ phases:
     description: "Review phase producing narrative"
     produces:
       - name: notes
-        path: ".belt/runs/{run_id}/notes/phase-review.md"
+        path: "belt://current/notes/phase-review.md"
         description: "Review phase narrative"
     gate:
-      - file_exists: ".belt/runs/{run_id}/notes/phase-review.md"
+      - file_exists: "belt://current/notes/phase-review.md"
   - id: done
     description: "Done"
     confirm: true
