@@ -23,12 +23,20 @@ pub(crate) enum ResolveError {
     Io(#[from] std::io::Error),
     #[error("state.json parse error: {0}")]
     StateParse(#[from] serde_json::Error),
+    /// `belt://current/...` URI を解決しようとしたが invocation context に
+    /// run_id が無い (`--run` 未指定 + latest run 不在)。
+    #[error("belt://current/ requires a current run (none found, pass --run <id>)")]
+    NoCurrentRun,
 }
 
 #[derive(Debug)]
 pub(crate) struct Resolver<'a> {
     pub belt_dir: &'a Path,
     pub current_branch: Option<String>,
+    /// Resolved `--run` arg (or latest run id) used to bind `belt://current/`
+    /// URIs to a concrete run directory. `None` when no run is in scope
+    /// (e.g. before any `init`).
+    pub current_run_id: Option<String>,
 }
 
 impl Resolver<'_> {
