@@ -9,7 +9,10 @@
 use std::path::PathBuf;
 
 use belt_core::{
-    error::BeltError, expander::expand_pipeline, model::ArgType, parser::parse_pipeline,
+    error::BeltError,
+    expander::expand_pipeline,
+    model::{ArgType, Invoker},
+    parser::parse_pipeline,
 };
 
 mod common;
@@ -328,4 +331,44 @@ fn feature_dev_non_narrative_phases_have_no_notes() -> Result<(), BeltError> {
         &["test-scenarios", "spec-review", "integrate"],
     );
     Ok(())
+}
+
+// --- pre-execute-handover sub-pipeline delegation (spec 2026-04-18) ---
+
+#[test]
+fn pre_execute_handover_delegates_to_sub_pipeline() {
+    let pipeline =
+        parse_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must parse");
+    let phase = pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == "pre-execute-handover")
+        .expect("pre-execute-handover phase must exist");
+    match phase.invoke.as_ref() {
+        Some(Invoker::Pipeline {
+            pipeline: sub_path,
+            with,
+        }) => {
+            assert_eq!(
+                sub_path, "../handover/checkpoint.yml",
+                "pre-execute-handover must delegate to ../handover/checkpoint.yml"
+            );
+            assert!(
+                with.is_empty(),
+                "pre-execute-handover delegation must not pass any `with` args"
+            );
+        }
+        other => panic!("pre-execute-handover must use Invoker::Pipeline, got {other:?}"),
+    }
+}
+
+#[test]
+fn pre_execute_handover_expands_to_namespaced_checkpoint() {
+    let expanded =
+        expand_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must expand");
+    let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
+    assert!(
+        ids.contains(&"pre-execute-handover/checkpoint"),
+        "expanded pipeline must contain phase id 'pre-execute-handover/checkpoint', got: {ids:?}"
+    );
 }
