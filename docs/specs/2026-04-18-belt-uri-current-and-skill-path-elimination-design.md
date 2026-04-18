@@ -560,45 +560,168 @@ Convention: artifacts named `<id>_notes` use the `belt://current/notes/phase-<id
 URI by convention. belt-core does not enforce this — it is owned by the SKILL layer.
 ```
 
-### 11. lock test 全更新
+### 11. テスト戦略 — scenarios.yml SSOT + lock-ledger + audit-template binding
 
-#### `crates/belt-core/tests/feature_dev_refresh.rs`
+`docs/testing/README.md` が示す 3 層構造に厳格に従う:
+- **scenarios.yml SSOT** (`docs/testing/cli-behavior/{belt,belt-agent,belt-core}.yml`): 全 CLI behavioral test の Given/When/Then 宣言
+- **doc-comment binding** (`/// scenario: <id>`): test fn と scenario の機械照合 (`scenarios_contract.rs` walk)
+- **lock-ledger** (`docs/testing/lock-ledger.md`): plugin shape lock test の台帳
+- **audit-template v1** (`docs/testing/audit-template.md`): test 判定の 9 reason labels
 
-- 既存 phase 順序 / phase count assertion は不変 (URI 化は pipeline 構造を変えない)
-- `produces[].path` の値を URI 形式で assert する test を追加
-- `gate.file_exists` の URI prefix を assert
-- code-review phase の produces count を 4 (現行) → 7 (findings-X 5 + merged + notes) に更新
+audit-template v1 は本 spec で **bump しない** (本 spec の test 削除はすべて既存 9 labels で表現可能)。
 
-#### `crates/belt-core/tests/bug_fix_refresh.rs`
+#### 11.1 `docs/testing/cli-behavior/*.yml` 新規 scenario 追加
 
-同様に produces 拡張に追従。
+**`belt-core.yml`** (URI parser + lint + engine + gate):
 
-#### `crates/belt-core/tests/review_skills_refresh.rs`
+| Scenario ID | Given / When / Then 概要 |
+|---|---|
+| `belt-core-uri-parses-current-variant` | `belt://current/<path>` parse → `BeltUri::Current { path }` + Display round-trip |
+| `belt-core-uri-current-rejects-empty-path` | `belt://current/` 単独 → `UriParseError::EmptyPath` |
+| `belt-core-uri-current-rejects-traversal` | `belt://current/../foo` → `UriParseError::PathTraversal` |
+| `belt-core-uri-current-rejects-leading-slash` | `belt://current//foo` → `UriParseError::PathTraversal` |
+| `belt-core-uri-current-allows-glob-syntax` | `belt://current/notes/phase-*.md` parse 成功 (resolver で展開) |
+| `belt-core-lint-rejects-belt-runs-literal-in-produces-path` | `produces[].path: ".belt/runs/..."` → lint error |
+| `belt-core-lint-rejects-belt-runs-literal-in-gate-file-exists` | `gate.file_exists: ".belt/runs/..."` → lint error |
+| `belt-core-lint-rejects-run-id-template-in-produces-path` | `{run_id}` を含む path → lint error |
+| `belt-core-lint-rejects-run-id-template-in-gate-cmd` | `gate.cmd: "... {run_id} ..."` → lint error |
+| `belt-core-engine-emits-declared-uri-in-next-phase-info` | `next_phase_info` が pipeline.yml の URI を変換せず raw 返却 (substitute 不在) |
+| `belt-core-gate-resolves-belt-current-via-uri-resolver` | `execute_gates` が `UriResolver` trait 経由で `belt://current/...` を解決して file_exists 判定 |
+| `belt-core-gate-passes-raw-domain-path-untouched` | `gate.file_exists: "docs/features/*/design.md"` は URI 解決を skip して直接 glob |
 
-- `REVIEW_SKILLS` constant の各 entry の `produces` 列挙を更新
-- `belt:code-review` / `belt:spec-review` skill 配下の dispatch 確認を維持
+**`belt-agent.yml`** (locate command + status URI shape + resolver):
 
-#### `crates/belt-core/tests/lint_test.rs`
+| Scenario ID | Given / When / Then 概要 |
+|---|---|
+| `belt-agent-locate-resolves-current-uri-happy` | `locate belt://current/notes/phase-design.md` → JSON `{uri, path, exists}` |
+| `belt-agent-locate-defaults-to-latest-run` | `--run` 未指定で latest run に解決 |
+| `belt-agent-locate-uses-explicit-run` | `--run <id>` で specific run に解決 |
+| `belt-agent-locate-errors-when-no-current-run` | run 不在 → exit 非 0 + `NoCurrentRun` miette diagnostic |
+| `belt-agent-locate-errors-on-malformed-uri` | 不正 URI → exit 非 0 + parse error |
+| `belt-agent-locate-emits-exists-false-for-missing-write-target` | 未生成ファイル → `exists: false` + path は declared base |
+| `belt-agent-locate-resolves-glob-uri` | `belt://current/notes/phase-*.md` → newest match |
+| `belt-agent-locate-emits-glob-base-when-zero-match` | glob ゼロ match → `exists: false` + declared base path |
+| `belt-agent-status-emits-uri-field-for-uri-produces` | URI 形式 produces → `uri` field + `resolved_path` |
+| `belt-agent-status-emits-path-field-for-raw-produces` | domain raw path → `path` field + `resolved_path` |
+| `belt-agent-status-uri-and-path-are-mutually-exclusive` | 同 produces 内で両 field 同時 emit しない |
+| `belt-agent-init-emits-uri-in-phase-produces` | init JSON も `uri` shape (status と一貫) |
+| `belt-agent-next-emits-uri-in-phase-produces` | next JSON も `uri` shape |
+| `belt-agent-regate-resolves-uri-in-target-gate` | regate target gate の URI を解決して file_exists 判定 (既存 `regate_substitutes_run_id_in_target_gate` の置換) |
 
-- 新 lint rule `check_belt_runs_literal` の test を追加
-  - PASS case: `belt://current/notes/phase-design.md` を含む pipeline
-  - FAIL case 1: `.belt/runs/{run_id}/notes/phase-design.md` を含む pipeline → error
-  - FAIL case 2: `{run_id}` template を含む URI → error
+合計 26 新規 scenario (belt-core: 12, belt-agent: 14)。
 
-#### `crates/belt-core/tests/engine_test.rs`
+#### 11.2 既存 scenario の削除
 
-- `{run_id}` substitute 関連 test 削除
-- URI 解決 test 追加 (`belt://current/...` を含む pipeline で `next_phase_info` が URI を保持して返す確認、resolved_path は belt-agent 側で行う)
+audit-template Q5 `obsolete-spec` 判定で以下を `docs/testing/cli-behavior/*.yml` から削除:
 
-#### `crates/belt-agent/tests/cli_test.rs` / `e2e_test.rs`
+| Scenario ID (推定 — 着手時に grep で確定) | 削除理由 |
+|---|---|
+| `belt-core-engine-substitutes-run-id-in-produces-path` | `expand_run_id` 削除に伴い behavior 消失 |
+| `belt-core-engine-substitutes-run-id-in-gate` | 同上 |
+| `belt-agent-regate-substitutes-run-id-in-target-gate` | URI 解決に置換 (上記 `belt-agent-regate-resolves-uri-in-target-gate`) |
 
-- `regate_substitutes_run_id_in_target_gate` 削除
-- 新 `locate` コマンドの integration test 追加
-  - `belt://current/notes/phase-design.md` の解決
-  - `--run` 指定なしで latest 解決
-  - 不在 run_dir で error
-  - glob URI の解決
-- status JSON shape 変更の verification (`uri` field 存在、`resolved_path` 存在)
+着手時に `grep -n 'run_id' docs/testing/cli-behavior/*.yml` で実在 scenario ID を確定し、Plan の Task 名を更新する。
+
+#### 11.3 doc-comment binding
+
+新規 test fn には必ず `/// scenario: <id>` を付与:
+
+```rust
+/// scenario: belt-agent-locate-resolves-current-uri-happy
+#[test]
+fn locate_resolves_current_uri_happy() { ... }
+```
+
+shape lock test (本 spec の `feature_dev_refresh.rs` URI shape 追加 assertion 等) は **scenario ID 不要** (audit-template Q3 shape lock 分岐: "shape lock test は behavior scenario の対象外で、plugin/pipeline の構造自体を固定する役割")。
+
+`scenarios_contract.rs` の symmetric diff (`docs/testing/cli-behavior/*.yml` ↔ `crates/*/tests/**/*.rs` の `/// scenario:` doc-comment) が CI で drift を検出する。
+
+#### 11.4 lock-ledger.md 更新内容
+
+**`feature_dev_refresh.rs` entry**:
+- `test-fn-count`: 13 → 15
+- 追加 fn:
+  - `feature_dev_produces_use_belt_current_uri` — narrative artifact 6 phase の path が exactly `belt://current/notes/phase-<id>.md`
+  - `feature_dev_pipeline_has_no_run_id_template` — 全 string field で `{run_id}` non-existence
+- pipeline.yml shape dimensions B 追加:
+  - "narrative artifact 6 phase の path が exactly `belt://current/notes/phase-<id>.md` URI 形式"
+  - "code-review.produces が 7 entries (findings-security / findings-test / findings-ai-antipattern / findings-cross-cutting / findings-codex with `when: args.codex` / findings (merged) / code_review_notes)"
+  - "全 phase の `produces[].path` および `gate.file_exists` が `belt://...` URI または `docs/`/`src/` raw path のみ (`.belt/runs/` リテラル + `{run_id}` template の non-existence)"
+- 既存 dimension "narrative artifact 6 phase ... の `.belt/runs/{run_id}/notes/phase-*.md` 生成" を URI 形式に書き換え
+
+**`bug_fix_refresh.rs` entry**:
+- `test-fn-count`: 21 → 23 (同形 2 fn 追加: `bug_fix_produces_use_belt_current_uri` / `bug_fix_pipeline_has_no_run_id_template`)
+- shape dimensions B に同形 3 件追加
+- 既存 narrative dimension を URI 形式に書き換え
+
+**`review_skills_refresh.rs` entry**:
+- `test-fn-count`: 6 → 7
+- 追加 fn:
+  - `per_observation_agents_use_output_path_arg_pattern` — 7 agent の `## Output Format` 節が "output_path" mention を含み、`.belt/runs/` リテラル不在
+- locked-shape 追加: "per-observation agents の output 規約は orchestrator から runtime arg `output_path` で受け取る pattern (path リテラル ハードコード非存在)"
+
+**`shared_criteria_parity.rs` entry**:
+- 変更なし (criteria/execute.md / criteria/code-review.md の byte-identical 確認は維持。ただし両 file の内容が同時更新されるため parity test 自体は不変)
+
+**`shared_filter_parity.rs` entry**:
+- 変更なし (filter section は本 spec の対象外)
+
+**`scenarios_contract.rs` entry**:
+- `scenario-sources` 不変 (3 file)
+- `test-fn-count` 不変 (14、新 scenario は positive walk で自動カバー)
+- `audit-template-version: v1` 不変 (本 spec は label 追加なし)
+
+#### 11.5 既存 test fn の audit 判定 (削除対象)
+
+| Test fn | File:Line | Audit judgement (audit-template v1) |
+|---|---|---|
+| `run_id_substituted_in_file_exists_gate_path` | `crates/belt-core/tests/engine_test.rs:2213` | `obsolete-spec` (削除) |
+| `run_id_substituted_in_produces_path` | `crates/belt-core/tests/engine_test.rs:2267` | `obsolete-spec` (削除) |
+| `regate_substitutes_run_id_in_target_gate` | `crates/belt-agent/tests/cli_test.rs:558` | `obsolete-spec` (削除) |
+
+削除に伴い、scenarios.yml の対応 scenario ID も削除 (Section 11.2)。`scenarios_contract.rs` の symmetric diff で drift 検出。
+
+#### 11.6 新規 test fn の配置
+
+- **belt-core unit / integration**:
+  - `crates/belt-core/tests/uri_test.rs` (新規 file): `BeltUri::Current` parse / Display / glob / path validation の 5 fn
+  - `crates/belt-core/tests/lint_test.rs`: `check_belt_runs_literal` の 4 fn (PASS / FAIL produces / FAIL gate.file_exists / FAIL gate.cmd)
+  - `crates/belt-core/tests/engine_test.rs`: URI raw return の 1 fn (置換)
+  - `crates/belt-core/tests/gate_test.rs` (もしくは inline): URI resolution + raw path passthrough の 2 fn
+- **belt-agent integration**:
+  - `crates/belt-agent/tests/cli_test.rs`: `locate` 8 fn + status URI shape 5 fn + regate URI 1 fn (合計 14 fn)
+  - `crates/belt-agent/tests/e2e_test.rs`: end-to-end URI workflow 1 fn
+- **shape lock**:
+  - `crates/belt-core/tests/feature_dev_refresh.rs`: 2 fn 追加 (上記 11.4)
+  - `crates/belt-core/tests/bug_fix_refresh.rs`: 2 fn 追加 (上記 11.4)
+  - `crates/belt-core/tests/review_skills_refresh.rs`: 1 fn 追加 (上記 11.4)
+
+**新規追加 fn の集計**:
+
+| File | 新規追加 | scenario binding |
+|---|---:|---|
+| `crates/belt-core/tests/uri_test.rs` | 5 | 必須 |
+| `crates/belt-core/tests/lint_test.rs` | 4 | 必須 |
+| `crates/belt-core/tests/engine_test.rs` | 1 | 必須 |
+| `crates/belt-core/tests/gate_test.rs` | 2 | 必須 |
+| `crates/belt-agent/tests/cli_test.rs` | 14 | 必須 |
+| `crates/belt-agent/tests/e2e_test.rs` | 1 | 必須 |
+| `crates/belt-core/tests/feature_dev_refresh.rs` | 2 | 不要 (shape lock) |
+| `crates/belt-core/tests/bug_fix_refresh.rs` | 2 | 不要 (shape lock) |
+| `crates/belt-core/tests/review_skills_refresh.rs` | 1 | 不要 (shape lock) |
+| **合計** | **32** | scenario 必須 27 + shape lock 5 |
+
+**削除 fn の集計**:
+
+| File | 削除 | 理由 |
+|---|---:|---|
+| `crates/belt-core/tests/engine_test.rs` | 2 | obsolete-spec (`{run_id}` substitute 機構消失) |
+| `crates/belt-agent/tests/cli_test.rs` | 1 | obsolete-spec (URI 版で完全置換) |
+| **合計** | **3** | |
+
+**net 変化**: +29 fn
+
+**scenarios.yml の集計**: 新規 26 scenario (belt-core 12 + belt-agent 14)、obsolete 削除 3 scenario (belt-core 2 + belt-agent 1)、net +23 scenario。
 
 ### 12. protocol/SKILL.md に "Path Resolution" 節追加
 
@@ -684,14 +807,18 @@ themselves — they receive a concrete path.
 | `crates/belt-core/src/lint.rs` | `check_belt_runs_literal` rule 追加 |
 | `crates/belt-agent/src/resolver.rs` | `resolve_current` 追加、`Resolver` struct に `current_run_id` 追加 |
 | `crates/belt-agent/src/main.rs` | `Locate` subcommand 追加、`Resolver` 構築時に `current_run_id` を渡す、regate の `expand_gate_run_id` 削除、status output で URI emit |
-| `crates/belt-core/tests/uri_test.rs` (新規) | `BeltUri::Current` parse / Display / glob / validation test |
-| `crates/belt-agent/tests/cli_test.rs` | `locate` test 追加、`regate_substitutes_run_id_in_target_gate` 削除、status URI shape test |
-| `crates/belt-agent/tests/e2e_test.rs` | URI resolution e2e test 追加 |
-| `crates/belt-core/tests/engine_test.rs` | `{run_id}` substitute test 削除、URI test 追加 |
-| `crates/belt-core/tests/lint_test.rs` | `check_belt_runs_literal` test 追加 |
-| `crates/belt-core/tests/feature_dev_refresh.rs` | produces URI assertion 追加、code-review produces 7 件 assertion |
-| `crates/belt-core/tests/bug_fix_refresh.rs` | 同上 |
-| `crates/belt-core/tests/review_skills_refresh.rs` | REVIEW_SKILLS の produces shape 更新 |
+| `crates/belt-core/tests/uri_test.rs` (新規) | `BeltUri::Current` parse / Display / glob / validation の 5 fn (5 scenario binding) |
+| `crates/belt-agent/tests/cli_test.rs` | `locate` 8 fn + status URI shape 5 fn + regate URI 1 fn 追加 (14 scenario binding)、obsolete `regate_substitutes_run_id_in_target_gate` 削除 |
+| `crates/belt-agent/tests/e2e_test.rs` | end-to-end URI workflow 1 fn 追加 |
+| `crates/belt-core/tests/engine_test.rs` | `{run_id}` substitute 関連 2 fn 削除 (audit: obsolete-spec)、URI raw return 1 fn 追加 |
+| `crates/belt-core/tests/lint_test.rs` | `check_belt_runs_literal` 4 fn 追加 (PASS / FAIL × 3) |
+| `crates/belt-core/tests/gate_test.rs` (新規 or inline) | URI resolution + raw path passthrough の 2 fn 追加 |
+| `crates/belt-core/tests/feature_dev_refresh.rs` | shape lock 2 fn 追加 (`feature_dev_produces_use_belt_current_uri` / `feature_dev_pipeline_has_no_run_id_template`)、code-review produces 7 件 assertion、既存 narrative dimension の URI 形式更新 |
+| `crates/belt-core/tests/bug_fix_refresh.rs` | shape lock 2 fn 追加 (同形)、同 produces 拡張、既存 narrative dimension URI 化 |
+| `crates/belt-core/tests/review_skills_refresh.rs` | shape lock 1 fn 追加 (`per_observation_agents_use_output_path_arg_pattern`)、`REVIEW_SKILLS` constant の produces shape 更新 |
+| `docs/testing/cli-behavior/belt-core.yml` | 12 scenario 追加 (URI parse / lint / engine / gate)、obsolete `belt-core-engine-substitutes-run-id-*` 2 scenario 削除 |
+| `docs/testing/cli-behavior/belt-agent.yml` | 14 scenario 追加 (locate / status URI shape / regate URI)、obsolete `belt-agent-regate-substitutes-run-id-in-target-gate` 1 scenario 削除 |
+| `docs/testing/lock-ledger.md` | `feature_dev_refresh.rs` / `bug_fix_refresh.rs` / `review_skills_refresh.rs` entry の test-fn-count 更新 + URI 形式 shape dimensions 追加 (Section 11.4 詳細) |
 | `plugins/belt/skills/feature-dev/pipeline.yml` | 全 phase の path を URI 化、code-review produces 拡張 |
 | `plugins/belt/skills/bug-fix/pipeline.yml` | 同上 |
 | `plugins/belt/skills/handover/checkpoint.yml` | gate URI 化 |
@@ -708,9 +835,6 @@ themselves — they receive a concrete path.
 | `plugins/belt-agent/references/narrative-convention.md` | Path 節を URI 表現に書き換え |
 | `plugins/belt/skills/feature-dev/references/path-convention.md` | `.belt/runs/*/review/findings.json` 言及を URI に書き換え |
 | `plugins/belt-agent/skills/protocol/references/resume-mode.md` | `.belt/runs/<id>/handover.md` を `belt://run/<id>/handover.md` または status 経由に書き換え |
-| `docs/testing/lock-ledger.md` | review_skills_refresh / feature_dev_refresh / bug_fix_refresh entry の produces shape を URI 形式に追記 |
-| `docs/testing/cli-behavior/belt-agent.yml` | `locate` scenario 追加、status の URI shape scenario 追加 |
-| `docs/testing/cli-behavior/belt-core.yml` | URI parse scenario 追加 |
 | `Cargo.lock` | 変更なし (新規依存追加なし) |
 
 ## Migration sequence
@@ -733,10 +857,27 @@ themselves — they receive a concrete path.
 14. **plugins/belt/agents/*.md** (7 file): output_path arg pattern に書き換え
 15. **plugins/belt-agent/skills/protocol/SKILL.md**: "Path Resolution" 節追加
 16. **plugins/belt-agent/references/narrative-convention.md, plugins/belt/skills/feature-dev/references/path-convention.md, plugins/belt-agent/skills/protocol/references/resume-mode.md**: 文書更新
-17. **lock test 全更新**: feature_dev_refresh / bug_fix_refresh / review_skills_refresh / lint_test / engine_test / cli_test / e2e_test
-18. **docs/testing/lock-ledger.md**: produces shape 追記
-19. **docs/testing/cli-behavior/*.yml**: locate / status URI scenario 追加
-20. **CI 確認**:
+17. **`docs/testing/cli-behavior/*.yml` 更新** (Section 11.1 / 11.2):
+    - `belt-core.yml`: 12 scenario 追加 + obsolete 2 scenario 削除
+    - `belt-agent.yml`: 14 scenario 追加 + obsolete 1 scenario 削除
+18. **新規 test fn 追加 + doc-comment binding** (Section 11.6):
+    - `crates/belt-core/tests/uri_test.rs` 新規 (5 fn, scenario binding 必須)
+    - `crates/belt-core/tests/lint_test.rs` 4 fn 追加 (scenario binding 必須)
+    - `crates/belt-core/tests/engine_test.rs` 2 fn 削除 + 1 fn 追加 (scenario binding 必須)
+    - `crates/belt-core/tests/gate_test.rs` (新規 or inline) 2 fn 追加 (scenario binding 必須)
+    - `crates/belt-agent/tests/cli_test.rs` 14 fn 追加 + 1 fn 削除 (scenario binding 必須)
+    - `crates/belt-agent/tests/e2e_test.rs` 1 fn 追加 (scenario binding 必須)
+19. **shape lock test 更新** (Section 11.4):
+    - `feature_dev_refresh.rs` 2 fn 追加 (scenario ID 不要 — shape lock)
+    - `bug_fix_refresh.rs` 2 fn 追加 (scenario ID 不要)
+    - `review_skills_refresh.rs` 1 fn 追加 (scenario ID 不要)
+20. **`docs/testing/lock-ledger.md` 更新** (Section 11.4):
+    - 上記 3 entry の test-fn-count 更新 + shape dimensions B 追記
+21. **`scenarios_contract.rs` 通過確認**:
+    - symmetric diff (yml ↔ doc-comment) zero
+    - `lock_ledger_locks_files_exist` PASS
+    - `audit_template_version` v1 unchanged check PASS
+22. **CI 確認**:
     - `cargo fmt --all`
     - `cargo clippy --workspace -- -D warnings`
     - `cargo test --workspace`
@@ -755,6 +896,12 @@ themselves — they receive a concrete path.
   - **採用案**: pipeline.yml に書かれた URI は **runtime 解決時の** current run を指す。init 時は newly-created run、status 時は `--run` または latest
 - **Q4**: code-review の merged `findings.json` を produces に含めるか
   - **採用案**: 含める (orchestrator が書く merged 結果も SSOT 化)。pipeline.yml の produces count は 7 で許容
+- **Q5**: audit-template.md version を本 spec で bump するか
+  - **採用案**: bump しない (v1 維持)。本 spec の test 削除はすべて `obsolete-spec` reason label で表現可能、新 label 不要。`scenarios_contract.rs::audit_template_version` test も touch しない
+- **Q6**: obsolete scenario ID の確定タイミング
+  - **採用案**: Plan 着手時 (writing-plans フェーズの Task 0) に `grep -n 'run_id' docs/testing/cli-behavior/*.yml` を実行して obsolete scenario ID を確定し、Task 名と削除対象を Plan 内で固定する。本 spec の Section 11.2 の推定 ID は invariant ではない (将来 yml が rename された場合に備えて、Plan 段階で grep 再実行)
+- **Q7**: `regate_substitutes_run_id_in_target_gate` を URI version で完全置換するか別 fn として残すか
+  - **採用案**: 完全置換 (新 fn `regate_resolves_uri_in_target_gate` が同等 behavior を URI 経由でカバー、旧 fn は obsolete-spec で削除)
 
 ## References
 
@@ -770,6 +917,11 @@ themselves — they receive a concrete path.
 - `plugins/belt-agent/references/narrative-convention.md` — 既存 path convention 文書
 - `docs/specs/2026-04-14-belt-context-neutral-narrative-artifact.md` — narrative artifact 設計の前提
 - `docs/specs/2026-04-07-belt-status-enrichment.md` — status enrichment (BELT-29) の設計
-- `docs/testing/lock-ledger.md` — lock test 台帳
+- `docs/testing/README.md` — belt test SSOT + lock meta の 3 層構造 (scenarios.yml / lock-ledger / audit-template)
+- `docs/testing/cli-behavior/{belt,belt-agent,belt-core}.yml` — CLI behavioral scenario SSOT (本 spec で 26 scenario 追加 + 3 obsolete 削除)
+- `docs/testing/lock-ledger.md` — plugin shape lock 台帳 (本 spec で 3 entry 更新)
+- `docs/testing/audit-template.md` — audit v1 9 reason labels (本 spec の test 削除は `obsolete-spec` で表現)
+- `crates/belt-core/tests/scenarios_contract.rs` — yml ↔ doc-comment 機械照合 (本 spec で walk 対象 fn 増加、contract 自身は不変)
 - memory `feedback_belt_cli_vs_skill_responsibility.md` — belt CLI と skill の責務分離原則
 - memory `project_belt_agent_json_shape_asymmetry.md` — 既存 init/next vs status の shape asymmetry (本 spec で解消)
+- memory `project_belt_test_foundation_f1.md` — F1 で確立した 3 層 test 基盤 (scenarios.yml SSOT + scenarios_contract binding + pilot)
