@@ -555,6 +555,69 @@ phases:
 }
 
 #[test]
+fn regate_substitutes_run_id_in_target_gate() {
+    // Regression: `belt-agent regate` was checking target-phase gates with
+    // unsubstituted `{run_id}` placeholders, so any phase whose regate
+    // target referenced a run-scoped path (e.g. a narrative note under
+    // `.belt/runs/{run_id}/notes/`) failed regate even when the file
+    // existed at the resolved path. `next_phase_info` substitutes for the
+    // current phase, but `expand_pipeline` does not (it has no runtime
+    // state); regate must apply the substitution itself.
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: regate-run-id
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-design.md"
+  - id: build
+    description: "Build"
+    gate:
+      - cmd: "true"
+    regate: [design]
+  - id: done
+    description: "Done"
+"#,
+    );
+
+    let init = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let run_id = init["run_id"].as_str().unwrap().to_string();
+
+    let notes_dir = dir
+        .path()
+        .join(".belt")
+        .join("runs")
+        .join(&run_id)
+        .join("notes");
+    std::fs::create_dir_all(&notes_dir).unwrap();
+    std::fs::write(notes_dir.join("phase-design.md"), "").unwrap();
+
+    run_belt_agent(&dir, &["verify", "--run", &run_id]);
+    run_belt_agent(&dir, &["step", "--run", &run_id]);
+    run_belt_agent(&dir, &["verify", "--run", &run_id]);
+
+    let regate = run_belt_agent(&dir, &["regate", "--run", &run_id]);
+    assert_eq!(
+        regate["all_passed"], true,
+        "regate must pass when target file exists at resolved path"
+    );
+    assert_eq!(regate["targets"]["design"]["passed"], true);
+
+    let detail = regate["targets"]["design"]["checks"][0]["detail"]
+        .as_str()
+        .unwrap();
+    assert!(
+        !detail.contains("{run_id}"),
+        "regate detail must not retain unsubstituted placeholder: {detail}"
+    );
+}
+
+#[test]
 fn regate_no_targets_returns_empty() {
     let dir = TempDir::new().unwrap();
     write_yaml(

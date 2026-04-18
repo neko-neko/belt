@@ -562,9 +562,17 @@ fn execute_regate_targets(
                 miette::miette!("regate target '{}' not found in pipeline", target_id)
             })?;
 
+        // The expander does not substitute `{run_id}` (it has no access to
+        // runtime state). Apply the same gate-text expansion that
+        // `next_phase_info` applies to the current phase, otherwise gates
+        // like `file_exists: ".belt/runs/{run_id}/notes/phase-X.md"` would
+        // be checked against the literal `{run_id}` directory.
+        let mut target_gate = target_phase.gate.clone();
+        belt_core::engine::expand_gate_run_id(&mut target_gate, &state.run_id);
+
         let run_dir = belt.join("runs").join(&state.run_id);
         let output_dir = run_dir.join(target_id.replace('/', "_"));
-        let results = execute_gates(&target_phase.gate, &work_dir, &output_dir);
+        let results = execute_gates(&target_gate, &work_dir, &output_dir);
         let passed = all_passed(&results);
         if !passed {
             all_passed_flag = false;
