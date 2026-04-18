@@ -1,2 +1,100 @@
-scope: "F3 で拡充予定。対象 = belt-agent CLI 全 subcommand (init, next, verify, regate, step, status) の JSON contract + state.json shape。F1 scope では列挙せず scope 宣言のみ"
-scenarios: []
+scope: "belt-agent CLI subcommand JSON contract + state.json shape. 2026-04-18: locate command + status URI shape (14 scenarios). F3 で全 subcommand カバレッジ拡充予定"
+scenarios:
+  - id: belt-agent-locate-resolves-current-uri-happy
+    category: locate
+    severity: high
+    technique: equivalence-partition
+    given: "an existing run with a file at <run_dir>/notes/phase-design.md"
+    when: "`belt-agent locate belt://current/notes/phase-design.md` is invoked"
+    then: "stdout JSON has uri, path (absolute), exists=true; exit 0"
+  - id: belt-agent-locate-defaults-to-latest-run
+    category: locate
+    severity: high
+    technique: equivalence-partition
+    given: "multiple runs in .belt/runs/ with the latest being run_id X"
+    when: "`belt-agent locate belt://current/<path>` is invoked WITHOUT --run"
+    then: "the resolved path is rooted at <belt_dir>/runs/X/<path>"
+  - id: belt-agent-locate-uses-explicit-run
+    category: locate
+    severity: high
+    technique: equivalence-partition
+    given: "multiple runs in .belt/runs/ and --run <id> targeting a non-latest run"
+    when: "`belt-agent locate belt://current/<path> --run <id>` is invoked"
+    then: "the resolved path is rooted at <belt_dir>/runs/<id>/<path>"
+  - id: belt-agent-locate-errors-when-no-current-run
+    category: locate
+    severity: high
+    technique: error-guessing
+    given: "no runs exist in .belt/runs/ and --run is not passed"
+    when: "`belt-agent locate belt://current/<path>` is invoked"
+    then: "exit non-zero with a NoCurrentRun-style miette diagnostic on stderr"
+  - id: belt-agent-locate-errors-on-malformed-uri
+    category: locate
+    severity: medium
+    technique: error-guessing
+    given: "an invalid URI string (e.g. 'belt://garbage')"
+    when: "`belt-agent locate <bad-uri>` is invoked"
+    then: "exit non-zero with a parse error diagnostic"
+  - id: belt-agent-locate-emits-exists-false-for-missing-write-target
+    category: locate
+    severity: medium
+    technique: boundary-value
+    given: "a current run with no file yet at <run_dir>/notes/phase-X.md"
+    when: "`belt-agent locate belt://current/notes/phase-X.md` is invoked"
+    then: "stdout JSON has exists=false and path equal to the would-be absolute path"
+  - id: belt-agent-locate-resolves-glob-uri
+    category: locate
+    severity: medium
+    technique: equivalence-partition
+    given: "multiple files at <run_dir>/notes/phase-*.md and a glob URI"
+    when: "`belt-agent locate belt://current/notes/phase-*.md` is invoked"
+    then: "stdout JSON has exists=true; path matches one of the existing files"
+  - id: belt-agent-locate-emits-glob-base-when-zero-match
+    category: locate
+    severity: medium
+    technique: boundary-value
+    given: "a glob URI with zero matching files"
+    when: "`belt-agent locate <glob-uri>` is invoked"
+    then: "stdout JSON has exists=false and path is the declared base (or empty match list)"
+  - id: belt-agent-status-emits-uri-field-for-uri-produces
+    category: status
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose produces.path is declared as belt://current/..."
+    when: "`belt-agent status` is invoked"
+    then: "the produces entry in JSON has a 'uri' field equal to the declared URI"
+  - id: belt-agent-status-emits-path-field-for-raw-produces
+    category: status
+    severity: high
+    technique: equivalence-partition
+    given: "a phase whose produces.path is a raw domain path (e.g. docs/features/*/design.md)"
+    when: "`belt-agent status` is invoked"
+    then: "the produces entry in JSON has a 'path' field equal to the declared path"
+  - id: belt-agent-status-uri-and-path-are-mutually-exclusive
+    category: status
+    severity: medium
+    technique: boundary-value
+    given: "any produces entry in status output"
+    when: "`belt-agent status` is invoked"
+    then: "the entry has either 'uri' OR 'path' but never both simultaneously"
+  - id: belt-agent-init-emits-uri-in-phase-produces
+    category: init
+    severity: medium
+    technique: equivalence-partition
+    given: "a pipeline whose first phase declares a belt://current/ produces URI"
+    when: "`belt-agent init <pipeline.yml>` is invoked"
+    then: "the init JSON's phase.produces[].uri matches the declared URI"
+  - id: belt-agent-next-emits-uri-in-phase-produces
+    category: next
+    severity: medium
+    technique: equivalence-partition
+    given: "a pipeline phase that declares a belt://current/ produces URI"
+    when: "`belt-agent next` is invoked"
+    then: "the next JSON's phase.produces[].uri matches the declared URI"
+  - id: belt-agent-regate-resolves-uri-in-target-gate
+    category: regate
+    severity: high
+    technique: equivalence-partition
+    given: "a regate target phase whose gate.file_exists is a belt://current/ URI"
+    when: "`belt-agent regate` runs against the target"
+    then: "the URI is resolved against the current run_dir and the gate passes when the file exists"
