@@ -75,14 +75,15 @@ audit: required
 - **severity**: blocker
 - **verify_type**: inspection
 - **verification**:
-  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-fix-plan.md`
-  2. Verify frontmatter contains `phase: fix-plan` and `run_id: <run_id>`
-  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
-  4. Verify Decisions records task decomposition rationale tracing back to RCA Fix Strategy
-  5. Verify Directives records test-first requirements and regression scope for the execute phase
-- **pass_condition**: Steps 1-5 all pass
+  1. Read `belt-agent status` and locate the artifact `fix_plan_notes` resolved_path
+  2. Verify the file exists at the resolved_path
+  3. Verify frontmatter contains `phase: fix-plan` and `run_id: <run_id>`
+  4. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  5. Verify Decisions records task decomposition rationale tracing back to RCA Fix Strategy
+  6. Verify Directives records test-first requirements and regression scope for the execute phase
+- **pass_condition**: Steps 1-6 all pass
 - **fail_diagnosis_hint**: If Decisions lacks RCA traceability, re-read the RCA report's Fix Strategy and re-derive task boundaries. If Directives empty, articulate which regression test set must run during execute. See `plugins/belt-agent/references/narrative-convention.md` for schema
-- **depends_on_artifacts**: [.belt/runs/*/notes/phase-fix-plan.md]
+- **depends_on_artifacts**: [fix_plan_notes]
 
 ## Observation Collection
 

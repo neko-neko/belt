@@ -56,46 +56,50 @@ audit: required
 - **severity**: blocker
 - **verify_type**: inspection
 - **verification**:
-  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-code-review.md`
-  2. Verify frontmatter contains `phase: code-review` and `run_id: <run_id>`
-  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
-  4. Verify Decisions records which review findings were accepted / rejected and why
-  5. Verify Directives flags carry-over concerns for downstream phases (e.g. regression tests to run in monkey-test)
-- **pass_condition**: Steps 1-5 all pass; narrative records specific review outcomes not abstract "code reviewed"
+  1. Read `belt-agent status` and locate the artifact `code_review_notes` resolved_path
+  2. Verify the file exists at the resolved_path
+  3. Verify frontmatter contains `phase: code-review` and `run_id: <run_id>`
+  4. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  5. Verify Decisions records which review findings were accepted / rejected and why
+  6. Verify Directives flags carry-over concerns for downstream phases (e.g. regression tests to run in monkey-test)
+- **pass_condition**: Steps 1-6 all pass; narrative records specific review outcomes not abstract "code reviewed"
 - **fail_diagnosis_hint**: If Decisions lacks accept/reject rationale, re-read review findings and enumerate. If Directives empty, consider whether monkey-test / dogfood needs specific regression coverage. See `plugins/belt-agent/references/narrative-convention.md` for schema
-- **depends_on_artifacts**: [.belt/runs/*/notes/phase-code-review.md]
+- **depends_on_artifacts**: [code_review_notes]
 
 ### CODE-REVIEW-06: Merged findings.json exists at the canonical path
 - **severity**: blocker
 - **verify_type**: automated
 - **verification**:
-  1. Verify file exists at `.belt/runs/<run_id>/review/findings.json`
-  2. Parse as JSON and confirm the `findings` array field is present
+  1. Read `belt-agent status` and locate the artifact `findings` resolved_path
+  2. Verify the file exists at the resolved_path
+  3. Parse as JSON and confirm the `findings` array field is present
 - **pass_condition**: File exists AND parses as valid JSON AND contains a `findings` array
 - **fail_diagnosis_hint**: The `/belt:code-review` invocation was interrupted or the merge step was skipped. Re-invoke from the code-review phase
-- **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
+- **depends_on_artifacts**: [findings]
 
 ### CODE-REVIEW-07: All findings in findings.json have a user-approved disposition
 - **severity**: blocker
 - **verify_type**: inspection
 - **verification**:
-  1. Enumerate every finding in `.belt/runs/<run_id>/review/findings.json`
-  2. For each finding, verify the user has recorded a disposition (accepted for fix, or explicitly rejected)
-  3. List findings lacking a user-approved disposition
-- **pass_condition**: Step 3 list is empty — every finding has been triaged by the user
+  1. Read `belt-agent status` and locate the artifact `findings` resolved_path
+  2. Enumerate every finding in the file at that resolved_path
+  3. For each finding, verify the user has recorded a disposition (accepted for fix, or explicitly rejected)
+  4. List findings lacking a user-approved disposition
+- **pass_condition**: Step 4 list is empty — every finding has been triaged by the user
 - **fail_diagnosis_hint**: Resume the triage loop in the main context; do NOT let the orchestrator auto-dispose findings. Each finding needs user acknowledgement of accept / reject
-- **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
+- **depends_on_artifacts**: [findings]
 
 ### CODE-REVIEW-08: All accepted findings are applied to the codebase
 - **severity**: blocker
 - **verify_type**: inspection
 - **verification**:
-  1. Filter findings in `findings.json` where the user disposition is "accept" (or equivalent)
-  2. For each accepted finding, verify the corresponding code change appears in `git diff` against the parent phase baseline
-  3. List accepted findings with no corresponding diff
-- **pass_condition**: Step 3 list is empty — every accepted finding has a matching diff
+  1. Read `belt-agent status` and locate the artifact `findings` resolved_path
+  2. Filter findings at that resolved_path where the user disposition is "accept" (or equivalent)
+  3. For each accepted finding, verify the corresponding code change appears in `git diff` against the parent phase baseline
+  4. List accepted findings with no corresponding diff
+- **pass_condition**: Step 4 list is empty — every accepted finding has a matching diff
 - **fail_diagnosis_hint**: Identify unapplied findings and apply them, or downgrade the disposition to "reject" with a recorded rationale. Use `git log --oneline` to verify fix commits exist
-- **depends_on_artifacts**: [.belt/runs/*/review/findings.json]
+- **depends_on_artifacts**: [findings]
 
 ### CODE-REVIEW-09: Project linter passes on the modified files
 - **severity**: blocker

@@ -111,14 +111,15 @@ audit: required
 - **severity**: blocker
 - **verify_type**: inspection
 - **verification**:
-  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-execute.md` (gate already enforces existence, re-confirm)
-  2. Verify frontmatter contains both `phase: execute` and `run_id: <run_id>` fields
-  3. Verify 4 required sections exist in order: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
-  4. Verify each section is either populated or retains its heading (empty sections may carry `(none)` placeholder but heading must be present)
-  5. Verify Decisions / Directives are specific enough for a `/clear`-ed LLM to reconstruct the phase outcome (not vague generalities)
-- **pass_condition**: Steps 1-4 all pass; Step 5 narrative is concrete (references task IDs / file paths / decisions made, not abstract statements)
+  1. Read `belt-agent status` and locate the artifact `execute_notes` resolved_path
+  2. Verify the file exists at the resolved_path (gate already enforces existence, re-confirm)
+  3. Verify frontmatter contains both `phase: execute` and `run_id: <run_id>` fields
+  4. Verify 4 required sections exist in order: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  5. Verify each section is either populated or retains its heading (empty sections may carry `(none)` placeholder but heading must be present)
+  6. Verify Decisions / Directives are specific enough for a `/clear`-ed LLM to reconstruct the phase outcome (not vague generalities)
+- **pass_condition**: Steps 1-5 all pass; Step 6 narrative is concrete (references task IDs / file paths / decisions made, not abstract statements)
 - **fail_diagnosis_hint**: If heading missing, add empty heading. If frontmatter missing, copy `run_id` from `belt-agent step` / `belt-agent status` JSON output. If content is vague, rewrite to cite concrete artifacts (task IDs, file paths, decision triggers). See `plugins/belt-agent/references/narrative-convention.md` for schema
-- **depends_on_artifacts**: [.belt/runs/*/notes/phase-execute.md]
+- **depends_on_artifacts**: [execute_notes]
 
 ## Observation Collection
 

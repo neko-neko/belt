@@ -52,14 +52,15 @@ audit: required
 - **severity**: blocker
 - **verify_type**: inspection
 - **verification**:
-  1. Verify file exists at `.belt/runs/<run_id>/notes/phase-dogfood.md`
-  2. Verify frontmatter contains `phase: dogfood` and `run_id: <run_id>`
-  3. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
-  4. Verify Observations records Symmetry-Pair probe results and Impact Scope coverage
-  5. Verify Concerns flags any Root Cause mechanism re-emergence signals; Directives carries forward regression guards for integrate
-- **pass_condition**: Steps 1-5 all pass
+  1. Read `belt-agent status` and locate the artifact `dogfood_notes` resolved_path
+  2. Verify the file exists at the resolved_path
+  3. Verify frontmatter contains `phase: dogfood` and `run_id: <run_id>`
+  4. Verify 4 required sections exist: `## Decisions`, `## Concerns`, `## Directives`, `## Observations`
+  5. Verify Observations records Symmetry-Pair probe results and Impact Scope coverage
+  6. Verify Concerns flags any Root Cause mechanism re-emergence signals; Directives carries forward regression guards for integrate
+- **pass_condition**: Steps 1-6 all pass
 - **fail_diagnosis_hint**: If Observations missing Symmetry-Pair results, re-derive from RCA report's symmetry analysis. If Concerns empty, explicitly affirm that no regression signals surfaced (or re-explore). See `plugins/belt-agent/references/narrative-convention.md` for schema
-- **depends_on_artifacts**: [.belt/runs/*/notes/phase-dogfood.md]
+- **depends_on_artifacts**: [dogfood_notes]
 
 ## Observation Collection
 
