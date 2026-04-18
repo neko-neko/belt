@@ -554,6 +554,7 @@ phases:
     assert_eq!(regate["targets"]["design"]["passed"], false);
 }
 
+/// scenario: belt-agent-regate-resolves-uri-in-target-gate
 #[test]
 fn regate_resolves_uri_in_target_gate() {
     // Two-phase pipeline: phase `design` produces a notes file via
@@ -1804,4 +1805,403 @@ phases:
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("run not found"), "stderr: {stderr}");
+}
+
+// ---------------------------------------------------------------------------
+// belt:// URI locate / status / init / next scenarios
+// ---------------------------------------------------------------------------
+// These tests bind the 14 CLI-behavior scenarios declared in
+// docs/testing/cli-behavior/belt-agent.yml (category: locate / status /
+// init / next / regate). Each `/// scenario: <id>` doc-comment is the
+// binding consumed by the `scenarios_contract` test (belt-core) to assert
+// symmetric coverage between the declared yml and the rust test suite.
+// ---------------------------------------------------------------------------
+
+/// Helper for locate-scenario setup: fabricate a `.belt/runs/<id>/` dir
+/// (with an empty `state.json`) so `Engine::latest_run_id()` can see it
+/// and `Resolver::resolve_current` finds a run directory. A real `init`
+/// is unnecessary when the scenario only exercises URI resolution.
+fn fabricate_run_dir(dir: &TempDir, run_id: &str) -> std::path::PathBuf {
+    let run_dir = dir.path().join(".belt").join("runs").join(run_id);
+    std::fs::create_dir_all(&run_dir).unwrap();
+    // state.json is consulted by `resolve_latest` but not by
+    // `resolve_current`; we still write a minimal file so that any callers
+    // which iterate the runs directory by glob do not crash.
+    std::fs::write(
+        run_dir.join("state.json"),
+        serde_json::json!({
+            "run_id": run_id,
+            "pipeline": "fabricated",
+            "status": "in_progress",
+        })
+        .to_string(),
+    )
+    .unwrap();
+    run_dir
+}
+
+/// scenario: belt-agent-locate-resolves-current-uri-happy
+#[test]
+fn locate_resolves_current_uri_happy() {
+    let dir = TempDir::new().unwrap();
+    let run_id = "01000000000000000000000001";
+    let run_dir = fabricate_run_dir(&dir, run_id);
+    let notes_dir = run_dir.join("notes");
+    std::fs::create_dir_all(&notes_dir).unwrap();
+    std::fs::write(notes_dir.join("phase-design.md"), "x").unwrap();
+
+    let v = run_belt_agent(&dir, &["locate", "belt://current/notes/phase-design.md"]);
+    assert_eq!(v["uri"], "belt://current/notes/phase-design.md");
+    assert_eq!(v["exists"], true);
+    let path = v["path"].as_str().expect("path is string");
+    assert!(
+        path.ends_with("notes/phase-design.md"),
+        "path must point at the file: {path}"
+    );
+    assert!(
+        std::path::Path::new(path).is_absolute(),
+        "locate must emit an absolute path: {path}"
+    );
+}
+
+/// scenario: belt-agent-locate-defaults-to-latest-run
+#[test]
+fn locate_defaults_to_latest_run() {
+    let dir = TempDir::new().unwrap();
+    let older = "01000000000000000000000001";
+    let newer = "01000000000000000000000002";
+    fabricate_run_dir(&dir, older);
+    let newer_dir = fabricate_run_dir(&dir, newer);
+    // Materialise the target file only inside the newer run so the
+    // "rooted at newer" assertion does not collide with the older run's
+    // shadow path.
+    std::fs::create_dir_all(newer_dir.join("notes")).unwrap();
+    std::fs::write(newer_dir.join("notes").join("n.md"), "x").unwrap();
+
+    let v = run_belt_agent(&dir, &["locate", "belt://current/notes/n.md"]);
+    let path = v["path"].as_str().unwrap();
+    assert!(
+        path.contains(&format!("/runs/{newer}/")),
+        "locate must default to the lexicographically-latest run (UUIDv7): {path}"
+    );
+    assert!(
+        !path.contains(&format!("/runs/{older}/")),
+        "locate must NOT root at the older run when --run is not passed: {path}"
+    );
+}
+
+/// scenario: belt-agent-locate-uses-explicit-run
+#[test]
+fn locate_uses_explicit_run() {
+    let dir = TempDir::new().unwrap();
+    let older = "01000000000000000000000001";
+    let newer = "01000000000000000000000002";
+    fabricate_run_dir(&dir, older);
+    fabricate_run_dir(&dir, newer);
+    // No file needed — we only check path rooting.
+
+    let v = run_belt_agent(
+        &dir,
+        &["locate", "belt://current/notes/n.md", "--run", older],
+    );
+    let path = v["path"].as_str().unwrap();
+    assert!(
+        path.contains(&format!("/runs/{older}/")),
+        "--run must override latest-run selection: {path}"
+    );
+    assert!(
+        !path.contains(&format!("/runs/{newer}/")),
+        "--run target must preempt the newer run: {path}"
+    );
+}
+
+/// scenario: belt-agent-locate-errors-when-no-current-run
+#[test]
+fn locate_errors_when_no_current_run() {
+    let dir = TempDir::new().unwrap();
+    // No runs fabricated; no --run passed.
+    let out = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["locate", "belt://current/notes/n.md"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "locate must exit non-zero when no current run exists"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // Resolver error text from `ResolveError::NoCurrentRun`: "belt://current/
+    // requires a current run". miette wraps it but retains the substring.
+    assert!(
+        stderr.contains("current run") || stderr.contains("NoCurrentRun"),
+        "stderr must surface NoCurrentRun-style diagnostic: {stderr}"
+    );
+}
+
+/// scenario: belt-agent-locate-errors-on-malformed-uri
+#[test]
+fn locate_errors_on_malformed_uri() {
+    let dir = TempDir::new().unwrap();
+    let out = Command::cargo_bin("belt-agent")
+        .unwrap()
+        .args(["locate", "belt://garbage"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "locate must exit non-zero on malformed URI"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // BeltUri::parse emits one of: UnknownSelector, Malformed, MissingScheme,
+    // EmptyPath, PathTraversal. Anchor on the common noun 'URI' to keep the
+    // test robust to small wording changes.
+    assert!(
+        stderr.contains("URI") || stderr.contains("uri") || stderr.contains("selector"),
+        "stderr must surface a parse error diagnostic: {stderr}"
+    );
+}
+
+/// scenario: belt-agent-locate-emits-exists-false-for-missing-write-target
+#[test]
+fn locate_emits_exists_false_for_missing_write_target() {
+    let dir = TempDir::new().unwrap();
+    let run_id = "01000000000000000000000001";
+    let run_dir = fabricate_run_dir(&dir, run_id);
+    // Do NOT create the notes file; this is the "write target not yet
+    // materialised" case used by produces-declaring phases.
+
+    let v = run_belt_agent(&dir, &["locate", "belt://current/notes/phase-X.md"]);
+    assert_eq!(v["exists"], false);
+    let path = v["path"].as_str().unwrap();
+    // macOS tempdirs are mounted under /var/ but resolve to /private/var/ via
+    // `std::env::current_dir`. Assert absoluteness + the expected suffix
+    // rather than exact path equality, to stay portable.
+    assert!(
+        std::path::Path::new(path).is_absolute(),
+        "locate must emit an absolute path: {path}"
+    );
+    let suffix = format!(".belt/runs/{run_id}/notes/phase-X.md");
+    assert!(
+        path.ends_with(&suffix),
+        "path must be the would-be target rooted under the fabricated run: got `{path}`, expected suffix `{suffix}`"
+    );
+    // Silence unused warning for `run_dir` on platforms where the above
+    // suffix check already covers correctness.
+    let _ = run_dir;
+}
+
+/// scenario: belt-agent-locate-resolves-glob-uri
+#[test]
+fn locate_resolves_glob_uri() {
+    let dir = TempDir::new().unwrap();
+    let run_id = "01000000000000000000000001";
+    let run_dir = fabricate_run_dir(&dir, run_id);
+    let notes_dir = run_dir.join("notes");
+    std::fs::create_dir_all(&notes_dir).unwrap();
+    std::fs::write(notes_dir.join("phase-design.md"), "x").unwrap();
+    std::fs::write(notes_dir.join("phase-build.md"), "x").unwrap();
+
+    let v = run_belt_agent(&dir, &["locate", "belt://current/notes/phase-*.md"]);
+    assert_eq!(v["exists"], true);
+    let path = v["path"].as_str().unwrap();
+    // Glob expansion must rewrite `path` to a concrete match, not leave the
+    // literal `*` in place.
+    assert!(!path.contains('*'), "glob path must be expanded: {path}");
+    assert!(
+        path.ends_with("phase-design.md") || path.ends_with("phase-build.md"),
+        "path must be one of the matching files: {path}"
+    );
+}
+
+/// scenario: belt-agent-locate-emits-glob-base-when-zero-match
+#[test]
+fn locate_emits_glob_base_when_zero_match() {
+    let dir = TempDir::new().unwrap();
+    let run_id = "01000000000000000000000001";
+    fabricate_run_dir(&dir, run_id);
+    // No files matching the glob.
+
+    let v = run_belt_agent(&dir, &["locate", "belt://current/notes/phase-*.md"]);
+    assert_eq!(v["exists"], false);
+    let path = v["path"].as_str().unwrap();
+    // Zero-match fallback must keep the declared (literal, un-expanded) path
+    // so callers can still report the base location.
+    assert!(
+        path.contains("phase-*.md"),
+        "zero-match path must retain the declared glob base: {path}"
+    );
+}
+
+/// scenario: belt-agent-status-emits-uri-field-for-uri-produces
+#[test]
+fn status_emits_uri_field_for_uri_produces() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: status-uri
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    produces:
+      - name: notes
+        path: "belt://current/notes/design.md"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    run_belt_agent(&dir, &["init", "pipeline.yml"]);
+
+    let v = run_belt_agent(&dir, &["status"]);
+    let phase0 = &v["phases"][0];
+    let produces0 = &phase0["produces"][0];
+    assert_eq!(
+        produces0["uri"], "belt://current/notes/design.md",
+        "belt:// URI produces must emit `uri` field verbatim"
+    );
+    assert!(
+        produces0.get("path").is_none() || produces0["path"].is_null(),
+        "URI produces must not also emit a `path` field"
+    );
+}
+
+/// scenario: belt-agent-status-emits-path-field-for-raw-produces
+#[test]
+fn status_emits_path_field_for_raw_produces() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: status-path
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    produces:
+      - name: design-doc
+        path: "docs/features/*/design.md"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    run_belt_agent(&dir, &["init", "pipeline.yml"]);
+
+    let v = run_belt_agent(&dir, &["status"]);
+    let produces0 = &v["phases"][0]["produces"][0];
+    assert_eq!(
+        produces0["path"], "docs/features/*/design.md",
+        "raw produces.path must echo the declared path"
+    );
+    assert!(
+        produces0.get("uri").is_none() || produces0["uri"].is_null(),
+        "raw-path produces must not emit a `uri` field"
+    );
+}
+
+/// scenario: belt-agent-status-uri-and-path-are-mutually-exclusive
+#[test]
+fn status_uri_and_path_are_mutually_exclusive() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: status-mutex
+version: 1
+phases:
+  - id: p
+    description: "P"
+    produces:
+      - name: uri-artifact
+        path: "belt://current/notes/u.md"
+      - name: raw-artifact
+        path: "docs/r.md"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    run_belt_agent(&dir, &["init", "pipeline.yml"]);
+
+    let v = run_belt_agent(&dir, &["status"]);
+    let produces = v["phases"][0]["produces"].as_array().unwrap();
+    for entry in produces {
+        let has_uri = entry.get("uri").is_some() && !entry["uri"].is_null();
+        let has_path = entry.get("path").is_some() && !entry["path"].is_null();
+        assert!(
+            has_uri ^ has_path,
+            "each produces entry must set exactly one of uri/path, got: {entry}"
+        );
+    }
+}
+
+/// scenario: belt-agent-init-emits-uri-in-phase-produces
+#[test]
+fn init_emits_uri_in_phase_produces() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: init-uri
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    produces:
+      - name: notes
+        path: "belt://current/notes/design.md"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let v = run_belt_agent(&dir, &["init", "pipeline.yml"]);
+    let produces0 = &v["phase"]["produces"][0];
+    assert_eq!(
+        produces0["uri"], "belt://current/notes/design.md",
+        "init must echo the declared URI in phase.produces[].uri"
+    );
+    assert!(
+        produces0.get("path").is_none() || produces0["path"].is_null(),
+        "URI produces must not also emit a `path` field in init output"
+    );
+}
+
+/// scenario: belt-agent-next-emits-uri-in-phase-produces
+#[test]
+fn next_emits_uri_in_phase_produces() {
+    let dir = TempDir::new().unwrap();
+    write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: next-uri
+version: 1
+phases:
+  - id: design
+    description: "Design"
+    produces:
+      - name: notes
+        path: "belt://current/notes/design.md"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    run_belt_agent(&dir, &["init", "pipeline.yml"]);
+
+    let v = run_belt_agent(&dir, &["next"]);
+    let produces0 = &v["phase"]["produces"][0];
+    assert_eq!(
+        produces0["uri"], "belt://current/notes/design.md",
+        "next must echo the declared URI in phase.produces[].uri"
+    );
+    assert!(
+        produces0.get("path").is_none() || produces0["path"].is_null(),
+        "URI produces must not also emit a `path` field in next output"
+    );
 }

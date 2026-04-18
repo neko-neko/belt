@@ -760,14 +760,51 @@ fn cmd_locate(engine: &Engine, uri_str: &str, run: Option<&String>) -> miette::R
     };
     let resolved_path = resolver.resolve(&uri).map_err(|e| miette::miette!("{e}"))?;
 
-    // existence is computed via fs metadata; for glob URIs this is `glob match >= 1`.
-    // For simplicity here we only handle direct path existence; glob was
-    // expanded by the resolver path semantics.
-    let exists = std::fs::metadata(&resolved_path).is_ok();
+    // Absolutise paths before emission so downstream consumers can treat the
+    // `path` field as a direct filesystem target (scenario
+    // `belt-agent-locate-resolves-current-uri-happy` requires absolute
+    // paths). `belt_dir()` returns a relative `.belt` by design; we join
+    // with cwd here rather than changing that, to keep locate's output
+    // shape independent of where `.belt/` is rooted.
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let absolutise = |p: &Path| -> PathBuf {
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            cwd.join(p)
+        }
+    };
+
+    // Existence semantics:
+    //   * resolved path contains glob metachars (`*`, `?`, `[`) → `glob::glob`
+    //     expansion, `exists = match_count >= 1`; when matched, `path` is
+    //     rewritten to the first concrete match (scenarios
+    //     `belt-agent-locate-resolves-glob-uri` /
+    //     `belt-agent-locate-emits-glob-base-when-zero-match`).
+    //   * otherwise → `fs::metadata` existence check on the literal path.
+    let resolved_abs = absolutise(&resolved_path);
+    let resolved_str = resolved_abs.display().to_string();
+    let is_glob =
+        resolved_str.contains('*') || resolved_str.contains('?') || resolved_str.contains('[');
+    let (exists, emitted_path) = if is_glob {
+        match glob::glob(&resolved_str) {
+            Ok(iter) => {
+                let matches: Vec<_> = iter.filter_map(Result::ok).collect();
+                if matches.is_empty() {
+                    (false, resolved_str.clone())
+                } else {
+                    (true, absolutise(&matches[0]).display().to_string())
+                }
+            }
+            Err(_) => (false, resolved_str.clone()),
+        }
+    } else {
+        (std::fs::metadata(&resolved_abs).is_ok(), resolved_str)
+    };
 
     let out = json!({
         "uri": uri.to_string(),
-        "path": resolved_path.display().to_string(),
+        "path": emitted_path,
         "exists": exists,
     });
     println!(

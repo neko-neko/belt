@@ -152,6 +152,7 @@ dependencies = [
  "assert_cmd",
  "belt-core",
  "clap",
+ "glob",
  "miette",
  "predicates",
  "serde_json",
