@@ -12,16 +12,46 @@
 #![allow(
     clippy::expect_used,
     clippy::panic,
-    clippy::match_wildcard_for_single_variants,
     reason = "integration test: panic-on-mismatch is the intended assertion style"
 )]
 
 use belt_core::expander::expand_pipeline;
-use belt_core::parser::parse_pipeline;
+use belt_core::model::ExpandedPhase;
 use tempfile::TempDir;
 
 mod common;
 use common::helpers::write_yaml;
+
+/// Assert the rendered `invoke` Debug for `phase_id` contains every string
+/// in `must_contain` and none in `must_not_contain`. Lets multi-phase
+/// isolation tests stay readable without re-stating the find/format dance
+/// once per phase. Tagged `#[track_caller]` so panics point at the test
+/// site, not this helper.
+#[track_caller]
+fn assert_invoke_strings(
+    expanded: &[ExpandedPhase],
+    phase_id: &str,
+    must_contain: &[&str],
+    must_not_contain: &[&str],
+) {
+    let phase = expanded
+        .iter()
+        .find(|p| p.id == phase_id)
+        .unwrap_or_else(|| panic!("phase '{phase_id}' present in expansion"));
+    let rendered = format!("{:?}", phase.invoke);
+    for needle in must_contain {
+        assert!(
+            rendered.contains(needle),
+            "phase '{phase_id}' invoke missing expected '{needle}': {rendered}"
+        );
+    }
+    for needle in must_not_contain {
+        assert!(
+            !rendered.contains(needle),
+            "phase '{phase_id}' invoke leaked '{needle}': {rendered}"
+        );
+    }
+}
 
 /// Integration coverage for `expand_pipeline` substituting `args.<name>`
 /// templates inside a sub-phase's `invoke.args` map from the parent's
@@ -72,9 +102,6 @@ phases:
 "#,
     );
 
-    // Round-trip through `parse_pipeline` first so the test exercises the
-    // full declarative path (parse → expand), not just the expander.
-    let _ = parse_pipeline(&parent).expect("parse parent");
     let expanded = expand_pipeline(&parent).expect("expand");
 
     // Exactly one expanded phase whose namespaced id carries the sub-phase.
@@ -170,13 +197,14 @@ phases:
 }
 
 /// Parent-scope args MUST NOT be rewritten by sub-pipeline `with`
-/// substitution. The parent has a sibling leaf phase (`parent-leaf`) whose
-/// `invoke.args` map references `args.name`. A sibling phase (`call-sub`)
-/// invokes a sub-pipeline with `with: { name: "/sub-override" }`. After
-/// expansion, the substitution applied inside the sub-pipeline MUST NOT
-/// leak to the parent-leaf's `invoke.args` map. The sub-phase's own
-/// `invoke.args` gets substituted (sub scope) while the parent-leaf keeps
-/// its original `args.name` template intact (parent scope).
+/// substitution, and each sub-pipeline call must receive its own scoped
+/// substitution without bleeding into a sibling call. The parent has
+/// three leaves: `call-sub` invokes `sub.yml` with `name: "/sub-override"`,
+/// `call-sub-2` invokes the same sub-pipeline with `name: "/leaf-override"`,
+/// and `parent-leaf` is a direct-skill leaf whose `invoke.args` references
+/// `args.name`. After expansion the two sub-pipeline calls must each carry
+/// only their own override, and the parent-leaf must keep its literal
+/// `args.name` template intact.
 ///
 /// This probes the parent-scope isolation invariant directly via the
 /// `Vec<ExpandedPhase>` output of `expand_pipeline`. An earlier revision
@@ -184,7 +212,10 @@ phases:
 /// ownership alone guaranteed because `expand_pipeline` takes `&Path` and
 /// cannot physically mutate the caller's `pipeline` binding. That shape
 /// would pass even under a hypothetically broken expander that rewrote
-/// parent values, so it did not test the spec intent.
+/// parent values, so it did not test the spec intent. The second
+/// sibling sub-pipeline call covers the subtler mutation where a broken
+/// expander might share a single substitution buffer across sibling
+/// calls — catching it requires two calls with distinct override values.
 ///
 /// scenario: belt-core-expander-with-parent-scope-not-rewritten-by-sub-substitution
 #[test]
@@ -227,6 +258,11 @@ phases:
       pipeline: sub.yml
       with:
         name: "/sub-override"
+  - id: call-sub-2
+    invoke:
+      pipeline: sub.yml
+      with:
+        name: "/leaf-override"
   - id: parent-leaf
     description: "parent scope leaf"
     invoke:
@@ -238,40 +274,29 @@ phases:
 "#,
     );
 
-    // Round-trip parse for the full declarative path.
-    let _ = parse_pipeline(&parent).expect("parse parent");
     let expanded = expand_pipeline(&parent).expect("expand");
 
-    // The parent-leaf sibling must not be touched by the sub-pipeline's
-    // `with` substitution — its `invoke.args.name` template must stay
-    // literal, and must NOT contain the sub-scope override value.
-    let parent_leaf = expanded
-        .iter()
-        .find(|p| p.id == "parent-leaf")
-        .expect("parent-leaf phase present in expansion");
-    let parent_rendered = format!("{:?}", parent_leaf.invoke);
-    assert!(
-        parent_rendered.contains("args.name"),
-        "parent-leaf invoke.args template was rewritten (expected literal 'args.name'): {parent_rendered}"
+    // parent-leaf: literal `args.name` preserved; neither sibling's override leaks.
+    assert_invoke_strings(
+        &expanded,
+        "parent-leaf",
+        &["args.name"],
+        &["/sub-override", "/leaf-override"],
     );
-    assert!(
-        !parent_rendered.contains("/sub-override"),
-        "parent-leaf leaked sub-pipeline with override into parent scope: {parent_rendered}"
+    // call-sub/step: receives its own override; nothing from the other sibling
+    // and no remaining template — positive control + cross-call isolation.
+    assert_invoke_strings(
+        &expanded,
+        "call-sub/step",
+        &["/sub-override"],
+        &["args.name", "/leaf-override"],
     );
-
-    // The sub-phase itself DID receive the with-substitution — this
-    // confirms substitution happened in sub scope (positive control).
-    let sub_phase = expanded
-        .iter()
-        .find(|p| p.id == "call-sub/step")
-        .expect("sub phase call-sub/step present in expansion");
-    let sub_rendered = format!("{:?}", sub_phase.invoke);
-    assert!(
-        sub_rendered.contains("/sub-override"),
-        "sub-phase did not receive with substitution (expected '/sub-override'): {sub_rendered}"
-    );
-    assert!(
-        !sub_rendered.contains("args.name"),
-        "sub-phase template was not substituted (still contains 'args.name'): {sub_rendered}"
+    // call-sub-2/step: receives its own distinct override — proves per-call
+    // scoping rather than a shared substitution buffer.
+    assert_invoke_strings(
+        &expanded,
+        "call-sub-2/step",
+        &["/leaf-override"],
+        &["args.name", "/sub-override"],
     );
 }

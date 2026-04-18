@@ -62,7 +62,7 @@ F2b audit 結果。F2a で確立した SSOT + binding realization の上に、Fo
 
 ### Item 5: lock-ledger bug_fix_refresh entry expansion
 
-- lock-ledger.md の bug_fix_refresh.rs entry が F1 で stub 状態 ("F2/F3 で同様の shape dimension 列挙を行う") だったのを feature_dev_refresh.rs template 並みに expansion (+35-40 行、19 test-fn names + 9 shape dimensions + 2 cross-coupling)
+- lock-ledger.md の bug_fix_refresh.rs entry が F1 で stub 状態 ("F2/F3 で同様の shape dimension 列挙を行う") だったのを feature_dev_refresh.rs template 並みに expansion (+35-40 行、19 test-fn names + 17 shape dimensions + 2 cross-coupling)
 - `scenarios_contract::lock_ledger_locks_files_exist` は `locks-file:` field のみ machine-check、shape dimensions / test-fn-count / cross-coupling は human-review content
 
 ### Item 6: expander_with_test.rs 0 test 解消
@@ -104,7 +104,7 @@ F3 (belt-agent behavior SSOT + cross-crate duplication) で扱う項目:
 | metric | F2a merge (baseline) | F2b completion | delta |
 |---|---|---|---|
 | workspace tests | 408 | 411 | +3 (Item 2 -5 + Item 3 +5 + Item 6 +3, Item 1 ±0, Item 4/5/7 ±0) |
-| belt-core scenarios | 114 | 131 | +17 (uri +7, gate +5, error +2, expander +3) |
+| belt-core scenarios | 108 | 125 | +17 (uri +7, gate +5, error +2, expander +3) |
 | new files | — | 3 | common/{mod,helpers,narrative}.rs |
 | deleted files | — | 0 | (tombstone保持、inline削除は削除ではなく移植) |
 

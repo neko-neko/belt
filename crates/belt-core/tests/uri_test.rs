@@ -6,9 +6,10 @@
 )]
 
 //! Integration tests for belt-core `BeltUri` parsing.
-//! White-box unit tests for each error variant live in src/uri.rs #[cfg(test)] mod.
-//! This file covers black-box behavior of the three selector variants (Run / Latest /
-//! `WorkspaceLatest`) and the overall parse contract.
+//! The previous inline `#[cfg(test)] mod tests` block in `src/uri.rs` was removed in F2b;
+//! all parse, Display, and serde behavior is exercised here.
+//! Covers black-box behavior of the three selector variants (Run / Latest / `WorkspaceLatest`)
+//! and the overall parse contract.
 
 use belt_core::uri::{BeltUri, UriParseError};
 
@@ -68,6 +69,11 @@ fn non_belt_scheme_is_rejected() {
         matches!(err, UriParseError::MissingScheme(_)),
         "expected MissingScheme, got {err:?}"
     );
+    let err_empty = BeltUri::parse("").expect_err("empty input must be rejected");
+    assert!(
+        matches!(err_empty, UriParseError::MissingScheme(_)),
+        "expected MissingScheme for empty input, got {err_empty:?}"
+    );
 }
 
 /// scenario: belt-core-uri-path-traversal-rejected
@@ -78,6 +84,12 @@ fn path_traversal_segment_is_rejected() {
     assert!(
         matches!(err, UriParseError::PathTraversal { .. }),
         "expected PathTraversal, got {err:?}"
+    );
+    let err_mid = BeltUri::parse("belt://latest/feature-dev/notes/../secret")
+        .expect_err("mid-path traversal must be rejected");
+    assert!(
+        matches!(err_mid, UriParseError::PathTraversal { .. }),
+        "expected PathTraversal for mid-path segment, got {err_mid:?}"
     );
 }
 
@@ -137,5 +149,35 @@ fn to_string_roundtrip_all_variants() {
         let restr = parsed.to_string();
         let reparsed = BeltUri::parse(&restr).expect("reparse ok");
         assert_eq!(parsed, reparsed, "roundtrip mismatch: {s} -> {restr}");
+        // Lock the canonical Display form: a drift to a non-canonical-but-still-
+        // parseable string (e.g. inserting './' or a trailing '/') would silently
+        // corrupt serde Serialize output because it delegates to to_string().
+        assert_eq!(restr, s, "display canonical-form drift: {s} -> {restr}");
+    }
+}
+
+/// scenario: belt-core-uri-serde-roundtrip-all-variants
+#[test]
+fn serde_roundtrip_all_variants() {
+    let inputs = [
+        "belt://run/01932000-0000-7000-8000-000000000001/notes/x.md",
+        "belt://latest/feature-dev/notes/y.md",
+        "belt://workspace/develop/latest/feature-dev/z.md",
+    ];
+    for s in inputs {
+        let original = BeltUri::parse(s).expect("parse ok");
+        let json = serde_json::to_string(&original).expect("serialize ok");
+        let back: BeltUri = serde_json::from_str(&json).expect("deserialize ok");
+        assert_eq!(
+            original, back,
+            "serde roundtrip mismatch for {s}: json={json}"
+        );
+        // Serialize delegates to Display (src/uri.rs); the JSON wire form
+        // is therefore the canonical URI string wrapped in quotes.
+        assert_eq!(
+            json,
+            format!("\"{s}\""),
+            "serde wire form drift: {s} -> {json}"
+        );
     }
 }

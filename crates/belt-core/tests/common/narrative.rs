@@ -11,8 +11,9 @@
 
 use belt_core::model::{Artifact, ArtifactRef, GateCheck, Phase, Pipeline};
 
-/// Find a `Phase` by id, panicking on miss.
-pub(crate) fn find_phase<'a>(pipeline: &'a Pipeline, id: &str) -> &'a Phase {
+/// Find a `Phase` by id, panicking on miss. Private to the module; the
+/// `assert_*` helpers below are the public surface.
+fn find_phase<'a>(pipeline: &'a Pipeline, id: &str) -> &'a Phase {
     pipeline
         .phases
         .iter()
@@ -21,7 +22,7 @@ pub(crate) fn find_phase<'a>(pipeline: &'a Pipeline, id: &str) -> &'a Phase {
 }
 
 /// Find a produced `Artifact` by name within a `Phase`.
-pub(crate) fn find_produce<'a>(phase: &'a Phase, name: &str) -> &'a Artifact {
+fn find_produce<'a>(phase: &'a Phase, name: &str) -> &'a Artifact {
     phase
         .produces
         .iter()
@@ -30,7 +31,7 @@ pub(crate) fn find_produce<'a>(phase: &'a Phase, name: &str) -> &'a Artifact {
 }
 
 /// True if `phase` has a `file_exists: <path>` gate.
-pub(crate) fn has_file_exists_gate(phase: &Phase, path: &str) -> bool {
+fn has_file_exists_gate(phase: &Phase, path: &str) -> bool {
     phase
         .gate
         .iter()
@@ -38,7 +39,7 @@ pub(crate) fn has_file_exists_gate(phase: &Phase, path: &str) -> bool {
 }
 
 /// True if `phase` consumes `name` as `ArtifactRef::Named`.
-pub(crate) fn has_named_consume(phase: &Phase, name: &str) -> bool {
+fn has_named_consume(phase: &Phase, name: &str) -> bool {
     phase
         .consumes
         .iter()

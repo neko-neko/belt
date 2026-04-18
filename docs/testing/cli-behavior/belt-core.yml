@@ -895,3 +895,10 @@ scenarios:
     given: "a BeltUri in any of the 3 variants (Run, Latest, WorkspaceLatest)"
     when: "to_string is called then parse is called on the result"
     then: "the round-trip yields the original BeltUri value"
+  - id: belt-core-uri-serde-roundtrip-all-variants
+    category: uri
+    severity: medium
+    technique: state-transition
+    given: "a BeltUri in any of the 3 variants (Run, Latest, WorkspaceLatest)"
+    when: "serde_json::to_string is called then serde_json::from_str is called on the result"
+    then: "the serde round-trip yields the original BeltUri value and the JSON wire form is the canonical URI string"

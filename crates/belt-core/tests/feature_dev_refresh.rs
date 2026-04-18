@@ -13,19 +13,14 @@ use belt_core::{
 };
 
 mod common;
+use common::helpers::repo_root;
 use common::narrative::{
     assert_narrative_accumulating_consumes, assert_narrative_gate_paths,
     assert_narrative_produce_paths, assert_non_narrative_phases_have_no_notes,
 };
 
 fn feature_dev_pipeline_path() -> PathBuf {
-    // `CARGO_MANIFEST_DIR` points at `crates/belt-core`; walk two levels up to
-    // reach the workspace root, then join the pipeline path.
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("..");
-    path.push("..");
-    path.push("plugins/belt/skills/feature-dev/pipeline.yml");
-    path
+    repo_root().join("plugins/belt/skills/feature-dev/pipeline.yml")
 }
 
 #[test]
