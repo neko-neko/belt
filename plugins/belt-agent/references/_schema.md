@@ -65,3 +65,7 @@ The phase-auditor applies these rules to produce a verdict:
 - **PASS**: All `blocker` criteria pass. Quality warnings are reported but do not block
 - **FAIL**: At least one `blocker` criterion fails
 - **FAIL with escalation**: Fundamental issue that retries cannot fix. Triggers immediate PAUSE
+
+## See also
+
+- [`evidence-schema.md`](./evidence-schema.md) — evidence schema (the sibling type-only core for evidence-catalog files; criteria may reference evidence via `uses_evidence`).

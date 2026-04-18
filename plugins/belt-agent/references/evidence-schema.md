@@ -55,6 +55,8 @@ Evidence の required_capabilities が満たされない場合の挙動:
 | `required_capabilities` | Yes | Layer 2 実行に必要な capability (例: `[bash]`, `[browser-automation]`) |
 | `condition` | Yes | applicability 判定 (上記記法) |
 | `if_unavailable` | Yes | Policy 選択 |
+| `collection` | Yes | Claimed 収集手順 (Executor が artifact を生成する具体手段) |
+| `variants` | No | 同一 id 内の variant (例: `[desktop, mobile]`) |
 
 ## Phase Reference (Inversion of Control)
 
@@ -77,3 +79,7 @@ Evidence の required_capabilities が満たされない場合の挙動:
 - Schema (本ファイル): `plugins/belt-agent/references/evidence-schema.md`
 - Concrete catalogs: `plugins/belt/skills/<skill>/references/evidence-catalog.md`
 - Phase 側 pick: `plugins/belt/skills/<skill>/criteria/<phase>.md` の `uses_evidence:` field
+
+## See also
+
+- [`_schema.md`](./_schema.md) — done-criteria schema (the sibling type-only core for criteria files; criteria consume evidence via `uses_evidence`).
