@@ -348,32 +348,33 @@ fn skill_md_declares_supplement_injection_per_phase() {
 
 // --- narrative artifact shape (context reset) ---
 
+// Path form: `belt://current/notes/phase-<id>.md` (2026-04-18 URI migration).
 const BUG_FIX_NARRATIVE_PHASES: &[(&str, &str, &str)] = &[
-    ("rca", "rca_notes", ".belt/runs/{run_id}/notes/phase-rca.md"),
+    ("rca", "rca_notes", "belt://current/notes/phase-rca.md"),
     (
         "fix-plan",
         "fix_plan_notes",
-        ".belt/runs/{run_id}/notes/phase-fix-plan.md",
+        "belt://current/notes/phase-fix-plan.md",
     ),
     (
         "execute",
         "execute_notes",
-        ".belt/runs/{run_id}/notes/phase-execute.md",
+        "belt://current/notes/phase-execute.md",
     ),
     (
         "code-review",
         "code_review_notes",
-        ".belt/runs/{run_id}/notes/phase-code-review.md",
+        "belt://current/notes/phase-code-review.md",
     ),
     (
         "monkey-test",
         "monkey_test_notes",
-        ".belt/runs/{run_id}/notes/phase-monkey-test.md",
+        "belt://current/notes/phase-monkey-test.md",
     ),
     (
         "dogfood",
         "dogfood_notes",
-        ".belt/runs/{run_id}/notes/phase-dogfood.md",
+        "belt://current/notes/phase-dogfood.md",
     ),
 ];
 
@@ -466,5 +467,100 @@ fn pre_execute_handover_expands_to_namespaced_checkpoint() {
     assert!(
         ids.contains(&"pre-execute-handover/checkpoint"),
         "expanded pipeline must contain phase id 'pre-execute-handover/checkpoint', got: {ids:?}"
+    );
+}
+
+// --- belt://current URI shape lock (2026-04-18 URI migration) ---
+
+#[test]
+fn bug_fix_produces_use_belt_current_uri() {
+    let pipeline = bug_fix_pipeline();
+    let narrative_phases = [
+        "rca",
+        "fix-plan",
+        "execute",
+        "code-review",
+        "monkey-test",
+        "dogfood",
+    ];
+    for phase in &pipeline.phases {
+        if !narrative_phases.contains(&phase.id.as_str()) {
+            continue;
+        }
+        let notes_artifact = phase
+            .produces
+            .iter()
+            .find(|a| a.name.ends_with("_notes"))
+            .unwrap_or_else(|| panic!("phase {} missing notes artifact", phase.id));
+        let expected = format!("belt://current/notes/phase-{}.md", phase.id);
+        assert_eq!(
+            notes_artifact.path, expected,
+            "phase {} notes path must equal {expected}",
+            phase.id
+        );
+    }
+}
+
+#[test]
+fn bug_fix_pipeline_has_no_run_id_template() {
+    let yaml = std::fs::read_to_string(bug_fix_pipeline_path())
+        .expect("bug-fix pipeline.yml must be readable");
+    assert!(
+        !yaml.contains("{run_id}"),
+        "pipeline must not contain {{run_id}} template anywhere"
+    );
+    assert!(
+        !yaml.contains(".belt/runs/"),
+        "pipeline must not contain .belt/runs/ literal anywhere"
+    );
+}
+
+#[test]
+fn bug_fix_code_review_produces_seven_artifacts() {
+    let pipeline = bug_fix_pipeline();
+    let code_review = pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == "code-review")
+        .expect("code-review phase must exist");
+    let names: Vec<&str> = code_review
+        .produces
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
+    let expected = [
+        "findings-security",
+        "findings-test",
+        "findings-ai-antipattern",
+        "findings-cross-cutting",
+        "findings-codex",
+        "findings",
+        "code_review_notes",
+    ];
+    assert_eq!(
+        names, expected,
+        "code-review produces names + order must match"
+    );
+}
+
+#[test]
+fn bug_fix_fix_plan_review_produces_spec_findings() {
+    let pipeline = bug_fix_pipeline();
+    let fpr = pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == "fix-plan-review")
+        .expect("fix-plan-review phase must exist");
+    let names: Vec<&str> = fpr.produces.iter().map(|a| a.name.as_str()).collect();
+    let expected = [
+        "findings-feasibility",
+        "findings-cross-cutting-spec",
+        "findings-ui-design",
+        "findings-codex",
+        "findings",
+    ];
+    assert_eq!(
+        names, expected,
+        "fix-plan-review produces names + order must match spec-review shape"
     );
 }
