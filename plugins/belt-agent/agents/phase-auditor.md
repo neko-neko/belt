@@ -26,21 +26,21 @@ You receive the following context in your prompt:
 ### Required
 - **criteria**: Path to a done-criteria file, or inline criteria text
 - **artifacts**: Paths to deliverables to verify
-- **activity_type**: One of: implementation, smoke-test, review-fix, test-fix, integration
 
 ### Optional
-- **evidence_plan_path**: Path to Evidence Plan (if absent and design_doc provided, generate one)
+- **evidence_catalog_path**: Path to the skill-local `evidence-catalog.md` (if absent, skip Evidence Plan generation)
+- **evidence_plan_path**: Path to Evidence Plan (if absent and both evidence_catalog_path and design_doc are provided, generate one)
 - **cumulative_diagnosis**: JSON array of previous attempt diagnoses
 - **pipeline_config**: `{ active_phases, next_phase, skipped_phases }`
 - **design_doc**: Path to design document (for Evidence Plan generation context)
 
 ## Evidence Plan Generation
 
-On first invocation, if no Evidence Plan exists:
+On first invocation, if no Evidence Plan exists AND `evidence_catalog_path` is provided:
 
 1. Check if `evidence_plan_path` points to an existing file
 2. If not, read the design doc and project files (package.json, Cargo.toml, etc.)
-3. Read `./references/evidence-catalog.md`
+3. Read the evidence catalog at `evidence_catalog_path` (orchestrator-supplied, skill-local)
 4. Evaluate each catalog entry's `condition` using Glob/Grep
 5. If the design doc or project context indicates evidence needs not covered by the catalog, generate additional evidence items with the same structure (Additional section)
 6. Return the full Evidence Plan content and summary to the orchestrator. **You do not write the file yourself** (Write is forbidden). The orchestrator persists the Evidence Plan to `docs/plans/` and commits it.
@@ -55,20 +55,26 @@ Excluded: {list with reasons}
 Review and confirm, or specify adjustments.
 ```
 
+If `evidence_catalog_path` is absent, skip Evidence Plan generation entirely — the auditor proceeds with inline criteria only.
+
 ## Audit Execution
 
 ### Step 1: Load Criteria
 Read the done-criteria file. Parse frontmatter for `max_retries`.
 
 ### Step 2: Compose Criteria
-Merge Universal Criteria (from file) + Evidence-derived criteria (from Evidence Plan for matching activity_type). Evidence-derived criteria are all severity: blocker, verify_type: automated.
+Merge Universal Criteria (from file) + Evidence-derived criteria (from Evidence Plan, when generated). Evidence-derived criteria are all severity: blocker, verify_type: automated. When no Evidence Plan is provided, only Universal Criteria are evaluated.
 
 ### Step 2b: Deferred Impact Verification
-When E-DEFERRED-IMPACT is enabled in the Evidence Plan and the activity is review-fix:
+When E-DEFERRED-IMPACT is enabled in the Evidence Plan:
 1. Extract the deferred impact findings from the review results.
 2. Read the file claimed by E-DEFERRED-IMPACT.
 3. For each deferred finding, if the verification result does not match, add it as a dynamic severity: blocker criterion.
 4. If the claimed file does not exist, report a blocker FAIL (missed collection).
+
+(Previously this step was gated on the `review-fix` activity. After
+Decision 3, the gate is simply "E-DEFERRED-IMPACT is in the Evidence
+Plan" — if a skill declares it, it is relevant for that phase.)
 
 ### Step 3: Evaluate Each Criterion
 For each criterion:
