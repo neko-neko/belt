@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。Phase D engine URI-emit 1 = 111。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
+scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。Phase D engine URI-emit 1 = 111。Phase E lint::check_belt_runs_literal 4 = 115。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -961,3 +961,33 @@ scenarios:
     given: "a gate file_exists pattern that does NOT start with belt:// (raw path / glob)"
     when: "execute_gates is called with NoopUriResolver"
     then: "the resolver is bypassed and the pattern is glob-matched against work_dir"
+
+  # --- lint::check_belt_runs_literal (2026-04-18 spec) ---
+  - id: belt-core-lint-rejects-belt-runs-literal-in-produces-path
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline.yml with produces.path = '.belt/runs/{run_id}/...'"
+    when: "lint_pipeline is called"
+    then: "an Error diagnostic mentions '.belt/runs/' is forbidden"
+  - id: belt-core-lint-rejects-belt-runs-literal-in-gate-file-exists
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline.yml with gate.file_exists = '.belt/runs/...'"
+    when: "lint_pipeline is called"
+    then: "an Error diagnostic mentions '.belt/runs/' is forbidden"
+  - id: belt-core-lint-rejects-run-id-template-in-produces-path
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline.yml whose produces.path contains '{run_id}' template"
+    when: "lint_pipeline is called"
+    then: "an Error diagnostic mentions '{run_id}' template is forbidden"
+  - id: belt-core-lint-rejects-run-id-template-in-gate-cmd
+    category: lint
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline.yml with gate.cmd containing '{run_id}' template"
+    when: "lint_pipeline is called"
+    then: "an Error diagnostic flags either '{run_id}' or '.belt/runs/' usage"

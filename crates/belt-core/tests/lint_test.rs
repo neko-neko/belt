@@ -945,3 +945,112 @@ phases:
         "lint_pipeline must surface the raw-YAML migration hint; got: {rendered}"
     );
 }
+
+/// scenario: belt-core-lint-rejects-belt-runs-literal-in-produces-path
+#[test]
+fn lint_rejects_belt_runs_literal_in_produces_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pipeline_path = tmp.path().join("pipeline.yml");
+    std::fs::write(
+        &pipeline_path,
+        r#"name: t
+version: 1
+phases:
+  - id: p
+    description: x
+    produces:
+      - name: notes
+        path: ".belt/runs/{run_id}/notes/phase-p.md"
+    gate:
+      - file_exists: ".belt/runs/{run_id}/notes/phase-p.md"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&pipeline_path).unwrap();
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == belt_core::lint::Severity::Error
+                && d.message.contains(".belt/runs/")),
+        "lint must reject .belt/runs/ literal in produces.path"
+    );
+}
+
+/// scenario: belt-core-lint-rejects-belt-runs-literal-in-gate-file-exists
+#[test]
+fn lint_rejects_belt_runs_literal_in_gate_file_exists() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pipeline_path = tmp.path().join("pipeline.yml");
+    std::fs::write(
+        &pipeline_path,
+        r#"name: t
+version: 1
+phases:
+  - id: p
+    description: x
+    gate:
+      - file_exists: ".belt/runs/{run_id}/handover.md"
+    confirm: true
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&pipeline_path).unwrap();
+    assert!(diags.iter().any(
+        |d| d.severity == belt_core::lint::Severity::Error && d.message.contains(".belt/runs/")
+    ));
+}
+
+/// scenario: belt-core-lint-rejects-run-id-template-in-produces-path
+#[test]
+fn lint_rejects_run_id_template_in_produces_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pipeline_path = tmp.path().join("pipeline.yml");
+    std::fs::write(
+        &pipeline_path,
+        r#"name: t
+version: 1
+phases:
+  - id: p
+    description: x
+    produces:
+      - name: notes
+        path: "belt://current/notes/{run_id}.md"
+    gate:
+      - file_exists: "belt://current/notes/{run_id}.md"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&pipeline_path).unwrap();
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == belt_core::lint::Severity::Error
+                && d.message.contains("{run_id}"))
+    );
+}
+
+/// scenario: belt-core-lint-rejects-run-id-template-in-gate-cmd
+#[test]
+fn lint_rejects_run_id_template_in_gate_cmd() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pipeline_path = tmp.path().join("pipeline.yml");
+    std::fs::write(
+        &pipeline_path,
+        r#"name: t
+version: 1
+phases:
+  - id: p
+    description: x
+    gate:
+      - cmd: "test -f .belt/runs/{run_id}/x"
+"#,
+    )
+    .unwrap();
+    let diags = belt_core::lint::lint_pipeline(&pipeline_path).unwrap();
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == belt_core::lint::Severity::Error
+                && (d.message.contains("{run_id}") || d.message.contains(".belt/runs/")))
+    );
+}

@@ -165,6 +165,9 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     // Check: Artifact.when expressions must reference defined args.
     check_artifact_when_references(&pipeline, &mut diagnostics);
 
+    // Check: no `.belt/runs/` literal or `{run_id}` template in pipeline strings.
+    check_belt_runs_literal(&pipeline, &mut diagnostics);
+
     // Phase 2: Try expansion (catches issues in sub-pipelines)
     if diagnostics.iter().all(|d| d.severity != Severity::Error) {
         if let Err(e) = expand_pipeline(path) {
@@ -591,6 +594,48 @@ fn check_artifact_when_references(pipeline: &Pipeline, diagnostics: &mut Vec<Lin
                         phase.id, artifact.name, arg_name
                     ),
                 });
+            }
+        }
+    }
+}
+
+/// Lint rule: reject raw `.belt/runs/` path literals and `{run_id}` template
+/// strings in `produces[].path`, `gate.file_exists`, and `gate.cmd`. These
+/// constructs were removed by the 2026-04-18 `belt://current` URI migration;
+/// pipeline.yml authors must use `belt://current/<path>` instead.
+fn check_belt_runs_literal(pipeline: &Pipeline, diagnostics: &mut Vec<LintDiagnostic>) {
+    fn check_string(s: &str, phase_id: &str, field: &str, diagnostics: &mut Vec<LintDiagnostic>) {
+        if s.contains(".belt/runs/") {
+            diagnostics.push(LintDiagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "phase '{phase_id}': {field} contains forbidden '.belt/runs/' literal — use belt://current/<path>"
+                ),
+            });
+        }
+        if s.contains("{run_id}") {
+            diagnostics.push(LintDiagnostic {
+                severity: Severity::Error,
+                message: format!(
+                    "phase '{phase_id}': {field} contains forbidden '{{run_id}}' template — use belt://current/<path>"
+                ),
+            });
+        }
+    }
+
+    for phase in &pipeline.phases {
+        for art in &phase.produces {
+            check_string(&art.path, &phase.id, "produces.path", diagnostics);
+        }
+        for g in &phase.gate {
+            match g {
+                GateCheck::FileExists { file_exists } => {
+                    check_string(file_exists, &phase.id, "gate.file_exists", diagnostics);
+                }
+                GateCheck::Cmd { cmd, .. } => {
+                    check_string(cmd, &phase.id, "gate.cmd", diagnostics);
+                }
+                _ => {}
             }
         }
     }
