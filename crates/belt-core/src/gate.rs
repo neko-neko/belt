@@ -1,10 +1,44 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
 use crate::model::GateCheck;
+
+/// Resolves a `belt://` URI string to its absolute filesystem path.
+///
+/// Implemented by `belt_agent::resolver::Resolver` to enable gate-time URI
+/// resolution without introducing a `belt-agent` -> `belt-core` cycle.
+/// `belt-core` defines the trait; the binary crate implements it. Callers
+/// that have no URI semantics (lint, tests against raw fixtures) can pass
+/// `&NoopUriResolver` to keep the gate executor a no-op for URI strings.
+pub trait UriResolver {
+    /// Parse `uri` (a `belt://` URI string) and return its resolved
+    /// filesystem path. Implementations MUST NOT assert file existence —
+    /// callers handle existence as a separate concern (write targets vs
+    /// read targets).
+    ///
+    /// # Errors
+    ///
+    /// Returns a string-form error when the URI is malformed or cannot be
+    /// resolved (no current run, no completed run for selector, etc.).
+    fn resolve(&self, uri: &str) -> Result<PathBuf, String>;
+}
+
+/// No-op resolver used by callers without URI semantics (e.g. lint, raw
+/// fixture tests). Calling `.resolve()` with a `belt://` URI returns an
+/// error; non-URI strings should never reach this resolver in production.
+#[derive(Debug, Default)]
+pub struct NoopUriResolver;
+
+impl UriResolver for NoopUriResolver {
+    fn resolve(&self, uri: &str) -> Result<PathBuf, String> {
+        Err(format!(
+            "NoopUriResolver cannot resolve '{uri}'; pass a real Resolver"
+        ))
+    }
+}
 
 /// Result of executing a single gate check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
