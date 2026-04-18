@@ -160,6 +160,33 @@ and output directories:
 absence as equivalent to an empty array (or `null` for `invoke`). Use
 `status` for context recovery or progress checks.
 
+## Path Resolution
+
+belt does not expose physical paths to skill authors. All artifact paths are
+declared in pipeline.yml as `belt://current/<path>` URIs (or raw paths for
+domain artifacts under `docs/`, `src/`, etc.).
+
+### Reading paths
+
+To get the physical path of an artifact:
+
+1. Call `belt-agent status` and read `phases[].produces[].resolved_path`.
+2. Or call `belt-agent locate <uri>` for direct URI resolution.
+
+### Passing paths to subagents
+
+When dispatching a subagent (Task tool), the orchestrator skill MUST resolve
+the URI to a physical path and pass it as `output_path` in the subagent's
+prompt. Subagents do not see URIs and do not call `belt-agent locate`
+themselves — they receive a concrete path.
+
+### Forbidden patterns
+
+- Hardcoding `.belt/runs/<run_id>/...` literals in SKILL.md, criteria/*.md,
+  or agents/*.md (lint enforces this in pipeline.yml).
+- `{run_id}` template strings (removed from belt-core; lint rejects them).
+- Constructing paths inside agent prompts using string interpolation.
+
 ## Well-known Config Keys
 
 `config` is an opaque map that belt passes through without interpretation.
