@@ -99,6 +99,15 @@ F3 (belt-agent behavior SSOT + cross-crate duplication) で扱う項目:
 
 - `belt/cli_test.rs` + `belt-agent/cli_test.rs` の `write_yaml` variant B (fs::write 2-line form) — Cargo cross-crate `tests/common` 制約を考慮した処置判断
 
+### F3 scope (post-audit findings, surfaced during F2b code-review)
+
+以下 4 項目は `2625fbb` audit point の後、F2b code-review phase で `/belt:code-review --codex` および `belt-agent:phase-auditor` が surface したもの。F2b では out-of-scope deferred として処理:
+
+- **codex finding**: `crates/belt-agent/src/git.rs::tests::current_branch_returns_name_for_git_dir` lacks hermetic git config isolation. Inherits user's `commit.gpgsign` + `gpg.format=ssh`, which fails in env without an SSH-signing agent. Fix: thread `-c commit.gpgsign=false` into the `git commit` invocation, or `git -c gpg.format=openpgp -c commit.gpgsign=false`. F2b で再現せず (signing path 通過)、env-dependent。F3 belt-agent test audit 配下で扱う
+- **cross-cutting finding**: `crates/belt-core/tests/shared_criteria_parity.rs::workspace_path` helper が `repo_root().join(rel)` の lone holdout (F2b で 4 sibling 移植済の唯一未移植 file)。F3 belt-agent test audit が同 file 周辺を touch する際にまとめて移植
+- **phase-auditor finding (CODE-REVIEW-07)**: `/belt:code-review` が出力する merged `findings.json` envelope が per-finding `disposition` / `disposition_rationale` field を持たない。triage state は narrative の Decisions section の自然言語のみで保持され、自動 audit が natural-language cross-referencing 必須 — brittle。`plugins/belt/skills/code-review/SKILL.md` の merge schema 拡張を検討
+- **phase-auditor finding (CODE-REVIEW-01)**: merged `findings.json` が個別 finding の `observation` token を ai-antipattern / codex source で `null` のままにする (per-reviewer file には top-level `observation: <name>` あり)。7-perspective coverage を `findings.json` 単独で機械検証不能。merge step で source reviewer の perspective を carry-forward する正規化が必要
+
 ## Test count / scenario count delta
 
 | metric | F2a merge (baseline) | F2b completion | delta |
