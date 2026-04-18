@@ -66,6 +66,14 @@ enum Command {
         #[arg(long)]
         run: Option<String>,
     },
+    /// Resolve a `belt://` URI to its filesystem path
+    Locate {
+        /// belt:// URI to resolve
+        uri: String,
+        /// Run ID (default: latest)
+        #[arg(long)]
+        run: Option<String>,
+    },
 }
 
 #[allow(clippy::unnecessary_wraps)] // clap value_parser requires Result
@@ -160,6 +168,7 @@ fn main() -> miette::Result<()> {
         Command::Regate { run } => cmd_regate(&engine, run.as_ref())?,
         Command::Step { run, confirm } => cmd_step(&engine, run.as_ref(), confirm)?,
         Command::Status { run } => cmd_status(&engine, run.as_ref())?,
+        Command::Locate { uri, run } => cmd_locate(&engine, &uri, run.as_ref())?,
     }
     Ok(())
 }
@@ -693,6 +702,45 @@ fn cmd_status(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
     println!(
         "{}",
         serde_json::to_string_pretty(&view).map_err(|e| miette::miette!("{e}"))?
+    );
+    Ok(())
+}
+
+fn cmd_locate(engine: &Engine, uri_str: &str, run: Option<&String>) -> miette::Result<()> {
+    use belt_core::uri::BeltUri;
+    let uri = BeltUri::parse(uri_str).map_err(|e| miette::miette!("{e}"))?;
+
+    // Determine the current run id: explicit --run wins, otherwise fall back
+    // to engine.latest_run_id(). For non-Current variants the field is ignored
+    // by the resolver, so failure to resolve a current run is not fatal here
+    // unless the URI is BeltUri::Current.
+    let current_run_id = match run {
+        Some(id) => Some(id.clone()),
+        None => engine.latest_run_id().ok(),
+    };
+
+    let branch = crate::git::current_branch(std::path::Path::new("."));
+    let belt = belt_dir();
+    let resolver = crate::resolver::Resolver {
+        belt_dir: &belt,
+        current_branch: branch,
+        current_run_id,
+    };
+    let resolved = resolver.resolve(&uri).map_err(|e| miette::miette!("{e}"))?;
+
+    // existence is computed via fs metadata; for glob URIs this is `glob match >= 1`.
+    // For simplicity here we only handle direct path existence; glob was
+    // expanded by the resolver path semantics.
+    let exists = std::fs::metadata(&resolved).is_ok();
+
+    let out = json!({
+        "uri": uri.to_string(),
+        "path": resolved.display().to_string(),
+        "exists": exists,
+    });
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&out).map_err(|e| miette::miette!("{e}"))?
     );
     Ok(())
 }
