@@ -49,7 +49,7 @@ F1 の S1 探索で発見された統合候補 (file:fn 粒度):
 |---|---|---|
 | `engine_test.rs::regate_*` (14 test) | `belt-agent/tests/cli_test.rs::regate_*` (11 test) | 同 state-transition を API 層 + CLI JSON 層で重複 |
 | `engine_test.rs::verify_verdict_*` | `belt-agent/tests/cli_test.rs::verify_*` | verify pass/fail semantics double |
-| `parser_test.rs::parse_minimal_pipeline` | `model_test.rs` の同等 test | model_test に吸収可能 |
+| `parser_test.rs::parse_pipeline_from_file` | `model_test.rs::parse_minimal_pipeline` | 誤記訂正 (F2b audit 2026-04-18): 実 fn は `parse_pipeline_from_file` (file-I/O + parse layer) で `model_test::parse_minimal_pipeline` (serde_saphyr 直接、model layer) と layer 分離された complementary test、redundant ではない。F2b では keep-both 判定 |
 | `view_test.rs::engine_enriched_status_*` | `belt-agent/tests/cli_test.rs::status_*` | view module API と CLI の double coverage |
 | `feature_dev_refresh.rs` × `bug_fix_refresh.rs` | narrative artifact pattern 4 組 | 同型、helper 共通化候補 |
 | `shared_criteria_parity.rs` × `shared_filter_parity.rs` | byte-identity lock pattern | 共通 helper 化候補 |
