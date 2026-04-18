@@ -26,7 +26,8 @@ audit: required
   {Concrete steps for the Audit Agent to execute. For inspection type, numbered steps are required.}
 - **pass_condition**: {No subjective terms. Use numeric thresholds or pattern matches that can be judged deterministically.}
 - **fail_diagnosis_hint**: {On FAIL, what to investigate to resolve.}
-- **depends_on_artifacts**: [{Paths to artifacts required for verification.}]
+- **uses_evidence**: [{evidence-ids from the skill-local evidence-catalog.md, e.g., E-TEST, E-LINT. Optional.}]
+- **depends_on_artifacts**: [{Paths to artifacts required for verification. Optional.}]
 - **forward_check**: {Whether this is sufficient as input to the next phase. Optional.}
 ```
 
@@ -40,6 +41,7 @@ These rules are enforced by the template structure itself:
 4. **Severity semantics**:
    - `blocker`: If unmet, the phase must FAIL. Eligible for the fix-and-re-audit retry loop.
    - `quality`: If unmet while every blocker PASSes, the phase passes with a warning only. Not eligible for the retry loop.
+5. **`uses_evidence` references must resolve**: If `uses_evidence` is present, each listed `E-XXX` MUST be declared in the owning skill's `./references/evidence-catalog.md`. (Currently convention-level; lint enforcement is Future Work per spec.)
 
 ## Human Review: 3-Point Scan
 
