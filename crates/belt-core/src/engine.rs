@@ -164,14 +164,6 @@ impl Engine {
         std::fs::create_dir_all(&output_dir)?;
         phase.output_dir = Some(output_dir.display().to_string());
 
-        // Expand `{run_id}` template in fields the LLM sees at step time.
-        // Idempotent: a second call on already-expanded text is a no-op
-        // because the token is gone after the first substitution.
-        for artifact in &mut phase.produces {
-            artifact.path = expand_run_id(&artifact.path, &state.run_id);
-        }
-        expand_gate_run_id(&mut phase.gate, &state.run_id);
-
         Ok(phase)
     }
 
@@ -429,42 +421,6 @@ pub fn resolve_artifact_ref<'a, S: BuildHasher>(
         }
     }
     None
-}
-
-/// Expand `{run_id}` placeholders in a string.
-///
-/// Pure and deterministic. Used by [`Engine::next_phase_info`] to rewrite
-/// template tokens in phase `produces[*].path` and string gate fields so
-/// that LLM-facing output carries run-scoped paths. Idempotent: a second
-/// pass over the returned string is a no-op because the token is gone.
-fn expand_run_id(s: &str, run_id: &str) -> String {
-    s.replace("{run_id}", run_id)
-}
-
-/// Expand `{run_id}` placeholders in `FileExists` / `Cmd` gate fields in place.
-///
-/// `GitClean`, `HasOutput`, and `Uses` carry no run-scoped path string, so
-/// they are left untouched. Idempotent: a second call on an already-expanded
-/// gate slice is a no-op because the placeholder is gone.
-///
-/// Required by both `next_phase_info` (current-phase gates) and the regate
-/// flow in `belt-agent` (target-phase gates fetched fresh from
-/// `expand_pipeline`); the expander does not substitute `{run_id}` because
-/// it has no access to runtime state.
-pub fn expand_gate_run_id(gate: &mut [crate::model::GateCheck], run_id: &str) {
-    for check in gate {
-        match check {
-            crate::model::GateCheck::FileExists { file_exists } => {
-                *file_exists = expand_run_id(file_exists, run_id);
-            }
-            crate::model::GateCheck::Cmd { cmd, .. } => {
-                *cmd = expand_run_id(cmd, run_id);
-            }
-            crate::model::GateCheck::GitClean { .. }
-            | crate::model::GateCheck::HasOutput { .. }
-            | crate::model::GateCheck::Uses { .. } => {}
-        }
-    }
 }
 
 /// Evaluate a `when:` expression against the provided args.

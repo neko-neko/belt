@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
+scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。Phase D engine URI-emit 1 = 111。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -177,13 +177,20 @@ scenarios:
     given: "init plus subsequent step() and verify_verdict() calls on a run with multiple phases"
     when: "phase_start_times is inspected in-memory and after load_state"
     then: "each phase has a UTC timestamp set when step() first enters it, retries (verify PASS or FAIL) do not update an existing entry, and the map round-trips through state.json with identical RFC3339 values"
-  - id: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
+  - id: belt-core-engine-next-phase-info-exposes-output-dir
     category: engine
     severity: high
     technique: equivalence-partition
-    given: "a phase whose gate contains file_exists: '…{run_id}…' and whose produces[*].path contains '{run_id}'"
+    given: "a pipeline with an active phase"
     when: "Engine::next_phase_info is called"
-    then: "the returned PhaseInfo has output_dir set to an existing directory under runs/<run_id>/, and every {run_id} token in gate paths and produces[*].path is replaced with the current run_id (no template token remains)"
+    then: "the returned ExpandedPhase has output_dir set to an existing directory under runs/<run_id>/<phase_id>/"
+  - id: belt-core-engine-emits-declared-uri-in-next-phase-info
+    category: engine
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline phase whose produces entry declares a belt://current/ URI"
+    when: "Engine::next_phase_info is called"
+    then: "the returned ExpandedPhase.produces[].path is the declared URI string verbatim (no substitution)"
 
   # --- view module ---
   - id: belt-core-view-phase-state-classified-by-membership

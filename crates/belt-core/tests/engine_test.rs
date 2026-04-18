@@ -281,7 +281,7 @@ phases:
 // ---------------------------------------------------------------------------
 // next_phase_info sets output_dir correctly
 // ---------------------------------------------------------------------------
-/// scenario: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
+/// scenario: belt-core-engine-next-phase-info-exposes-output-dir
 #[test]
 fn engine_next_phase_info_sets_output_dir() {
     let dir = TempDir::new().expect("tempdir");
@@ -2169,110 +2169,6 @@ phases:
 }
 
 // ---------------------------------------------------------------------------
-// next_phase_info_expands_run_id_in_file_exists_gate
-//
-// `next_phase_info` must replace `{run_id}` tokens in file_exists gate paths
-// so that the LLM-facing JSON emitted by `belt-agent next` carries run-scoped
-// absolute-ish paths rather than raw templates.
-// ---------------------------------------------------------------------------
-/// scenario: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
-#[test]
-fn next_phase_info_expands_run_id_in_file_exists_gate() {
-    use belt_core::model::GateCheck;
-
-    let dir = TempDir::new().expect("tempdir");
-    let belt_dir = dir.path().join(".belt");
-    let pipeline_path = write_yaml(
-        &dir,
-        "pipeline.yml",
-        r#"name: t
-version: 1
-phases:
-  - id: review
-    description: "review"
-    gate:
-      - file_exists: ".belt/runs/{run_id}/notes/phase-review.md"
-"#,
-    );
-
-    let engine = Engine::new(&belt_dir);
-    let state = engine
-        .init(&pipeline_path, &HashMap::new())
-        .expect("init should succeed");
-
-    let phase = engine
-        .next_phase_info(&state, &pipeline_path)
-        .expect("next_phase_info should succeed");
-
-    assert_eq!(phase.gate.len(), 1, "review should have one gate check");
-    match &phase.gate[0] {
-        GateCheck::FileExists { file_exists } => {
-            let expected = format!(".belt/runs/{}/notes/phase-review.md", state.run_id);
-            assert_eq!(
-                *file_exists, expected,
-                "{{run_id}} must be substituted into file_exists gate path"
-            );
-            assert!(
-                !file_exists.contains("{run_id}"),
-                "no raw template tokens should remain after expansion"
-            );
-        }
-        other => panic!("expected FileExists gate, got {other:?}"),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// next_phase_info_expands_run_id_in_produces_path
-//
-// `next_phase_info` must replace `{run_id}` tokens in `produces[*].path` so
-// that downstream consumers (narrative artifact writers, Task 22 fixtures)
-// receive run-scoped paths from the phase descriptor.
-// ---------------------------------------------------------------------------
-/// scenario: belt-core-engine-next-phase-info-expands-run-id-and-exposes-output-dir
-#[test]
-fn next_phase_info_expands_run_id_in_produces_path() {
-    let dir = TempDir::new().expect("tempdir");
-    let belt_dir = dir.path().join(".belt");
-    let pipeline_path = write_yaml(
-        &dir,
-        "pipeline.yml",
-        r#"name: t
-version: 1
-phases:
-  - id: review
-    description: "review"
-    produces:
-      - name: notes
-        path: ".belt/runs/{run_id}/notes/phase-review.md"
-"#,
-    );
-
-    let engine = Engine::new(&belt_dir);
-    let state = engine
-        .init(&pipeline_path, &HashMap::new())
-        .expect("init should succeed");
-
-    let phase = engine
-        .next_phase_info(&state, &pipeline_path)
-        .expect("next_phase_info should succeed");
-
-    assert_eq!(
-        phase.produces.len(),
-        1,
-        "review should produce one artifact"
-    );
-    let expected = format!(".belt/runs/{}/notes/phase-review.md", state.run_id);
-    assert_eq!(
-        phase.produces[0].path, expected,
-        "{{run_id}} must be substituted into produces[*].path"
-    );
-    assert!(
-        !phase.produces[0].path.contains("{run_id}"),
-        "no raw template tokens should remain after expansion"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // init_records_branch_when_provided
 //
 // `Engine::init_with_branch` accepts a caller-supplied branch name and stores
@@ -2345,4 +2241,56 @@ phases:
         state.branch, None,
         "legacy init must leave branch unset for backward compatibility"
     );
+}
+
+// ---------------------------------------------------------------------------
+// next_phase_info_emits_declared_uri_verbatim
+//
+// After Phase D cleanup, `next_phase_info` no longer rewrites `{run_id}`
+// template tokens. It emits `produces[*].path` and string gate fields verbatim
+// as declared in the pipeline YAML. For `belt://current/` URIs, resolution is
+// deferred to the gate executor (belt-agent's Resolver).
+// ---------------------------------------------------------------------------
+/// scenario: belt-core-engine-emits-declared-uri-in-next-phase-info
+#[test]
+fn next_phase_info_emits_declared_uri_verbatim() {
+    let dir = TempDir::new().expect("tempdir");
+    let belt_dir = dir.path().join(".belt");
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"name: t
+version: 1
+phases:
+  - id: p
+    description: "phase"
+    produces:
+      - name: notes
+        path: "belt://current/notes/phase-p.md"
+    gate:
+      - file_exists: "belt://current/notes/phase-p.md"
+"#,
+    );
+
+    let engine = Engine::new(&belt_dir);
+    let state = engine
+        .init(&pipeline_path, &HashMap::new())
+        .expect("init should succeed");
+    let phase = engine
+        .next_phase_info(&state, &pipeline_path)
+        .expect("next_phase_info should succeed");
+
+    assert_eq!(
+        phase.produces[0].path, "belt://current/notes/phase-p.md",
+        "produces[*].path must be emitted verbatim (no substitution)"
+    );
+    match &phase.gate[0] {
+        belt_core::model::GateCheck::FileExists { file_exists } => {
+            assert_eq!(
+                file_exists, "belt://current/notes/phase-p.md",
+                "file_exists gate must be emitted verbatim (no substitution)"
+            );
+        }
+        other => panic!("expected FileExists gate, got {other:?}"),
+    }
 }
