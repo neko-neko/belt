@@ -399,7 +399,14 @@ fn cmd_verify(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
 
     let output_dir = phase.output_dir.as_deref().unwrap_or(".");
     let work_dir = std::env::current_dir().map_err(|e| miette::miette!("{e}"))?;
-    let results = execute_gates(&phase.gate, &work_dir, Path::new(output_dir));
+    let branch = crate::git::current_branch(std::path::Path::new("."));
+    let belt = belt_dir();
+    let resolver = crate::resolver::Resolver {
+        belt_dir: &belt,
+        current_branch: branch,
+        current_run_id: Some(state.run_id.clone()),
+    };
+    let results = execute_gates(&phase.gate, &work_dir, Path::new(output_dir), &resolver);
     let verdict = all_passed(&results);
 
     engine
@@ -550,6 +557,7 @@ fn execute_regate_targets(
     state: &belt_core::model::RunState,
     all_phases: &[belt_core::model::ExpandedPhase],
     belt: &Path,
+    resolver: &dyn belt_core::gate::UriResolver,
 ) -> miette::Result<(serde_json::Map<String, serde_json::Value>, bool)> {
     let work_dir = std::env::current_dir().map_err(|e| miette::miette!("{e}"))?;
     let mut targets = serde_json::Map::new();
@@ -582,7 +590,7 @@ fn execute_regate_targets(
 
         let run_dir = belt.join("runs").join(&state.run_id);
         let output_dir = run_dir.join(target_id.replace('/', "_"));
-        let results = execute_gates(&target_gate, &work_dir, &output_dir);
+        let results = execute_gates(&target_gate, &work_dir, &output_dir, resolver);
         let passed = all_passed(&results);
         if !passed {
             all_passed_flag = false;
@@ -666,8 +674,15 @@ fn cmd_regate(engine: &Engine, run: Option<&String>) -> miette::Result<()> {
     // Get all expanded phases for target lookup
     let all_phases = expand_pipeline(pipeline_path).map_err(|e| miette::miette!("{e}"))?;
     let belt = belt_dir();
+    let branch = crate::git::current_branch(std::path::Path::new("."));
+    let resolver = crate::resolver::Resolver {
+        belt_dir: &belt,
+        current_branch: branch,
+        current_run_id: Some(state.run_id.clone()),
+    };
 
-    let (targets, all_passed_flag) = execute_regate_targets(&phase, &state, &all_phases, &belt)?;
+    let (targets, all_passed_flag) =
+        execute_regate_targets(&phase, &state, &all_phases, &belt, &resolver)?;
 
     engine
         .record_regate(&mut state, all_passed_flag)
@@ -726,16 +741,16 @@ fn cmd_locate(engine: &Engine, uri_str: &str, run: Option<&String>) -> miette::R
         current_branch: branch,
         current_run_id,
     };
-    let resolved = resolver.resolve(&uri).map_err(|e| miette::miette!("{e}"))?;
+    let resolved_path = resolver.resolve(&uri).map_err(|e| miette::miette!("{e}"))?;
 
     // existence is computed via fs metadata; for glob URIs this is `glob match >= 1`.
     // For simplicity here we only handle direct path existence; glob was
     // expanded by the resolver path semantics.
-    let exists = std::fs::metadata(&resolved).is_ok();
+    let exists = std::fs::metadata(&resolved_path).is_ok();
 
     let out = json!({
         "uri": uri.to_string(),
-        "path": resolved.display().to_string(),
+        "path": resolved_path.display().to_string(),
         "exists": exists,
     });
     println!(

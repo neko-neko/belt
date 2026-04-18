@@ -24,7 +24,7 @@ pub(crate) enum ResolveError {
     #[error("state.json parse error: {0}")]
     StateParse(#[from] serde_json::Error),
     /// `belt://current/...` URI を解決しようとしたが invocation context に
-    /// run_id が無い (`--run` 未指定 + latest run 不在)。
+    /// `run_id` が無い (`--run` 未指定 + latest run 不在)。
     #[error("belt://current/ requires a current run (none found, pass --run <id>)")]
     NoCurrentRun,
 }
