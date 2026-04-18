@@ -1,0 +1,13 @@
+name: pre-execute-handover-checkpoint
+version: 1
+description: "Context reset checkpoint shared by pipelines that require /belt:handover + /clear + /belt:resume before entering the execute phase"
+
+phases:
+  - id: checkpoint
+    description: >-
+      Context checkpoint before execute. Run `/belt:handover`, then `/clear`,
+      then `/belt:resume` in a new session. The gate passes once the handover
+      note exists under `.belt/runs/{run_id}/`.
+    confirm: true
+    gate:
+      - file_exists: ".belt/runs/{run_id}/handover.md"
