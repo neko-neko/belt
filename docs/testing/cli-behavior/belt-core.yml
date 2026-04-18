@@ -707,6 +707,27 @@ scenarios:
     given: "a pipeline whose leaf (non-invoke) phase omits the `description` field"
     when: "expand_pipeline is called"
     then: "returns BeltError::InvalidPipeline"
+  - id: belt-core-expander-with-string-substitution-integration
+    category: expander
+    severity: medium
+    technique: equivalence-partition
+    given: "a parent pipeline with invoke.pipeline ref and with: {arg: 'value'} string"
+    when: "parse_pipeline then expand_pipeline is called"
+    then: "expanded sub-phase invoker.args contains the substituted string value"
+  - id: belt-core-expander-with-bool-and-null-substitution-preserves-types
+    category: expander
+    severity: medium
+    technique: equivalence-partition
+    given: "a parent pipeline with with: {flag: true, opt: null}"
+    when: "expand_pipeline propagates the args into sub-phase invoker.args"
+    then: "Value::Bool(true) and Value::Null types are preserved (not stringified)"
+  - id: belt-core-expander-with-parent-scope-not-rewritten-by-sub-substitution
+    category: expander
+    severity: high
+    technique: state-transition
+    given: "a parent phase with args.X and a sub-pipeline that substitutes X in its own scope"
+    when: "expand_pipeline runs substitution"
+    then: "parent phase args are unchanged; only sub-phase values get rewritten"
 
   # --- parser module ---
   - id: belt-core-parser-parses-valid-pipeline-yaml
