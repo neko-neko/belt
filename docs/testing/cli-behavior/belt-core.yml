@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 = 108。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
+scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -938,3 +938,19 @@ scenarios:
     given: "a belt://current/notes/phase-*.md URI containing a glob"
     when: "BeltUri::parse is called"
     then: "parse succeeds; resolver-side glob expansion is responsible for matching"
+
+  # --- gate::execute_file_exists URI resolution (2026-04-18 spec) ---
+  - id: belt-core-gate-resolves-belt-current-via-uri-resolver
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a gate file_exists pattern starting with belt://current/ and a UriResolver impl that maps it to an existing file"
+    when: "execute_gates is called with the resolver"
+    then: "the gate passes (resolver-translated path exists)"
+  - id: belt-core-gate-passes-raw-domain-path-untouched
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a gate file_exists pattern that does NOT start with belt:// (raw path / glob)"
+    when: "execute_gates is called with NoopUriResolver"
+    then: "the resolver is bypassed and the pattern is glob-matched against work_dir"

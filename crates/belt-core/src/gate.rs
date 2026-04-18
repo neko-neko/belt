@@ -63,11 +63,21 @@ pub struct GateResult {
 /// * `check`      - The gate check variant to evaluate.
 /// * `work_dir`   - Working directory for command execution and file lookups.
 /// * `output_dir` - Directory where phase outputs are written (used by `has_output`).
+/// * `resolver`   - URI resolver used to translate `belt://` URIs in
+///   `file_exists` patterns to filesystem paths. Pass `&NoopUriResolver`
+///   when no URI semantics apply.
 #[must_use]
-pub fn execute_gate(check: &GateCheck, work_dir: &Path, output_dir: &Path) -> GateResult {
+pub fn execute_gate(
+    check: &GateCheck,
+    work_dir: &Path,
+    output_dir: &Path,
+    resolver: &dyn UriResolver,
+) -> GateResult {
     match check {
         GateCheck::Cmd { cmd, timeout } => execute_cmd(cmd, work_dir, *timeout),
-        GateCheck::FileExists { file_exists } => execute_file_exists(file_exists, work_dir),
+        GateCheck::FileExists { file_exists } => {
+            execute_file_exists(file_exists, work_dir, resolver)
+        }
         GateCheck::GitClean { git_clean } => execute_git_clean(*git_clean, work_dir),
         GateCheck::HasOutput { has_output } => execute_has_output(*has_output, output_dir),
         GateCheck::Uses { uses, .. } => GateResult {
@@ -82,10 +92,15 @@ pub fn execute_gate(check: &GateCheck, work_dir: &Path, output_dir: &Path) -> Ga
 
 /// Execute all gate checks sequentially and return results.
 #[must_use]
-pub fn execute_gates(checks: &[GateCheck], work_dir: &Path, output_dir: &Path) -> Vec<GateResult> {
+pub fn execute_gates(
+    checks: &[GateCheck],
+    work_dir: &Path,
+    output_dir: &Path,
+    resolver: &dyn UriResolver,
+) -> Vec<GateResult> {
     checks
         .iter()
-        .map(|c| execute_gate(c, work_dir, output_dir))
+        .map(|c| execute_gate(c, work_dir, output_dir, resolver))
         .collect()
 }
 
@@ -255,10 +270,28 @@ fn elapsed_ms(start: Instant) -> u64 {
 }
 
 /// Match `pattern` (glob) relative to `work_dir`.  Passes if at least one
-/// file matches.
-fn execute_file_exists(pattern: &str, work_dir: &Path) -> GateResult {
-    let full_pattern = work_dir.join(pattern).to_string_lossy().to_string();
-    match glob::glob(&full_pattern) {
+/// file matches. When `pattern` starts with `belt://`, the resolver is used
+/// to translate it to an absolute filesystem path BEFORE glob expansion;
+/// otherwise the pattern is joined with `work_dir` (raw-path behavior).
+fn execute_file_exists(pattern: &str, work_dir: &Path, resolver: &dyn UriResolver) -> GateResult {
+    let resolved_pattern = if pattern.starts_with("belt://") {
+        match resolver.resolve(pattern) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                return GateResult {
+                    check_type: "file_exists".to_owned(),
+                    passed: false,
+                    detail: Some(format!("URI resolution failed: {e}")),
+                    duration_ms: None,
+                    timed_out: false,
+                };
+            }
+        }
+    } else {
+        work_dir.join(pattern).to_string_lossy().to_string()
+    };
+
+    match glob::glob(&resolved_pattern) {
         Ok(paths) => {
             let matches: Vec<_> = paths.filter_map(Result::ok).collect();
             let passed = !matches.is_empty();
