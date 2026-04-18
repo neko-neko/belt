@@ -10,6 +10,24 @@ use std::fs;
 use belt_core::gate::{all_passed, execute_gate, execute_gates};
 use belt_core::model::GateCheck;
 
+/// Initialize a git repository in a fresh tempdir; return the `TempDir` (scope controls cleanup).
+fn git_init_tempdir() -> tempfile::TempDir {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let status = std::process::Command::new("git")
+        .args([
+            "-c",
+            "init.defaultBranch=main",
+            "-c",
+            "core.excludesfile=/dev/null",
+            "init",
+        ])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git init");
+    assert!(status.success(), "git init failed");
+    tmp
+}
+
 /// `cmd: "true"` exits 0 -> gate passes.
 /// scenario: belt-core-gate-cmd-zero-exit-passes
 #[test]
@@ -412,4 +430,79 @@ fn gate_result_deserialize_missing_timed_out() {
     let result: belt_core::gate::GateResult = serde_json::from_str(json).expect("deserialize");
     assert!(result.passed);
     assert!(!result.timed_out);
+}
+
+/// scenario: belt-core-gate-git-clean-clean-repo-with-expect-clean-passes
+#[test]
+fn git_clean_clean_repo_with_expect_clean_passes() {
+    let tmp = git_init_tempdir();
+    let check = GateCheck::GitClean { git_clean: true };
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+
+    assert_eq!(result.check_type, "git_clean");
+    assert!(result.passed, "clean repo + expect_clean=true should pass");
+    assert_eq!(result.detail.as_deref(), Some("working tree clean"));
+}
+
+/// scenario: belt-core-gate-git-clean-dirty-repo-with-expect-dirty-passes
+#[test]
+fn git_clean_dirty_repo_with_expect_dirty_passes() {
+    let tmp = git_init_tempdir();
+    std::fs::write(tmp.path().join("dirty.txt"), "x").expect("write");
+    let check = GateCheck::GitClean { git_clean: false };
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+
+    assert!(result.passed, "dirty repo + expect_clean=false should pass");
+    let detail = result.detail.as_deref().unwrap_or("");
+    assert!(
+        detail.contains("file(s) with uncommitted changes"),
+        "detail mismatch: {detail}"
+    );
+}
+
+/// scenario: belt-core-gate-git-clean-clean-repo-with-expect-dirty-fails
+#[test]
+fn git_clean_clean_repo_with_expect_dirty_fails() {
+    let tmp = git_init_tempdir();
+    let check = GateCheck::GitClean { git_clean: false };
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+
+    assert!(
+        !result.passed,
+        "clean repo + expect_clean=false should fail"
+    );
+    assert_eq!(result.detail.as_deref(), Some("working tree clean"));
+}
+
+/// scenario: belt-core-gate-git-clean-dirty-repo-with-expect-clean-fails
+#[test]
+fn git_clean_dirty_repo_with_expect_clean_fails() {
+    let tmp = git_init_tempdir();
+    std::fs::write(tmp.path().join("dirty.txt"), "x").expect("write");
+    let check = GateCheck::GitClean { git_clean: true };
+    let result = execute_gate(&check, tmp.path(), tmp.path());
+
+    assert!(!result.passed, "dirty repo + expect_clean=true should fail");
+    let detail = result.detail.as_deref().unwrap_or("");
+    assert!(
+        detail.contains("file(s) with uncommitted changes"),
+        "detail mismatch: {detail}"
+    );
+}
+
+/// scenario: belt-core-gate-git-clean-missing-work-dir-yields-spawn-failure
+#[test]
+fn git_clean_missing_work_dir_yields_spawn_failure() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let missing = tmp.path().join("does-not-exist");
+    assert!(!missing.exists());
+    let check = GateCheck::GitClean { git_clean: true };
+    let result = execute_gate(&check, &missing, &missing);
+
+    assert!(!result.passed, "missing work_dir should spawn-fail");
+    let detail = result.detail.as_deref().unwrap_or("");
+    assert!(
+        detail.starts_with("failed to run git:"),
+        "detail mismatch: {detail}"
+    );
 }

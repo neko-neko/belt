@@ -619,6 +619,41 @@ scenarios:
     given: "a slice of GateCheck values evaluated together (all pass vs one timeout among passes vs heterogeneous cmd + file_exists)"
     when: "execute_gates and all_passed are called"
     then: "execute_gates returns one GateResult per input in order, all_passed(&results) is true iff every result has passed = true, and a single timed-out entry forces all_passed = false while other entries retain their individual passed/timed_out flags"
+  - id: belt-core-gate-git-clean-clean-repo-with-expect-clean-passes
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a clean git repository (no uncommitted changes)"
+    when: "execute_gate is called with GateCheck::GitClean { git_clean: true }"
+    then: "passed is true; detail is 'working tree clean'"
+  - id: belt-core-gate-git-clean-dirty-repo-with-expect-dirty-passes
+    category: gate
+    severity: high
+    technique: equivalence-partition
+    given: "a git repository with uncommitted changes"
+    when: "execute_gate is called with GateCheck::GitClean { git_clean: false }"
+    then: "passed is true; detail mentions 'file(s) with uncommitted changes'"
+  - id: belt-core-gate-git-clean-clean-repo-with-expect-dirty-fails
+    category: gate
+    severity: medium
+    technique: equivalence-partition
+    given: "a clean git repository"
+    when: "execute_gate is called with GateCheck::GitClean { git_clean: false }"
+    then: "passed is false; detail is 'working tree clean' (detail depends only on is_clean, not expect_clean)"
+  - id: belt-core-gate-git-clean-dirty-repo-with-expect-clean-fails
+    category: gate
+    severity: medium
+    technique: equivalence-partition
+    given: "a git repository with uncommitted changes"
+    when: "execute_gate is called with GateCheck::GitClean { git_clean: true }"
+    then: "passed is false; detail mentions 'file(s) with uncommitted changes'"
+  - id: belt-core-gate-git-clean-missing-work-dir-yields-spawn-failure
+    category: gate
+    severity: medium
+    technique: boundary-value
+    given: "a non-existent work_dir path"
+    when: "execute_gate is called with GateCheck::GitClean { git_clean: true }"
+    then: "passed is false; detail starts with 'failed to run git:'"
 
   # --- error module ---
   - id: belt-core-error-config-parse-renders-path-detail-and-code
