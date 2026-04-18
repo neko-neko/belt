@@ -23,8 +23,8 @@ phase: spec-review
   in scope for spec-review (scenarios are referenced in the findings).
 - **SREV-06**: Whenever `test-strategy.md` or `scenarios.yml` was modified,
   a corresponding commit exists (no unstaged changes remain).
-- **SREV-07**: The merged `findings.json` exists at
-  `.belt/runs/<run_id>/review/findings.json` and parses as valid JSON
+- **SREV-07**: The merged `findings.json` exists (locate its resolved_path via
+  `belt-agent status` for the `findings` artifact) and parses as valid JSON
   containing a `findings` array.
 - **SREV-08**: Internal markdown links in `test-strategy.md` (and
   `scenarios.yml` when `args.e2e` is true) still resolve after the

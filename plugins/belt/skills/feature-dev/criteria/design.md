@@ -28,9 +28,10 @@ All items must be satisfied for the phase to pass.
 - **DESIGN-06**: `git status` in the worktree is clean after the `design.md`
   commit.
 
-- **DESIGN-07**: Narrative note at `.belt/runs/<run_id>/notes/phase-design.md` exists,
-  contains frontmatter (`phase: design`, `run_id: <run_id>`), and all 4 required
-  sections (`## Decisions`, `## Concerns`, `## Directives`, `## Observations`).
+- **DESIGN-07**: Narrative note for the `design_notes` artifact exists (locate
+  its resolved_path via `belt-agent status`), contains frontmatter
+  (`phase: design`, `run_id: <run_id>`), and all 4 required sections
+  (`## Decisions`, `## Concerns`, `## Directives`, `## Observations`).
   Decisions section records chosen approach and rejected alternatives with rationale.
   Directives section records constraints for plan / execute phases. Empty sections
   may carry `(none)` placeholder but heading must be preserved.

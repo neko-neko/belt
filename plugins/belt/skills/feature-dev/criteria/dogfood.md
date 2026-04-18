@@ -25,8 +25,9 @@ phase: dogfood
   severity, known issues re-encountered, must-verify coverage) are
   consistent with the detail sections.
 
-- **DOGFOOD-06**: Narrative note at `.belt/runs/<run_id>/notes/phase-dogfood.md`
-  exists with required frontmatter and 4 sections. Observations records exploratory
-  findings beyond scripted scenarios. Concerns flags unresolved risks for integrate
-  phase. Directives carries forward any must-verify items discovered during
-  exploration. See `plugins/belt-agent/references/narrative-convention.md`.
+- **DOGFOOD-06**: Narrative note for the `dogfood_notes` artifact exists
+  (locate its resolved_path via `belt-agent status`) with required frontmatter
+  and 4 sections. Observations records exploratory findings beyond scripted
+  scenarios. Concerns flags unresolved risks for integrate phase. Directives
+  carries forward any must-verify items discovered during exploration. See
+  `plugins/belt-agent/references/narrative-convention.md`.

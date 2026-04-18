@@ -21,8 +21,9 @@ phase: monkey-test
 - **MONKEY-05**: `SKIP` entries include a non-empty `skip_reason` referencing
   the `plan.md` task that is incomplete.
 
-- **MONKEY-06**: Narrative note at `.belt/runs/<run_id>/notes/phase-monkey-test.md`
-  exists with required frontmatter and 4 sections. Observations records scenario
-  replay results (pass/fail per scenario). Concerns flags scenarios that revealed
-  unexpected behavior worth dogfood follow-up. Directives carries forward regression
-  hotspots. See `plugins/belt-agent/references/narrative-convention.md`.
+- **MONKEY-06**: Narrative note for the `monkey_test_notes` artifact exists
+  (locate its resolved_path via `belt-agent status`) with required frontmatter
+  and 4 sections. Observations records scenario replay results (pass/fail per
+  scenario). Concerns flags scenarios that revealed unexpected behavior worth
+  dogfood follow-up. Directives carries forward regression hotspots. See
+  `plugins/belt-agent/references/narrative-convention.md`.
