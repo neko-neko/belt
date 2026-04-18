@@ -165,3 +165,35 @@ fn legacy_per_observation_review_agent_files_are_removed() {
         );
     }
 }
+
+#[test]
+fn per_observation_agents_use_output_path_arg_pattern() {
+    // 2026-04-18 belt://current URI migration: per-observation reviewer
+    // agents must receive their target findings path as a runtime `output_path`
+    // arg (injected by the parent skill), never hardcode `.belt/runs/`
+    // literals. The parent resolves the URI; the agent writes to whatever
+    // path is passed in.
+    use std::fs;
+    let agents = [
+        "security-reviewer.md",
+        "test-reviewer.md",
+        "ai-antipattern-reviewer.md",
+        "cross-cutting-reviewer.md",
+        "feasibility-reviewer.md",
+        "cross-cutting-spec-reviewer.md",
+        "ui-design-reviewer.md",
+    ];
+    for name in agents {
+        let path = repo_root().join("plugins/belt/agents").join(name);
+        let content =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert!(
+            content.contains("output_path"),
+            "{name} must reference 'output_path' runtime arg in Output Format section"
+        );
+        assert!(
+            !content.contains(".belt/runs/"),
+            "{name} must not hardcode .belt/runs/ literals"
+        );
+    }
+}
