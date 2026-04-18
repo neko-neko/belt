@@ -201,6 +201,7 @@ fn cmd_init(
     let resolver = crate::resolver::Resolver {
         belt_dir: &belt,
         current_branch: branch.clone(),
+        current_run_id: None, // init has no current run yet
     };
     let mut resolved_map: HashMap<String, String> = HashMap::new();
     for phase in &phases {

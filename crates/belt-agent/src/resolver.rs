@@ -54,6 +54,7 @@ impl Resolver<'_> {
                 }
                 self.resolve_latest(pipeline, path, Some(branch))
             }
+            BeltUri::Current { path } => self.resolve_current(path),
         }
     }
 
@@ -71,6 +72,22 @@ impl Resolver<'_> {
             });
         }
         Ok(abs)
+    }
+
+    fn resolve_current(&self, path: &str) -> Result<PathBuf, ResolveError> {
+        let run_id = self
+            .current_run_id
+            .as_ref()
+            .ok_or(ResolveError::NoCurrentRun)?;
+        let run_dir = self.belt_dir.join("runs").join(run_id);
+        if !run_dir.is_dir() {
+            return Err(ResolveError::RunNotFound {
+                run_id: run_id.clone(),
+            });
+        }
+        // existence assertion is the caller's concern (write targets vs
+        // read targets); resolver only computes the path.
+        Ok(run_dir.join(path))
     }
 
     fn resolve_latest(
@@ -169,6 +186,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Run {
             run_id: "01947abc".into(),
@@ -185,6 +203,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Run {
             run_id: "nope".into(),
@@ -205,6 +224,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Run {
             run_id: "01947abc".into(),
@@ -280,6 +300,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: Some("main".to_string()),
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -315,6 +336,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: Some("main".to_string()),
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -339,6 +361,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: Some("main".to_string()),
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -367,6 +390,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -398,6 +422,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: Some("main".to_string()),
+            current_run_id: None,
         };
         let uri = BeltUri::WorkspaceLatest {
             branch: "develop".into(),
@@ -423,6 +448,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None, // non-git
+            current_run_id: None,
         };
         let uri = BeltUri::WorkspaceLatest {
             branch: "develop".into(),
@@ -452,6 +478,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -484,6 +511,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -514,6 +542,7 @@ mod tests {
         let r = Resolver {
             belt_dir: &belt_dir,
             current_branch: None,
+            current_run_id: None,
         };
         let uri = BeltUri::Latest {
             pipeline: "feature-dev".into(),
@@ -522,6 +551,59 @@ mod tests {
         assert!(matches!(
             r.resolve(&uri),
             Err(ResolveError::NoCompletedRun { .. })
+        ));
+    }
+
+    #[test]
+    fn resolve_current_returns_run_dir_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let run_dir = belt_dir.join("runs").join("01947abc");
+        fs::create_dir_all(run_dir.join("notes")).unwrap();
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+            current_run_id: Some("01947abc".to_string()),
+        };
+        let uri = BeltUri::Current {
+            path: "notes/phase-design.md".into(),
+        };
+        let resolved = r.resolve(&uri).unwrap();
+        // existence is NOT asserted by resolve_current (write target case)
+        assert_eq!(resolved, run_dir.join("notes").join("phase-design.md"));
+    }
+
+    #[test]
+    fn resolve_current_errors_when_no_current_run_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+            current_run_id: None,
+        };
+        let uri = BeltUri::Current {
+            path: "notes/x.md".into(),
+        };
+        assert!(matches!(r.resolve(&uri), Err(ResolveError::NoCurrentRun)));
+    }
+
+    #[test]
+    fn resolve_current_errors_when_run_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+            current_run_id: Some("missing".to_string()),
+        };
+        let uri = BeltUri::Current {
+            path: "notes/x.md".into(),
+        };
+        assert!(matches!(
+            r.resolve(&uri),
+            Err(ResolveError::RunNotFound { .. })
         ));
     }
 }
