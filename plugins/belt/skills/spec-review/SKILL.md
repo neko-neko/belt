@@ -20,13 +20,20 @@ Locate the target spec document (most recent `*-design.md` under `docs/`, or use
 
 ## Parallel Dispatch
 
+Before dispatching agents, call `belt-agent status` and read each finding artifact's
+`resolved_path` (artifacts named `findings-feasibility`, `findings-ui-design`,
+`findings-cross-cutting-spec`, optionally `findings-codex`, and `findings` for
+the merged output). Pass the resolved physical path to each agent in its prompt
+as `output_path`. Agents write to that path without knowing the underlying URI
+semantics.
+
 Dispatch observation agents in parallel via the Agent (Task) tool. Send all Task calls in **one single message**:
 
-- `Task(subagent_type: belt:feasibility-reviewer, prompt: <spec path + path to write findings-feasibility.json>)`
-- `Task(subagent_type: belt:ui-design-reviewer, prompt: <spec path + path to write findings-ui-design.json>)` — agent will early-exit with zero findings if spec has no UI content
-- `Task(subagent_type: belt:cross-cutting-spec-reviewer, prompt: <spec path + path to write findings-cross-cutting-spec.json>)`
+- `Task(subagent_type: belt:feasibility-reviewer, prompt: <spec path + output_path: <resolved-findings-feasibility>>)`
+- `Task(subagent_type: belt:ui-design-reviewer, prompt: <spec path + output_path: <resolved-findings-ui-design>>)` — agent will early-exit with zero findings if spec has no UI content
+- `Task(subagent_type: belt:cross-cutting-spec-reviewer, prompt: <spec path + output_path: <resolved-findings-cross-cutting-spec>>)`
 
-If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the spec, expected findings format, and output path `.belt/runs/<run_id>/review/findings-codex.json`.
+If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the spec, expected findings format, and the resolved `output_path` (from `belt-agent status` `findings-codex` artifact).
 
 Announce each dispatched agent before sending.
 
@@ -34,14 +41,17 @@ Announce each dispatched agent before sending.
 
 After all agents complete:
 
-1. Read each `findings-<observation>.json` file under `.belt/runs/<run_id>/review/`.
+1. For each finding artifact name (`findings-feasibility`, `findings-ui-design`,
+   `findings-cross-cutting-spec`, optionally `findings-codex`), call
+   `belt-agent status` to get the resolved_path, then read the JSON file at that path.
 2. Determine same-issue candidates using `section` overlap + description vocabulary (LLM judgment).
 3. Apply dedup rule:
    - **Severity-first**: keep highest severity.
    - **Tie-break — observation priority (actionability order)**:
      `Feasibility > Requirements > Design-judgment > Consistency > UI-design`
    - **Codex findings are NOT deduplicated** (same as code-review).
-4. Write `.belt/runs/<run_id>/review/findings.json` (cap 20 findings).
+4. Resolve `findings` artifact's path via `belt-agent status` (or
+   `belt-agent locate belt://current/review/findings.json`) and write the merged JSON there (cap 20 findings).
 
 ## Triage
 
