@@ -846,3 +846,52 @@ scenarios:
     given: "a belt:// URI with .. segment in path"
     when: "BeltUri::parse() is called"
     then: "returns Err(UriParseError::PathTraversal)"
+  - id: belt-core-uri-unknown-selector-rejected
+    category: uri
+    severity: medium
+    technique: equivalence-partition
+    given: "a belt:// URI with a selector that is not latest, workspace, or run"
+    when: "BeltUri::parse is called"
+    then: "Err(UnknownSelector) is returned"
+  - id: belt-core-uri-empty-pipeline-rejected
+    category: uri
+    severity: medium
+    technique: boundary-value
+    given: "belt://latest//notes/x.md (empty pipeline segment)"
+    when: "BeltUri::parse is called"
+    then: "Err(EmptyPipeline) is returned"
+  - id: belt-core-uri-empty-run-id-rejected
+    category: uri
+    severity: medium
+    technique: boundary-value
+    given: "belt://run//notes/x.md (empty run_id segment)"
+    when: "BeltUri::parse is called"
+    then: "Err(EmptyRunId) is returned"
+  - id: belt-core-uri-empty-path-rejected
+    category: uri
+    severity: medium
+    technique: boundary-value
+    given: "belt://latest/feature-dev/ (trailing slash, empty path)"
+    when: "BeltUri::parse is called"
+    then: "Err(EmptyPath) is returned"
+  - id: belt-core-uri-absolute-path-rejected
+    category: uri
+    severity: medium
+    technique: equivalence-partition
+    given: "a belt:// URI with path containing // (double slash / absolute-like form)"
+    when: "BeltUri::parse is called"
+    then: "Err(PathTraversal) is returned"
+  - id: belt-core-uri-workspace-missing-latest-rejected
+    category: uri
+    severity: medium
+    technique: equivalence-partition
+    given: "belt://workspace/<branch>/<non-latest>/..."
+    when: "BeltUri::parse is called"
+    then: "Err(Malformed) is returned"
+  - id: belt-core-uri-to-string-roundtrip-all-variants
+    category: uri
+    severity: medium
+    technique: state-transition
+    given: "a BeltUri in any of the 3 variants (Run, Latest, WorkspaceLatest)"
+    when: "to_string is called then parse is called on the result"
+    then: "the round-trip yields the original BeltUri value"

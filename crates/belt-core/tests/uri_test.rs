@@ -80,3 +80,62 @@ fn path_traversal_segment_is_rejected() {
         "expected PathTraversal, got {err:?}"
     );
 }
+
+/// scenario: belt-core-uri-unknown-selector-rejected
+#[test]
+fn unknown_selector_is_rejected() {
+    let err = BeltUri::parse("belt://unknown/pipeline/path.md").expect_err("should reject");
+    assert!(matches!(err, UriParseError::UnknownSelector { .. }));
+}
+
+/// scenario: belt-core-uri-empty-pipeline-rejected
+#[test]
+fn empty_pipeline_is_rejected() {
+    let err = BeltUri::parse("belt://latest//notes/x.md").expect_err("should reject");
+    assert!(matches!(err, UriParseError::EmptyPipeline { .. }));
+}
+
+/// scenario: belt-core-uri-empty-run-id-rejected
+#[test]
+fn empty_run_id_is_rejected() {
+    let err = BeltUri::parse("belt://run//notes/x.md").expect_err("should reject");
+    assert!(matches!(err, UriParseError::EmptyRunId { .. }));
+}
+
+/// scenario: belt-core-uri-empty-path-rejected
+#[test]
+fn empty_path_is_rejected() {
+    let err = BeltUri::parse("belt://latest/feature-dev/").expect_err("should reject");
+    assert!(matches!(err, UriParseError::EmptyPath { .. }));
+}
+
+/// scenario: belt-core-uri-absolute-path-rejected
+#[test]
+fn absolute_path_is_rejected() {
+    let err = BeltUri::parse("belt://latest/feature-dev//notes/x.md").expect_err("should reject");
+    assert!(matches!(err, UriParseError::PathTraversal { .. }));
+}
+
+/// scenario: belt-core-uri-workspace-missing-latest-rejected
+#[test]
+fn workspace_missing_latest_is_rejected() {
+    let err = BeltUri::parse("belt://workspace/develop/notlatest/pipeline/path.md")
+        .expect_err("should reject");
+    assert!(matches!(err, UriParseError::Malformed { .. }));
+}
+
+/// scenario: belt-core-uri-to-string-roundtrip-all-variants
+#[test]
+fn to_string_roundtrip_all_variants() {
+    let inputs = [
+        "belt://run/01932000-0000-7000-8000-000000000001/notes/x.md",
+        "belt://latest/feature-dev/notes/y.md",
+        "belt://workspace/develop/latest/feature-dev/z.md",
+    ];
+    for s in inputs {
+        let parsed = BeltUri::parse(s).expect("parse ok");
+        let restr = parsed.to_string();
+        let reparsed = BeltUri::parse(&restr).expect("reparse ok");
+        assert_eq!(parsed, reparsed, "roundtrip mismatch: {s} -> {restr}");
+    }
+}
