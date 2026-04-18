@@ -243,36 +243,33 @@ fn feature_dev_scenarios_artifact_has_typed_when_field() {
 
 // feature-dev narrative-producing phases.
 // Tuple fields: (`phase_id`, `artifact_name`, path).
+// Path form: `belt://current/notes/phase-<id>.md` (2026-04-18 URI migration).
 const FEATURE_DEV_NARRATIVE_PHASES: &[(&str, &str, &str)] = &[
     (
         "design",
         "design_notes",
-        ".belt/runs/{run_id}/notes/phase-design.md",
+        "belt://current/notes/phase-design.md",
     ),
-    (
-        "plan",
-        "plan_notes",
-        ".belt/runs/{run_id}/notes/phase-plan.md",
-    ),
+    ("plan", "plan_notes", "belt://current/notes/phase-plan.md"),
     (
         "execute",
         "execute_notes",
-        ".belt/runs/{run_id}/notes/phase-execute.md",
+        "belt://current/notes/phase-execute.md",
     ),
     (
         "code-review",
         "code_review_notes",
-        ".belt/runs/{run_id}/notes/phase-code-review.md",
+        "belt://current/notes/phase-code-review.md",
     ),
     (
         "monkey-test",
         "monkey_test_notes",
-        ".belt/runs/{run_id}/notes/phase-monkey-test.md",
+        "belt://current/notes/phase-monkey-test.md",
     ),
     (
         "dogfood",
         "dogfood_notes",
-        ".belt/runs/{run_id}/notes/phase-dogfood.md",
+        "belt://current/notes/phase-dogfood.md",
     ),
 ];
 
@@ -375,5 +372,83 @@ fn pre_execute_handover_expands_to_namespaced_checkpoint() {
     assert!(
         ids.contains(&"pre-execute-handover/checkpoint"),
         "expanded pipeline must contain phase id 'pre-execute-handover/checkpoint', got: {ids:?}"
+    );
+}
+
+// --- belt://current URI shape lock (2026-04-18 URI migration) ---
+
+#[test]
+fn feature_dev_produces_use_belt_current_uri() {
+    let pipeline =
+        parse_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must parse");
+    // For each narrative-producing phase, the corresponding produces entry
+    // must use the belt://current/notes/phase-<id>.md URI form (not a raw
+    // .belt/runs literal).
+    let narrative_phases = [
+        "design",
+        "plan",
+        "execute",
+        "code-review",
+        "monkey-test",
+        "dogfood",
+    ];
+    for phase in &pipeline.phases {
+        if !narrative_phases.contains(&phase.id.as_str()) {
+            continue;
+        }
+        let notes_artifact = phase
+            .produces
+            .iter()
+            .find(|a| a.name.ends_with("_notes"))
+            .unwrap_or_else(|| panic!("phase {} missing notes artifact", phase.id));
+        let expected = format!("belt://current/notes/phase-{}.md", phase.id);
+        assert_eq!(
+            notes_artifact.path, expected,
+            "phase {} notes path must equal {expected}",
+            phase.id
+        );
+    }
+}
+
+#[test]
+fn feature_dev_pipeline_has_no_run_id_template() {
+    let yaml = std::fs::read_to_string(feature_dev_pipeline_path())
+        .expect("feature-dev pipeline.yml must be readable");
+    assert!(
+        !yaml.contains("{run_id}"),
+        "pipeline must not contain {{run_id}} template anywhere"
+    );
+    assert!(
+        !yaml.contains(".belt/runs/"),
+        "pipeline must not contain .belt/runs/ literal anywhere"
+    );
+}
+
+#[test]
+fn feature_dev_code_review_produces_seven_artifacts() {
+    let pipeline =
+        parse_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must parse");
+    let code_review = pipeline
+        .phases
+        .iter()
+        .find(|p| p.id == "code-review")
+        .expect("code-review phase must exist");
+    let names: Vec<&str> = code_review
+        .produces
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
+    let expected = [
+        "findings-security",
+        "findings-test",
+        "findings-ai-antipattern",
+        "findings-cross-cutting",
+        "findings-codex",
+        "findings",
+        "code_review_notes",
+    ];
+    assert_eq!(
+        names, expected,
+        "code-review produces names + order must match"
     );
 }

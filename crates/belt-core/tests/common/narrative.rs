@@ -2,8 +2,9 @@
 //!
 //! Used by `feature_dev_refresh.rs` and `bug_fix_refresh.rs`. Both pipelines
 //! follow the same accumulating narrative contract defined in
-//! `docs/specs/2026-04-15-narrative-artifact-design.md`: each narrative phase
-//! produces a `.belt/runs/{run_id}/notes/phase-<id>.md`, gates on it via
+//! `docs/specs/2026-04-15-narrative-artifact-design.md` (as amended by the
+//! 2026-04-18 `belt://current` URI migration): each narrative phase produces
+//! `belt://current/notes/phase-<id>.md`, gates on that same URI via
 //! `file_exists`, and consumes all prior narrative notes as `ArtifactRef::Named`.
 //!
 //! `Artifact.path` is a `String` (not `Option<String>`), so the helpers below
@@ -90,14 +91,20 @@ pub(crate) fn assert_narrative_accumulating_consumes(
     }
 }
 
-/// For each `phase_id`, assert it has no produce whose path starts with
-/// `.belt/runs/`.
+/// For each `phase_id`, assert it has no produce whose path references a
+/// belt narrative note (either the legacy `.belt/runs/` literal form or the
+/// current `belt://current/notes/` URI form).
 pub(crate) fn assert_non_narrative_phases_have_no_notes(pipeline: &Pipeline, phase_ids: &[&str]) {
     for phase_id in phase_ids {
         let phase = find_phase(pipeline, phase_id);
         for artifact in &phase.produces {
             assert!(
                 !artifact.path.starts_with(".belt/runs/"),
+                "phase '{phase_id}' must not produce belt notes, got '{}'",
+                artifact.path
+            );
+            assert!(
+                !artifact.path.starts_with("belt://current/notes/"),
                 "phase '{phase_id}' must not produce belt notes, got '{}'",
                 artifact.path
             );
