@@ -94,13 +94,12 @@ fn phase_count_and_order() {
 }
 
 #[test]
-fn all_phases_use_skill_invoke() {
-    // Pure-checkpoint phases (phase.invoke.is_none()) are exempt: they carry
-    // no implementation work, only a file_exists gate. E.g. `pre-execute-handover`
-    // is a context-reset barrier between plan and execute. The contract under
-    // test is: *if* a phase invokes anything, it must be a /-prefixed skill
-    // (not a sub-pipeline, not a cmd). Pure checkpoints bypass this check by
-    // design.
+fn all_phases_use_skill_or_pipeline_invoke() {
+    // Contract: if a phase invokes anything, it must be either a /-prefixed
+    // skill (Invoker::Skill) or a sub-pipeline (Invoker::Pipeline). Pure
+    // checkpoints (phase.invoke.is_none()) continue to bypass this check by
+    // design. Invoker::Cmd is not a defined variant in belt-core model —
+    // match is exhaustive on the two variants; no wildcard arm is required.
     let pipeline = bug_fix_pipeline();
     for phase in pipeline.phases.iter().filter(|p| p.invoke.is_some()) {
         let invoker = phase
@@ -115,10 +114,16 @@ fn all_phases_use_skill_invoke() {
                     phase.id
                 );
             }
-            _ => panic!(
-                "phase '{}' must use Invoker::Skill variant, got {invoker:?}",
-                phase.id
-            ),
+            Invoker::Pipeline {
+                pipeline: sub_path,
+                ..
+            } => {
+                assert!(
+                    !sub_path.is_empty(),
+                    "phase '{}' sub-pipeline path must be non-empty",
+                    phase.id
+                );
+            }
         }
     }
 }
@@ -221,15 +226,17 @@ fn rca_scenarios_present_when_e2e_true() {
 
 #[test]
 fn all_phases_have_max_retries_3_and_confirm_true() {
-    // Pure-checkpoint phases (phase.invoke.is_none()) are exempt from the
-    // max_retries invariant: `max_retries` makes sense only when there is
-    // implementation work to retry. Pure checkpoints (e.g. `pre-execute-handover`)
-    // have no invoke and no retry-able body; their `max_retries` stays at the
-    // serde default (0). The `confirm: true` invariant still applies to all
-    // phases because a checkpoint phase is exactly where we want a human
-    // confirm beat.
+    // Sub-pipeline delegation phases (Invoker::Pipeline) are thin stubs: the
+    // real confirm/gate/max_retries live on the sub-phase. Top-level shape
+    // assertions skip them. Pure-checkpoint phases (invoke.is_none()) are
+    // also exempt from max_retries — retry has no meaning without a
+    // retry-able body. All non-delegation phases still require confirm: true;
+    // skill-invoke phases additionally require max_retries == 3.
     let pipeline = bug_fix_pipeline();
     for phase in &pipeline.phases {
+        if matches!(phase.invoke, Some(Invoker::Pipeline { .. })) {
+            continue;
+        }
         assert!(phase.confirm, "phase '{}' confirm must be true", phase.id);
         if phase.invoke.is_some() {
             assert_eq!(

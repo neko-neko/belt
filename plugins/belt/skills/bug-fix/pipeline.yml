@@ -69,13 +69,8 @@ phases:
     max_retries: 3
 
   - id: pre-execute-handover
-    description: >-
-      Context checkpoint before execute. Run `/belt:handover`, then `/clear`,
-      then `/belt:resume` in a new session. The gate passes once the handover
-      note exists under `.belt/runs/{run_id}/`.
-    confirm: true
-    gate:
-      - file_exists: ".belt/runs/{run_id}/handover.md"
+    invoke:
+      pipeline: ../handover/checkpoint.yml
 
   - id: execute
     description: "TDD implementation following the fix plan"
