@@ -170,9 +170,21 @@ phases:
 }
 
 /// Parent-scope args MUST NOT be rewritten by sub-pipeline `with`
-/// substitution. The sub has its own `args.name` template that resolves
-/// against the parent's `with.name` value — the parent's own `args.name`
-/// `ArgDef` default stays untouched.
+/// substitution. The parent has a sibling leaf phase (`parent-leaf`) whose
+/// `invoke.args` map references `args.name`. A sibling phase (`call-sub`)
+/// invokes a sub-pipeline with `with: { name: "/sub-override" }`. After
+/// expansion, the substitution applied inside the sub-pipeline MUST NOT
+/// leak to the parent-leaf's `invoke.args` map. The sub-phase's own
+/// `invoke.args` gets substituted (sub scope) while the parent-leaf keeps
+/// its original `args.name` template intact (parent scope).
+///
+/// This probes the parent-scope isolation invariant directly via the
+/// `Vec<ExpandedPhase>` output of `expand_pipeline`. An earlier revision
+/// of this test inspected `pipeline.args["name"].default`, which Rust
+/// ownership alone guaranteed because `expand_pipeline` takes `&Path` and
+/// cannot physically mutate the caller's `pipeline` binding. That shape
+/// would pass even under a hypothetically broken expander that rewrote
+/// parent values, so it did not test the spec intent.
 ///
 /// scenario: belt-core-expander-with-parent-scope-not-rewritten-by-sub-substitution
 #[test]
@@ -210,27 +222,56 @@ args:
     type: string
     default: "/parent-name"
 phases:
-  - id: phase
+  - id: call-sub
     invoke:
       pipeline: sub.yml
       with:
         name: "/sub-override"
+  - id: parent-leaf
+    description: "parent scope leaf"
+    invoke:
+      skill: "/runner"
+      args:
+        name: "args.name"
+    gate:
+      - cmd: "true"
 "#,
     );
 
-    let pipeline = parse_pipeline(&parent).expect("parse parent");
-    let _ = expand_pipeline(&parent).expect("expand");
+    // Round-trip parse for the full declarative path.
+    let _ = parse_pipeline(&parent).expect("parse parent");
+    let expanded = expand_pipeline(&parent).expect("expand");
 
-    // Parent args.name's default must remain /parent-name — the sub-scope
-    // substitution rewrote only the sub-phase's invoke.args.
-    let parent_name_default = pipeline
-        .args
-        .get("name")
-        .and_then(|a| a.default.as_ref())
-        .map(|v| format!("{v:?}"))
-        .unwrap_or_default();
+    // The parent-leaf sibling must not be touched by the sub-pipeline's
+    // `with` substitution — its `invoke.args.name` template must stay
+    // literal, and must NOT contain the sub-scope override value.
+    let parent_leaf = expanded
+        .iter()
+        .find(|p| p.id == "parent-leaf")
+        .expect("parent-leaf phase present in expansion");
+    let parent_rendered = format!("{:?}", parent_leaf.invoke);
     assert!(
-        parent_name_default.contains("/parent-name"),
-        "parent scope arg rewritten by sub substitution: {parent_name_default}"
+        parent_rendered.contains("args.name"),
+        "parent-leaf invoke.args template was rewritten (expected literal 'args.name'): {parent_rendered}"
+    );
+    assert!(
+        !parent_rendered.contains("/sub-override"),
+        "parent-leaf leaked sub-pipeline with override into parent scope: {parent_rendered}"
+    );
+
+    // The sub-phase itself DID receive the with-substitution — this
+    // confirms substitution happened in sub scope (positive control).
+    let sub_phase = expanded
+        .iter()
+        .find(|p| p.id == "call-sub/step")
+        .expect("sub phase call-sub/step present in expansion");
+    let sub_rendered = format!("{:?}", sub_phase.invoke);
+    assert!(
+        sub_rendered.contains("/sub-override"),
+        "sub-phase did not receive with substitution (expected '/sub-override'): {sub_rendered}"
+    );
+    assert!(
+        !sub_rendered.contains("args.name"),
+        "sub-phase template was not substituted (still contains 'args.name'): {sub_rendered}"
     );
 }
