@@ -21,7 +21,7 @@ Exact format; do not accept synonyms (`resume_run=`, `run=`, etc.).
 3. If `current_phase == "COMPLETED"`, report back to the caller and stop.
    (The caller `/belt:resume` is expected to catch this first via its
    precondition; this is a defensive second check.)
-4. If `.belt/runs/<id>/handover.md` exists, read it and incorporate the
+4. If `belt-agent locate belt://run/<id>/handover.md` returns exists=true, read it and incorporate the
    `## Resume hint` section into the LLM context before resuming normal
    workflow.
 5. Continue with the normal protocol loop: `belt-agent next --run <id>` →

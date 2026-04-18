@@ -8,13 +8,19 @@ After the user resets session context with `/clear` or `/belt:resume`, reading t
 
 ## Path
 
-```
-.belt/runs/{run_id}/notes/phase-{phase_id}.md
+Each phase's narrative note is declared in pipeline.yml as a `produces` artifact:
+
+```yaml
+produces:
+  - name: design_notes
+    path: "belt://current/notes/phase-design.md"
 ```
 
-- `{run_id}` is template-expanded by belt-core (the Engine creates `<run_dir>/notes/` during init).
-- `{phase_id}` matches `phases[].id` in `pipeline.yml` (hyphens preserved: `monkey-test` → `phase-monkey-test.md`).
-- Placed under a directory separate from domain artifacts (`docs/features/*`, `docs/plans/*`).
+Resolve the physical path via `belt-agent status` (read `phases[].produces[].resolved_path`)
+or `belt-agent locate belt://current/notes/phase-design.md`.
+
+Convention: artifacts named `<id>_notes` use the `belt://current/notes/phase-<id>.md`
+URI by convention. belt-core does not enforce this — it is owned by the SKILL layer.
 
 ## File Schema
 

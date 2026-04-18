@@ -58,7 +58,9 @@ branch `feature/2026-04-14-user-authentication`.
 | `dogfood-report/videos/*` | 7 | /dogfood | when `args.e2e` |
 
 Phase 4 (execute) and Phase 5 (code-review) write to git history and
-`.belt/runs/*/review/findings.json`, not under `docs/features/`.
+`belt://current/review/findings.json` (resolve via `belt-agent status` or
+`belt-agent locate belt://current/review/findings.json`), not under
+`docs/features/`.
 
 Phase 8 (integrate) consumes from `docs/features/<topic>/` but does not write
 there.
