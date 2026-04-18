@@ -58,14 +58,16 @@ pub(crate) fn assert_narrative_produce_paths(pipeline: &Pipeline, rows: &[(&str,
     }
 }
 
-/// For each `(phase_id, _, expected_path)` tuple, assert the phase has a
-/// `file_exists` gate on that path.
+/// For each `(phase_id, produce_name, expected_path)` tuple, assert the phase
+/// has a `file_exists` gate on that path. Narrative phases gate on the path
+/// they produce, so `produce_name` appears in the assertion message to pin the
+/// invariant to the shared constant's tuple shape.
 pub(crate) fn assert_narrative_gate_paths(pipeline: &Pipeline, rows: &[(&str, &str, &str)]) {
-    for (phase_id, _, expected_path) in rows {
+    for (phase_id, produce_name, expected_path) in rows {
         let phase = find_phase(pipeline, phase_id);
         assert!(
             has_file_exists_gate(phase, expected_path),
-            "phase '{phase_id}' must gate on file_exists: '{expected_path}'"
+            "phase '{phase_id}' must gate on '{produce_name}' at '{expected_path}'"
         );
     }
 }

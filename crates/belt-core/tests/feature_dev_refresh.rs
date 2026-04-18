@@ -238,8 +238,8 @@ fn feature_dev_scenarios_artifact_has_typed_when_field() {
 
 // --- narrative artifact shape (context reset) ---
 
-// feature-dev の narrative-producing phase リスト。
-// タプル要素: (`phase_id`, `artifact_name`, path).
+// feature-dev narrative-producing phases.
+// Tuple fields: (`phase_id`, `artifact_name`, path).
 const FEATURE_DEV_NARRATIVE_PHASES: &[(&str, &str, &str)] = &[
     (
         "design",
