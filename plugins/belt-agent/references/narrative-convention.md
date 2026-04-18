@@ -1,6 +1,6 @@
 # Narrative Note Convention
 
-Convention for phase-scoped narrative notes produced by narrative-producing phases in `feature-dev` and `bug-fix`. belt does not parse note content, so this convention is owned by the SKILL layer.
+Convention for phase-scoped narrative notes produced by narrative-producing phases across any belt pipeline (development, data-sync, audit, triage, or other domains). belt does not parse note content, so this convention is owned by the SKILL layer.
 
 ## Purpose
 
@@ -76,30 +76,38 @@ run_id: <run_id>
 - Context useful for future investigation.
 - Example: "The existing `FooService` does not actually implement the Bar interface (confirmed via a lint warning)."
 
-## Example: feature-dev design phase
+## Example (generic phase)
 
 ```markdown
 ---
-phase: design
+phase: <phase_id>
 run_id: 01947abc-1234-7890-def0-123456789abc
 ---
 
 ## Decisions
 
-- Reuse the existing belt-core narrative mechanism (2026-04-14 spec) for the context-reset capability; do not add new code to belt-core.
-- Produce narrative notes only for six phases (lightweight phases excluded, per user agreement).
+- <Key choice made in this phase with rationale. Prefer statements
+  that answer "why this choice, not the alternatives?"—future
+  phases will ask.>
 
 ## Concerns
 
-- `/clear` depends on manual user action. Without documenting "when to reset" in SKILL.md, the notes may never be consulted.
+- <Unresolved risk or unverified assumption that downstream phases
+  must watch. Prefer concrete leads over generic worries.>
 
 ## Directives
 
-- plan phase: keep implementation tasks at a granularity of 30 minutes or less.
-- execute phase: do not quote the narrative's Decisions into commit messages (it becomes noise).
+- <Constraint or precondition the next phase must honor. Place
+  narrow, actionable rules, not broad philosophies.>
 
 ## Observations
 
-- `narrative-convention.md` sits alongside existing references under `plugins/belt-agent/references/`.
-- Criteria have been made per-plugin during the plugin migration (parity test detects drift).
+- <Factual finding from exploration that does not fit a domain
+  artifact but matters for future investigation or audit.>
 ```
+
+The example above is intentionally domain-neutral; the same four sections
+fit development (design, plan, execute, code-review), data-sync (scan,
+analyze, approve, sync), audit (rca, fix-plan, verify), and other
+workflows uniformly. See each skill's `SKILL.md` for which phases produce
+narrative notes.
