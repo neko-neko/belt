@@ -63,7 +63,52 @@ cross-coupling:
   - crates/belt-core/tests/shared_criteria_parity.rs
 ```
 
-F2/F3 で同様の shape dimension 列挙を行う (F1 scope 外、F2 着手時に追記)。
+**19 test fn 名** (A):
+
+- `args_are_e2e_and_codex_only`
+- `no_legacy_args`
+- `phase_count_and_order`
+- `all_phases_use_skill_invoke`
+- `review_phases_pass_codex_only`
+- `only_code_review_has_regate`
+- `rca_scenarios_when_is_typed`
+- `rca_scenarios_filtered_when_e2e_false`
+- `rca_scenarios_present_when_e2e_true`
+- `all_phases_have_max_retries_3_and_confirm_true`
+- `supplement_files_exist`
+- `dead_letter_references_removed`
+- `criteria_files_exist`
+- `skill_md_has_expected_sections`
+- `skill_md_declares_supplement_injection_per_phase`
+- `bug_fix_narrative_phases_produce_notes`
+- `bug_fix_narrative_phases_gate_notes`
+- `bug_fix_narrative_accumulating_consumes`
+- `bug_fix_non_narrative_phases_have_no_notes`
+
+**pipeline.yml shape dimensions locked** (B):
+
+- `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` (`bug_fix_refresh.rs:63-75`)
+- legacy `args` (`iterations` / `swarm` / `ui` / `smoke`) の non-existence (`bug_fix_refresh.rs:78-86`)
+- 8 phase の順序 (`rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate`) (`bug_fix_refresh.rs:89-93`)
+- 全 phase が `Invoker::Skill` variant で `skill` が leading slash 付き (`bug_fix_refresh.rs:96-117`)
+- review phases (`fix-plan-review` / `code-review`) の invoke args が exactly `{codex: "args.codex"}` (`bug_fix_refresh.rs:120-144`)
+- `code-review.regate = [execute]`、他 phase は `regate` 空 (`bug_fix_refresh.rs:147-165`)
+- `rca_scenarios.when = "args.e2e"` typed enum field (string ではなく ArtifactWhen) (`bug_fix_refresh.rs:168-185`)
+- `view::active_produces` の条件付き filtering (`args.e2e=false` で `rca_scenarios` 除外、`rca_report` は常時) (`bug_fix_refresh.rs:188-213`)
+- 全 phase の `max_retries == 3` + `confirm == true` blanket (`bug_fix_refresh.rs:216-226`)
+- 5 supplement file (`rca-supplement.md`, `fix-plan-supplement.md`, `monkey-test-supplement.md`, `dogfood-supplement.md`, `worktrunk-supplement.md` + `path-convention.md`) の physical existence (`bug_fix_refresh.rs:229-244`)
+- dead-letter reference (`evidence-plan-protocol.md`, `fix-dispatch-strategy.md`) の physical non-existence (`bug_fix_refresh.rs:247-255`)
+- 6 skill-local criteria + 2 duplicated shared criteria (`execute.md`, `code-review.md`) の physical existence (`bug_fix_refresh.rs:258-285`)
+- SKILL.md の expected section substring lock (`## Supplement Loading` / `## Phase-specific Runtime Notes` / `## Red Flags` / `## References` / `argument-hint:`) (`bug_fix_refresh.rs:288-303`)
+- SKILL.md が 5 phase supplement 名を Supplement Loading table に列挙 (`bug_fix_refresh.rs:306-323`)
+- narrative artifact 6 phase (`rca` / `fix-plan` / `execute` / `code-review` / `monkey-test` / `dogfood`) の `.belt/runs/{run_id}/notes/phase-*.md` 生成 + file_exists gate (`bug_fix_refresh.rs:327-366`)
+- `consumes` の accumulating narrative pattern (phase N は phase 1..N-1 の notes を `Named(n)` で consume) (`bug_fix_refresh.rs:369-402`)
+- non-narrative phase (`fix-plan-review` / `integrate`) が notes artifact を持たない (`bug_fix_refresh.rs:405-408`)
+
+**Cross-coupling** (C):
+
+- `feature_dev_refresh.rs` — feature-dev pipeline shape (同 tuple pattern で parallel)
+- `shared_criteria_parity.rs` — feature-dev と bug-fix の criteria/execute.md + code-review.md の byte-identical 確認
 
 ---
 
