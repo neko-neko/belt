@@ -115,8 +115,7 @@ fn all_phases_use_skill_or_pipeline_invoke() {
                 );
             }
             Invoker::Pipeline {
-                pipeline: sub_path,
-                ..
+                pipeline: sub_path, ..
             } => {
                 assert!(
                     !sub_path.is_empty(),
