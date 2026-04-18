@@ -41,7 +41,7 @@ Do not rationalize your way to a softer verdict.
 
 ## Output Format
 
-Write findings to `.belt/runs/{run_id}/review/findings-feasibility.json`:
+Write findings to the path provided in your prompt's `output_path` field:
 
 ```json
 {
@@ -58,6 +58,9 @@ Write findings to `.belt/runs/{run_id}/review/findings-feasibility.json`:
   ]
 }
 ```
+
+The orchestrator skill resolves the artifact path via `belt-agent status`
+and passes it to you as `output_path`. Do not construct the path yourself.
 
 - Emit at most 5 findings. If no findings, write `{"observation":"feasibility","findings":[]}`.
 

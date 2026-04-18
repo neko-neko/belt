@@ -135,7 +135,7 @@ If the same pattern was already reported under Quality or Performance observatio
 
 ## Output Format
 
-Write findings to `.belt/runs/{run_id}/review/findings-cross-cutting.json`:
+Write findings to the path provided in your prompt's `output_path` field:
 
 ```json
 {
@@ -154,6 +154,9 @@ Write findings to `.belt/runs/{run_id}/review/findings-cross-cutting.json`:
   ]
 }
 ```
+
+The orchestrator skill resolves the artifact path via `belt-agent status`
+and passes it to you as `output_path`. Do not construct the path yourself.
 
 - Emit at most 10 findings total across the four observations. If more exist, keep the highest-severity ones and note truncation in a final `low`-severity finding of observation `quality`.
 - If no findings, write `{"observations":["quality","performance","impact","simplification"],"findings":[]}`.

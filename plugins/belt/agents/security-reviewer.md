@@ -71,7 +71,7 @@ Do not rationalize your way to a softer verdict. "Minor, so it's fine", "It work
 
 ## Output Format
 
-Write findings to `.belt/runs/{run_id}/review/findings-security.json`:
+Write findings to the path provided in your prompt's `output_path` field:
 
 ```json
 {
@@ -89,6 +89,9 @@ Write findings to `.belt/runs/{run_id}/review/findings-security.json`:
   ]
 }
 ```
+
+The orchestrator skill resolves the artifact path via `belt-agent status`
+and passes it to you as `output_path`. Do not construct the path yourself.
 
 - Emit at most 6 findings. If more exist, keep the highest-severity ones and note truncation in a final `low`-severity finding.
 - If no findings, write `{"observation":"security","findings":[]}`. Always create the file so the parent's merge step can read it deterministically.

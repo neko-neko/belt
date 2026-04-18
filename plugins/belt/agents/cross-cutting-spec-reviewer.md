@@ -96,7 +96,7 @@ Do not rationalize your way to a softer verdict.
 
 ## Output Format
 
-Write findings to `.belt/runs/{run_id}/review/findings-cross-cutting-spec.json`:
+Write findings to the path provided in your prompt's `output_path` field:
 
 ```json
 {
@@ -114,6 +114,9 @@ Write findings to `.belt/runs/{run_id}/review/findings-cross-cutting-spec.json`:
   ]
 }
 ```
+
+The orchestrator skill resolves the artifact path via `belt-agent status`
+and passes it to you as `output_path`. Do not construct the path yourself.
 
 - Emit at most 10 findings. If no findings, write the empty `findings` array with all three observations listed.
 
