@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計)。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
+scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 = 108。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
@@ -902,3 +902,39 @@ scenarios:
     given: "a BeltUri in any of the 3 variants (Run, Latest, WorkspaceLatest)"
     when: "serde_json::to_string is called then serde_json::from_str is called on the result"
     then: "the serde round-trip yields the original BeltUri value and the JSON wire form is the canonical URI string"
+  # --- uri::Current variant (2026-04-18 spec) ---
+  - id: belt-core-uri-parses-current-variant
+    category: uri
+    severity: high
+    technique: equivalence-partition
+    given: "a belt://current/<path> URI string"
+    when: "BeltUri::parse is called"
+    then: "returns BeltUri::Current with the path field populated, Display round-trips"
+  - id: belt-core-uri-current-rejects-empty-path
+    category: uri
+    severity: high
+    technique: boundary-value
+    given: "the literal 'belt://current/' (no path segment)"
+    when: "BeltUri::parse is called"
+    then: "returns UriParseError::EmptyPath"
+  - id: belt-core-uri-current-rejects-traversal
+    category: uri
+    severity: high
+    technique: boundary-value
+    given: "a belt://current/../foo URI containing a parent-dir segment"
+    when: "BeltUri::parse is called"
+    then: "returns UriParseError::PathTraversal"
+  - id: belt-core-uri-current-rejects-leading-slash
+    category: uri
+    severity: high
+    technique: boundary-value
+    given: "a belt://current//foo URI with an empty first path segment"
+    when: "BeltUri::parse is called"
+    then: "returns UriParseError::PathTraversal"
+  - id: belt-core-uri-current-allows-glob-syntax
+    category: uri
+    severity: medium
+    technique: equivalence-partition
+    given: "a belt://current/notes/phase-*.md URI containing a glob"
+    when: "BeltUri::parse is called"
+    then: "parse succeeds; resolver-side glob expansion is responsible for matching"

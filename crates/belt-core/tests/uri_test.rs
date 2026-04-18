@@ -8,7 +8,7 @@
 //! Integration tests for belt-core `BeltUri` parsing.
 //! The previous inline `#[cfg(test)] mod tests` block in `src/uri.rs` was removed in F2b;
 //! all parse, Display, and serde behavior is exercised here.
-//! Covers black-box behavior of the three selector variants (Run / Latest / `WorkspaceLatest`)
+//! Covers black-box behavior of the four selector variants (Run / Latest / `WorkspaceLatest` / Current)
 //! and the overall parse contract.
 
 use belt_core::uri::{BeltUri, UriParseError};
@@ -180,4 +180,49 @@ fn serde_roundtrip_all_variants() {
             "serde wire form drift: {s} -> {json}"
         );
     }
+}
+
+/// scenario: belt-core-uri-parses-current-variant
+#[test]
+fn parses_current_variant() {
+    let uri = BeltUri::parse("belt://current/notes/phase-design.md").unwrap();
+    assert_eq!(
+        uri,
+        BeltUri::Current {
+            path: "notes/phase-design.md".to_string(),
+        }
+    );
+    assert_eq!(uri.to_string(), "belt://current/notes/phase-design.md");
+}
+
+/// scenario: belt-core-uri-current-rejects-empty-path
+#[test]
+fn current_rejects_empty_path() {
+    // `belt://current/` (no path segment after the slash)
+    let result = BeltUri::parse("belt://current/");
+    assert!(matches!(result, Err(UriParseError::EmptyPath { .. })));
+}
+
+/// scenario: belt-core-uri-current-rejects-traversal
+#[test]
+fn current_rejects_traversal() {
+    let result = BeltUri::parse("belt://current/../foo");
+    assert!(matches!(result, Err(UriParseError::PathTraversal { .. })));
+}
+
+/// scenario: belt-core-uri-current-rejects-leading-slash
+#[test]
+fn current_rejects_leading_slash() {
+    // After `current/`, an empty first segment indicates an absolute path:
+    // `belt://current//foo` -> path starts with `/` after split (path = "/foo")
+    let result = BeltUri::parse("belt://current//foo");
+    assert!(matches!(result, Err(UriParseError::PathTraversal { .. })));
+}
+
+/// scenario: belt-core-uri-current-allows-glob-syntax
+#[test]
+fn current_allows_glob_syntax() {
+    let uri = BeltUri::parse("belt://current/notes/phase-*.md").unwrap();
+    assert!(matches!(uri, BeltUri::Current { .. }));
+    assert_eq!(uri.to_string(), "belt://current/notes/phase-*.md");
 }
