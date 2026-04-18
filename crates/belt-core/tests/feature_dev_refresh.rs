@@ -51,8 +51,13 @@ fn feature_dev_has_ten_phases() -> Result<(), BeltError> {
 #[test]
 fn feature_dev_expands_cleanly() -> Result<(), BeltError> {
     let pipeline = parse_pipeline(&feature_dev_pipeline_path())?;
-    // Refresh deletes all `uses:`/`invoke.pipeline:` references; the expanded
-    // phases must equal the top-level phases 1:1.
+    // The feature-dev pipeline delegates `pre-execute-handover` to the shared
+    // sub-pipeline `../handover/checkpoint.yml`. That single sub-pipeline
+    // contains exactly one leaf phase (`checkpoint`), so expansion replaces
+    // one top-level phase with one namespaced sub-phase and the total count
+    // remains equal. If additional leaves are added to the sub-pipeline in
+    // the future, this assertion must be updated (the right form is then
+    // `expanded.len() == pipeline.phases.len() + (sub_leaves - 1)`).
     let expanded = expand_pipeline(&feature_dev_pipeline_path())?;
     assert_eq!(expanded.len(), pipeline.phases.len());
     Ok(())
