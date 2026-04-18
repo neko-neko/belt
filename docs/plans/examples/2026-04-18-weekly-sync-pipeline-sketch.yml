@@ -1,0 +1,90 @@
+# Thought experiment sketch for validating the refactor.
+# This is NOT a deployable pipeline — it exists only to demonstrate
+# that the new plugins/belt-agent/references/ layer is sufficient
+# to design a non-development pipeline without leaks of dev-specific
+# assumptions.
+
+name: weekly-sync
+version: 1
+description: "Linear ↔ customer-facing output weekly sync (6 phases)"
+
+args:
+  from:
+    type: string
+    description: "Start date (ISO 8601 or YYYY-MM-DD)"
+  to:
+    type: string
+    default: ""
+    description: "End date (empty = today)"
+  dry_run:
+    type: bool
+    default: false
+
+phases:
+  - id: setup
+    description: "Validate config.md presence and schema"
+    produces:
+      - name: config_snapshot
+        path: ".weekly-sync/config-snapshot.md"
+      - name: setup_notes
+        path: "belt://current/notes/phase-setup.md"
+    gate:
+      - file_exists: ".weekly-sync/config.md"
+      - file_exists: "belt://current/notes/phase-setup.md"
+    validate: ./criteria/setup.md
+
+  - id: scan
+    description: "Parallel scan Linear SSOT + output adapter"
+    consumes: [config_snapshot]
+    produces:
+      - name: scan_result
+        path: "belt://current/scan.json"
+      - name: scan_notes
+        path: "belt://current/notes/phase-scan.md"
+    gate:
+      - file_exists: "belt://current/scan.json"
+      - file_exists: "belt://current/notes/phase-scan.md"
+    validate: ./criteria/scan.md
+
+  - id: analyze
+    description: "Diff + sync plan generation"
+    consumes: [scan_result]
+    produces:
+      - name: sync_plan
+        path: "belt://current/sync-plan.json"
+      - name: analyze_notes
+        path: "belt://current/notes/phase-analyze.md"
+    gate:
+      - file_exists: "belt://current/sync-plan.json"
+    validate: ./criteria/analyze.md
+
+  - id: approve
+    description: "Present plan, wait for user approval"
+    when: "!args.dry_run"
+    consumes: [sync_plan]
+    confirm: true
+    validate: ./criteria/approve.md
+
+  - id: sync
+    description: "Execute SSOT updates, customer document, transcribe, status sync"
+    when: "!args.dry_run"
+    consumes: [sync_plan]
+    produces:
+      - name: sync_log
+        path: "belt://current/sync-log.json"
+      - name: sync_notes
+        path: "belt://current/notes/phase-sync.md"
+    gate:
+      - file_exists: "belt://current/sync-log.json"
+    validate: ./criteria/sync.md
+
+  - id: verify
+    description: "Final verification + cleanup"
+    when: "!args.dry_run"
+    consumes: [sync_log]
+    produces:
+      - name: verify_report
+        path: "belt://current/verify-report.md"
+    gate:
+      - file_exists: "belt://current/verify-report.md"
+    validate: ./criteria/verify.md
