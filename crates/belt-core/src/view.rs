@@ -82,13 +82,19 @@ pub struct PhaseView {
 }
 
 /// An artifact produced by a phase, enriched with runtime-resolved
-/// filesystem state. `path` is the declared pattern (possibly a glob);
-/// `resolved_path` is the concrete filesystem path selected by
-/// [`resolve_artifact`], or `None` when nothing matches.
+/// filesystem state. When the declared path is a `belt://` URI, `uri`
+/// holds the URI and `path` is omitted; otherwise `path` holds the raw
+/// declared path. `resolved_path` is the concrete filesystem path.
 #[derive(Debug, Clone, Serialize)]
 pub struct ResolvedArtifact {
     pub name: String,
-    pub path: String,
+    /// `belt://...` URI (when declared as URI). Mutually exclusive with `path`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+    /// Raw declared path (when declared as raw path, e.g. domain artifacts
+    /// like `docs/features/*/design.md`). Mutually exclusive with `uri`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub exists: bool,
@@ -170,11 +176,21 @@ fn resolve_artifact(artifact: &Artifact, phase_start: Option<DateTime<Utc>>) -> 
     let is_glob =
         artifact.path.contains('*') || artifact.path.contains('?') || artifact.path.contains('[');
 
+    let is_uri = artifact.path.starts_with("belt://");
     let (exists, resolved_path) = if is_glob {
         let Ok(entries) = glob::glob(&artifact.path) else {
             return ResolvedArtifact {
                 name: artifact.name.clone(),
-                path: artifact.path.clone(),
+                uri: if is_uri {
+                    Some(artifact.path.clone())
+                } else {
+                    None
+                },
+                path: if is_uri {
+                    None
+                } else {
+                    Some(artifact.path.clone())
+                },
                 description: artifact.description.clone(),
                 exists: false,
                 resolved_path: None,
@@ -224,7 +240,16 @@ fn resolve_artifact(artifact: &Artifact, phase_start: Option<DateTime<Utc>>) -> 
 
     ResolvedArtifact {
         name: artifact.name.clone(),
-        path: artifact.path.clone(),
+        uri: if is_uri {
+            Some(artifact.path.clone())
+        } else {
+            None
+        },
+        path: if is_uri {
+            None
+        } else {
+            Some(artifact.path.clone())
+        },
         description: artifact.description.clone(),
         exists,
         resolved_path,

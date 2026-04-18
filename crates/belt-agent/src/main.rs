@@ -278,12 +278,32 @@ fn cmd_init(
 /// `produces` / `consumes` are always included as (possibly empty) arrays for
 /// consumer ergonomics.
 fn phase_json(phase: &belt_core::model::ExpandedPhase) -> serde_json::Value {
+    let produces_json: Vec<serde_json::Value> = phase
+        .produces
+        .iter()
+        .map(|a| {
+            let is_uri = a.path.starts_with("belt://");
+            if is_uri {
+                json!({
+                    "name": a.name,
+                    "uri": a.path,
+                    "description": a.description,
+                })
+            } else {
+                json!({
+                    "name": a.name,
+                    "path": a.path,
+                    "description": a.description,
+                })
+            }
+        })
+        .collect();
     let mut phase_obj = json!({
         "id": phase.id,
         "description": phase.description,
         "config": phase.config,
         "output_dir": phase.output_dir,
-        "produces": phase.produces,
+        "produces": produces_json,
         "consumes": phase.consumes,
     });
     if let Some(invoke) = &phase.invoke {

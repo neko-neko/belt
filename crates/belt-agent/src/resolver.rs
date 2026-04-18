@@ -616,7 +616,6 @@ mod tests {
 
     #[test]
     fn impl_uri_resolver_trait_for_current_uri() {
-        use belt_core::gate::UriResolver as _;
         let tmp = tempfile::tempdir().unwrap();
         let belt_dir = tmp.path().join(".belt");
         let run_dir = belt_dir.join("runs").join("01947zzz");
