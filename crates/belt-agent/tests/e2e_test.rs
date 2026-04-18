@@ -822,3 +822,50 @@ fn e2e_init_fails_when_producer_state_json_is_corrupt() {
         "orphan consumer run left behind: {survivors:?}"
     );
 }
+
+#[test]
+fn e2e_init_verify_step_with_belt_current_uri() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pipeline_path = tmp.path().join("pipeline.yml");
+    std::fs::write(
+        &pipeline_path,
+        r#"name: e2e
+version: 1
+phases:
+  - id: p
+    description: x
+    produces:
+      - name: notes
+        path: "belt://current/notes/p.md"
+    gate:
+      - file_exists: "belt://current/notes/p.md"
+    confirm: true
+"#,
+    )
+    .unwrap();
+
+    // init
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .current_dir(tmp.path())
+        .args(["init", pipeline_path.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let init_json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let run_id = init_json["run_id"].as_str().unwrap();
+
+    // write the produces target file
+    let belt_dir = tmp.path().join(".belt");
+    let run_dir = belt_dir.join("runs").join(run_id);
+    std::fs::create_dir_all(run_dir.join("notes")).unwrap();
+    std::fs::write(run_dir.join("notes").join("p.md"), "x").unwrap();
+
+    // verify
+    let verify = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
+        .current_dir(tmp.path())
+        .args(["verify"])
+        .output()
+        .unwrap();
+    let verify_json: serde_json::Value = serde_json::from_slice(&verify.stdout).unwrap();
+    assert_eq!(verify_json["verdict"], "PASS");
+}
