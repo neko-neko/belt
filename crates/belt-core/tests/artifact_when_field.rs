@@ -16,13 +16,8 @@ use belt_core::expander::expand_pipeline;
 use belt_core::lint::{Severity, lint_pipeline};
 use belt_core::parser::parse_pipeline;
 
-fn fixture_path(name: &str) -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests");
-    path.push("fixtures");
-    path.push(name);
-    path
-}
+mod common;
+use common::helpers::fixture_path;
 
 fn write_fixture(name: &str, content: &str) -> PathBuf {
     let path = fixture_path(name);

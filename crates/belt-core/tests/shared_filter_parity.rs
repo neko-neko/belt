@@ -26,16 +26,9 @@
 )]
 
 use std::fs;
-use std::path::PathBuf;
 
-fn repo_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR points at crates/belt-core; walk two levels up to
-    // reach the workspace root.
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("..");
-    path.push("..");
-    path
-}
+mod common;
+use common::helpers::repo_root;
 
 /// Extract the first `n` bullet lines that appear after the first line whose
 /// content begins with `## Filtering` in the given markdown text.

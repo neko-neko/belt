@@ -29,12 +29,8 @@ use belt_core::{
     parser::parse_pipeline,
 };
 
-fn repo_root() -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("..");
-    path.push("..");
-    path
-}
+mod common;
+use common::helpers::repo_root;
 
 fn bug_fix_dir() -> PathBuf {
     repo_root().join("plugins/belt/skills/bug-fix")

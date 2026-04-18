@@ -21,9 +21,12 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Deserialize;
+
+mod common;
+use common::helpers::repo_root;
 
 #[derive(Debug, Deserialize)]
 struct ScenariosFile {
@@ -55,15 +58,6 @@ struct Scenario {
     #[serde(default)]
     #[allow(dead_code)]
     postconditions: Option<Vec<String>>,
-}
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
 }
 
 fn load_scenarios(rel_path: &str) -> ScenariosFile {

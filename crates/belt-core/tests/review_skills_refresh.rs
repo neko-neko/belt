@@ -15,14 +15,8 @@
     reason = "integration test: panic-on-mismatch is the intended assertion style"
 )]
 
-use std::path::PathBuf;
-
-fn repo_root() -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("..");
-    path.push("..");
-    path
-}
+mod common;
+use common::helpers::repo_root;
 
 /// (`skill_name`, expected agent file basenames after refactor)
 ///

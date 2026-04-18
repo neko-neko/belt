@@ -13,6 +13,9 @@ use filetime::{FileTime, set_file_mtime};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod common;
+use common::helpers::fixture_path;
+
 fn make_state(current: &str, completed: &[&str], skipped: &[&str]) -> RunState {
     RunState {
         run_id: "test-run".to_string(),
@@ -413,13 +416,6 @@ fn yaml_drift_phase_removed_skipped() {
 }
 
 // --- Task 7: Engine enriched_status integration tests ---
-
-fn fixture_path(name: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(name)
-}
 
 /// scenario: belt-core-view-engine-enriched-status-integrates-state-metadata-and-outputs
 #[test]

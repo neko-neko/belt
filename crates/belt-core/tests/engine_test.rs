@@ -9,25 +9,10 @@
 use belt_core::engine::Engine;
 use belt_core::error::BeltError;
 use std::collections::HashMap;
-use std::io::Write;
 use tempfile::TempDir;
 
-/// Helper: resolve a fixture file path relative to `CARGO_MANIFEST_DIR`.
-fn fixture_path(name: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(name)
-}
-
-/// Helper: write a file inside the given directory and return its path.
-fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
-    let path = dir.path().join(name);
-    let mut f = std::fs::File::create(&path).expect("failed to create file");
-    f.write_all(content.as_bytes())
-        .expect("failed to write file");
-    path
-}
+mod common;
+use common::helpers::{fixture_path, write_yaml};
 
 /// Helper: create a simple two-phase pipeline YAML.
 fn two_phase_pipeline(dir: &TempDir) -> std::path::PathBuf {

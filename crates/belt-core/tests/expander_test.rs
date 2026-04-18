@@ -7,17 +7,10 @@
 
 use belt_core::error::BeltError;
 use belt_core::expander::expand_pipeline;
-use std::io::Write;
 use tempfile::TempDir;
 
-/// Helper: write a file inside the given directory and return its path.
-fn write_yaml(dir: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
-    let path = dir.path().join(name);
-    let mut f = std::fs::File::create(&path).expect("failed to create file");
-    f.write_all(content.as_bytes())
-        .expect("failed to write file");
-    path
-}
+mod common;
+use common::helpers::write_yaml;
 
 /// `invoke: { pipeline: ... }` phases are expanded to namespaced IDs, and
 /// leaf phases are preserved.
