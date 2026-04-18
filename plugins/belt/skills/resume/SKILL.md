@@ -27,7 +27,7 @@ which skips `belt-agent init` and jumps to `belt-agent status --run <id>`.
 ```
 Resume Progress:
 - [ ] Step 1: Run preconditions #1..#5 (short-circuit on first failure)
-- [ ] Step 2: Read .belt/runs/<run_id>/handover.md; load Resume hint into context
+- [ ] Step 2: Resolve handover path via `belt-agent locate belt://current/handover.md`; read the file at the returned path; load Resume hint into context
 - [ ] Step 3: Invoke Skill(skill="belt:<pipeline>", args="resume run_id=<id>")
 - [ ] Step 4: Protocol driver follows resume-mode.md (init is skipped)
 ```
@@ -38,7 +38,7 @@ Resume Progress:
 |---|---|---|---|
 | 1 | `command -v belt-agent` succeeds | `"belt-agent CLI not installed or not on PATH"` | install / fix PATH / abort |
 | 2 | `belt-agent status` returns a latest run (exit 0) | `"No belt runs found in current directory"` | `cd <worktree>` then rerun / abort |
-| 3 | `.belt/runs/<run_id>/handover.md` exists | `"No handover note for latest run. Run /belt:handover first."` | run `/belt:handover` first / abort |
+| 3 | `belt-agent locate belt://current/handover.md` returns exists=true | `"No handover note for latest run. Run /belt:handover first."` | run `/belt:handover` first / abort |
 | 4 | `current_phase != "COMPLETED"` | `"Last run already completed. Start a new run?"` | `belt-agent init` / abort |
 | 5 | current branch (`git rev-parse --abbrev-ref HEAD`) equals handover.md `branch` | `"Branch changed A→B since handover. Continue anyway? (y/N)"` | `y` proceeds / `N` aborts / `git checkout <branch>` then rerun |
 
