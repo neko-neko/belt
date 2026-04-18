@@ -15,12 +15,13 @@ pipeline run.
 
 ## Overview
 
-When a belt pipeline run is in progress, `/belt:handover` writes
-`.belt/runs/<run_id>/handover.md` in the current worktree. The note captures
-why the pause happened and what the resumed session should do first. All
-other pipeline state (run_id, pipeline, branch, current_phase, pipeline_file)
-is already kept in `state.json` — this skill saves only the transient context
-that would otherwise be lost.
+When a belt pipeline run is in progress, `/belt:handover` writes the handover
+note for the current run in the current worktree. Resolve the physical path
+via `belt-agent locate belt://current/handover.md` (read the `path` field from
+the JSON output). The note captures why the pause happened and what the
+resumed session should do first. All other pipeline state (run_id, pipeline,
+branch, current_phase, pipeline_file) is already kept in `state.json` — this
+skill saves only the transient context that would otherwise be lost.
 
 ## Workflow
 
@@ -30,7 +31,7 @@ Handover Progress:
 - [ ] Step 2: Verify cwd is inside a git worktree
 - [ ] Step 3: Query latest run via `belt-agent status`
 - [ ] Step 4: Draft the Resume hint (Pause reason / First action / Transient context)
-- [ ] Step 5: Write .belt/runs/<run_id>/handover.md
+- [ ] Step 5: Write the handover note to the path returned by `belt-agent locate belt://current/handover.md`
 - [ ] Step 6: Tell the user "Handover written. Run /clear then /belt:resume to continue."
 ```
 
@@ -43,7 +44,7 @@ Handover Progress:
    - **Pause reason**: why stopping here now (context heat, end of day, waiting on a decision)
    - **First action on resume**: the very next concrete step (for example: run `belt-agent status`, read `phase-plan.md`, start execute Task 1)
    - **Transient context**: anything said verbally or decided that is not yet written to `state.json` or `phase-*.md`
-5. Write the file at `.belt/runs/<run_id>/handover.md` with the schema below. Overwrite if it exists.
+5. Resolve the target path via `belt-agent locate belt://current/handover.md` (read the `path` field from the JSON output) and write the file there with the schema below. Overwrite if it exists.
 6. Emit a single-line confirmation to the user: `Handover written. Run /clear then /belt:resume to continue.`
 
 ## Schema
