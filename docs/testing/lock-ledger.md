@@ -9,7 +9,7 @@ belt-core/tests/ 配下の shape lock tests の台帳。各 entry は `locks-fil
 ```yaml
 locks-file: crates/belt-core/tests/feature_dev_refresh.rs
 pipeline: plugins/belt/skills/feature-dev/pipeline.yml
-test-fn-count: 11
+test-fn-count: 13
 cross-coupling:
   - crates/belt-core/tests/bug_fix_refresh.rs
   - crates/belt-core/tests/review_skills_refresh.rs
@@ -17,9 +17,9 @@ cross-coupling:
   - crates/belt-core/tests/shared_filter_parity.rs
 ```
 
-**11 test fn 名** (A):
+**13 test fn 名** (A):
 
-- `feature_dev_has_nine_phases`
+- `feature_dev_has_ten_phases`
 - `feature_dev_expands_cleanly`
 - `monkey_test_and_dogfood_are_conditional_on_e2e`
 - `scenarios_produce_is_conditional_on_e2e`
@@ -30,11 +30,13 @@ cross-coupling:
 - `feature_dev_narrative_phases_gate_notes`
 - `feature_dev_narrative_accumulating_consumes`
 - `feature_dev_non_narrative_phases_have_no_notes`
+- `pre_execute_handover_delegates_to_sub_pipeline`
+- `pre_execute_handover_expands_to_namespaced_checkpoint`
 
 **pipeline.yml shape dimensions locked** (B):
 
 - `args` set が exactly `{codex, e2e}` (余分な arg は fail)
-- 9 phase の順序 (`design → test-scenarios → spec-review → plan → execute → code-review → monkey-test → dogfood → integrate`)
+- 10 phase の順序 (`design → test-scenarios → spec-review → plan → pre-execute-handover → execute → code-review → monkey-test → dogfood → integrate`)
 - `code-review.regate = [execute]` (regate target 数と identity)
 - narrative artifact 6 phase (`design` / `plan` / `execute` / `code-review` / `monkey-test` / `dogfood`) の `.belt/runs/{run_id}/notes/phase-*.md` 生成 + file_exists gate
 - `scenarios.when = "args.e2e"` typed enum field (string ではなく ArtifactWhen)
@@ -42,6 +44,7 @@ cross-coupling:
 - `invoke.skill` field の leading slash 存在 (`/brainstorming` 等)
 - `validate` が criteria file reference (`./criteria/*.md`) であることの shape
 - `consumes` の accumulating narrative pattern (phase N は phase 1..N-1 の notes を consume)
+- `pre-execute-handover` が `../handover/checkpoint.yml` sub-pipeline に delegate (展開後 phase id: `pre-execute-handover/checkpoint`)
 
 **Cross-coupling** (C):
 
@@ -57,18 +60,18 @@ cross-coupling:
 ```yaml
 locks-file: crates/belt-core/tests/bug_fix_refresh.rs
 pipeline: plugins/belt/skills/bug-fix/pipeline.yml
-test-fn-count: 19
+test-fn-count: 21
 cross-coupling:
   - crates/belt-core/tests/feature_dev_refresh.rs
   - crates/belt-core/tests/shared_criteria_parity.rs
 ```
 
-**19 test fn 名** (A):
+**21 test fn 名** (A):
 
 - `args_are_e2e_and_codex_only`
 - `no_legacy_args`
 - `phase_count_and_order`
-- `all_phases_use_skill_invoke`
+- `all_phases_use_skill_or_pipeline_invoke`
 - `review_phases_pass_codex_only`
 - `only_code_review_has_regate`
 - `rca_scenarios_when_is_typed`
@@ -84,18 +87,20 @@ cross-coupling:
 - `bug_fix_narrative_phases_gate_notes`
 - `bug_fix_narrative_accumulating_consumes`
 - `bug_fix_non_narrative_phases_have_no_notes`
+- `pre_execute_handover_delegates_to_sub_pipeline`
+- `pre_execute_handover_expands_to_namespaced_checkpoint`
 
 **pipeline.yml shape dimensions locked** (B):
 
 - `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` (`bug_fix_refresh.rs:63-75`)
 - legacy `args` (`iterations` / `swarm` / `ui` / `smoke`) の non-existence (`bug_fix_refresh.rs:78-86`)
-- 8 phase の順序 (`rca → fix-plan → fix-plan-review → execute → code-review → monkey-test → dogfood → integrate`) (`bug_fix_refresh.rs:89-93`)
-- 全 phase が `Invoker::Skill` variant で `skill` が leading slash 付き (`bug_fix_refresh.rs:96-117`)
+- 9 phase の順序 (`rca → fix-plan → fix-plan-review → pre-execute-handover → execute → code-review → monkey-test → dogfood → integrate`) (`bug_fix_refresh.rs:89-93`)
+- skill-invoke phase は `Invoker::Skill` variant で leading slash 付き、sub-pipeline delegation phase は `Invoker::Pipeline` variant で `pipeline` path が非空 (`bug_fix_refresh.rs:96-128`)
 - review phases (`fix-plan-review` / `code-review`) の invoke args が exactly `{codex: "args.codex"}` (`bug_fix_refresh.rs:120-144`)
 - `code-review.regate = [execute]`、他 phase は `regate` 空 (`bug_fix_refresh.rs:147-165`)
 - `rca_scenarios.when = "args.e2e"` typed enum field (string ではなく ArtifactWhen) (`bug_fix_refresh.rs:168-185`)
 - `view::active_produces` の条件付き filtering (`args.e2e=false` で `rca_scenarios` 除外、`rca_report` は常時) (`bug_fix_refresh.rs:188-213`)
-- 全 phase の `max_retries == 3` + `confirm == true` blanket (`bug_fix_refresh.rs:216-226`)
+- skill-invoke phase は `max_retries == 3` + `confirm == true`、sub-pipeline delegation parent (`Invoker::Pipeline`) は top-level assertion を skip (confirm / max_retries は sub-phase 側で管理) (`bug_fix_refresh.rs:226-248`)
 - 5 supplement file (`rca-supplement.md`, `fix-plan-supplement.md`, `monkey-test-supplement.md`, `dogfood-supplement.md`, `worktrunk-supplement.md` + `path-convention.md`) の physical existence (`bug_fix_refresh.rs:229-244`)
 - dead-letter reference (`evidence-plan-protocol.md`, `fix-dispatch-strategy.md`) の physical non-existence (`bug_fix_refresh.rs:247-255`)
 - 6 skill-local criteria + 2 duplicated shared criteria (`execute.md`, `code-review.md`) の physical existence (`bug_fix_refresh.rs:258-285`)
@@ -104,6 +109,7 @@ cross-coupling:
 - narrative artifact 6 phase (`rca` / `fix-plan` / `execute` / `code-review` / `monkey-test` / `dogfood`) の `.belt/runs/{run_id}/notes/phase-*.md` 生成 + file_exists gate (`bug_fix_refresh.rs:327-366`)
 - `consumes` の accumulating narrative pattern (phase N は phase 1..N-1 の notes を `Named(n)` で consume) (`bug_fix_refresh.rs:369-402`)
 - non-narrative phase (`fix-plan-review` / `integrate`) が notes artifact を持たない (`bug_fix_refresh.rs:405-408`)
+- `pre-execute-handover` が `../handover/checkpoint.yml` sub-pipeline に delegate (展開後 phase id: `pre-execute-handover/checkpoint`)
 
 **Cross-coupling** (C):
 
