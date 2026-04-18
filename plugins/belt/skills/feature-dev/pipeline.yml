@@ -22,11 +22,11 @@ phases:
         path: "docs/features/*/design.md"
         description: "Design document with explored context and test perspectives"
       - name: design_notes
-        path: ".belt/runs/{run_id}/notes/phase-design.md"
+        path: "belt://current/notes/phase-design.md"
         description: "Phase narrative: decisions, concerns, directives, observations"
     gate:
       - file_exists: "docs/features/*/design.md"
-      - file_exists: ".belt/runs/{run_id}/notes/phase-design.md"
+      - file_exists: "belt://current/notes/phase-design.md"
     validate: ./criteria/design.md
     confirm: true
     max_retries: 3
@@ -79,11 +79,11 @@ phases:
         path: "docs/features/*/plan.md"
         description: "Task-level implementation plan (TDD)"
       - name: plan_notes
-        path: ".belt/runs/{run_id}/notes/phase-plan.md"
+        path: "belt://current/notes/phase-plan.md"
         description: "Phase narrative"
     gate:
       - file_exists: "docs/features/*/plan.md"
-      - file_exists: ".belt/runs/{run_id}/notes/phase-plan.md"
+      - file_exists: "belt://current/notes/phase-plan.md"
     validate: ./criteria/plan.md
     confirm: true
     max_retries: 3
@@ -103,10 +103,10 @@ phases:
       - plan_notes
     produces:
       - name: execute_notes
-        path: ".belt/runs/{run_id}/notes/phase-execute.md"
+        path: "belt://current/notes/phase-execute.md"
         description: "Phase narrative"
     gate:
-      - file_exists: ".belt/runs/{run_id}/notes/phase-execute.md"
+      - file_exists: "belt://current/notes/phase-execute.md"
     validate: ./criteria/execute.md
     confirm: true
     max_retries: 3
@@ -124,11 +124,31 @@ phases:
       - plan_notes
       - execute_notes
     produces:
+      - name: findings-security
+        path: "belt://current/review/findings-security.json"
+        description: "Security observation findings"
+      - name: findings-test
+        path: "belt://current/review/findings-test.json"
+        description: "Test observation findings"
+      - name: findings-ai-antipattern
+        path: "belt://current/review/findings-ai-antipattern.json"
+        description: "AI antipattern observation findings"
+      - name: findings-cross-cutting
+        path: "belt://current/review/findings-cross-cutting.json"
+        description: "Cross-cutting observation findings"
+      - name: findings-codex
+        path: "belt://current/review/findings-codex.json"
+        description: "Codex adversarial review findings"
+        when: "args.codex"
+      - name: findings
+        path: "belt://current/review/findings.json"
+        description: "Merged findings (post-dedup)"
       - name: code_review_notes
-        path: ".belt/runs/{run_id}/notes/phase-code-review.md"
+        path: "belt://current/notes/phase-code-review.md"
         description: "Phase narrative"
     gate:
-      - file_exists: ".belt/runs/{run_id}/notes/phase-code-review.md"
+      - file_exists: "belt://current/notes/phase-code-review.md"
+      - file_exists: "belt://current/review/findings.json"
     validate: ./criteria/code-review.md
     regate: [execute]
     confirm: true
@@ -154,11 +174,11 @@ phases:
       - name: monkey_test_results
         path: "docs/features/*/monkey-test-results.json"
       - name: monkey_test_notes
-        path: ".belt/runs/{run_id}/notes/phase-monkey-test.md"
+        path: "belt://current/notes/phase-monkey-test.md"
         description: "Phase narrative"
     gate:
       - file_exists: "docs/features/*/monkey-test-report.md"
-      - file_exists: ".belt/runs/{run_id}/notes/phase-monkey-test.md"
+      - file_exists: "belt://current/notes/phase-monkey-test.md"
     validate: ./criteria/monkey-test.md
     confirm: true
     max_retries: 3
@@ -184,11 +204,11 @@ phases:
       - name: dogfood_report
         path: "docs/features/*/dogfood-report/report.md"
       - name: dogfood_notes
-        path: ".belt/runs/{run_id}/notes/phase-dogfood.md"
+        path: "belt://current/notes/phase-dogfood.md"
         description: "Phase narrative"
     gate:
       - file_exists: "docs/features/*/dogfood-report/report.md"
-      - file_exists: ".belt/runs/{run_id}/notes/phase-dogfood.md"
+      - file_exists: "belt://current/notes/phase-dogfood.md"
     validate: ./criteria/dogfood.md
     confirm: true
     max_retries: 3
