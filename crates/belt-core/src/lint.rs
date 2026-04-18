@@ -496,7 +496,12 @@ fn check_external_uri_sibling_producer(
                 let producer = match uri {
                     crate::uri::BeltUri::Latest { pipeline: p, .. }
                     | crate::uri::BeltUri::WorkspaceLatest { pipeline: p, .. } => p,
-                    crate::uri::BeltUri::Run { .. } => continue,
+                    // `Run` targets a specific run UUID; `Current` targets the
+                    // invoking run's own dir — neither has a sibling pipeline
+                    // YAML to look up.
+                    crate::uri::BeltUri::Run { .. } | crate::uri::BeltUri::Current { .. } => {
+                        continue;
+                    }
                 };
                 let sibling_file = base_dir.join(format!("{producer}.yml"));
                 let sibling_dir = base_dir.join(producer).join("pipeline.yml");

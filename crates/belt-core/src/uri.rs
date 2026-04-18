@@ -18,6 +18,11 @@ pub enum BeltUri {
     },
     /// `belt://run/{run_id}/<path>` — explicit `run_id` (branch-independent).
     Run { run_id: String, path: String },
+    /// `belt://current/<path>` — runtime invocation context の current run
+    /// (`--run` 指定、未指定なら latest run) の `<run_dir>/<path>` に解決される。
+    /// pipeline.yml の `produces[].path` / `gate.file_exists` で書き込み先 +
+    /// 読み取り先の宣言に使用。
+    Current { path: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -109,6 +114,18 @@ impl BeltUri {
             });
         }
 
+        if let Some(r) = rest.strip_prefix("current/") {
+            // <path...> — no pipeline / branch / run_id segment
+            let path = r;
+            if path.is_empty() {
+                return Err(UriParseError::EmptyPath { uri: s.to_string() });
+            }
+            validate_path(path, s)?;
+            return Ok(BeltUri::Current {
+                path: path.to_string(),
+            });
+        }
+
         Err(UriParseError::UnknownSelector { uri: s.to_string() })
     }
 }
@@ -153,6 +170,9 @@ impl std::fmt::Display for BeltUri {
             }
             BeltUri::Run { run_id, path } => {
                 write!(f, "belt://run/{run_id}/{path}")
+            }
+            BeltUri::Current { path } => {
+                write!(f, "belt://current/{path}")
             }
         }
     }
