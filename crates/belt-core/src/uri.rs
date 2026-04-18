@@ -29,7 +29,7 @@ pub enum BeltUri {
 pub enum UriParseError {
     #[error("URI must start with 'belt://': got '{0}'")]
     MissingScheme(String),
-    #[error("unknown selector in URI '{uri}' (expected latest/, workspace/, or run/)")]
+    #[error("unknown selector in URI '{uri}' (expected latest/, workspace/, current/, or run/)")]
     UnknownSelector { uri: String },
     #[error("empty pipeline name in URI '{uri}'")]
     EmptyPipeline { uri: String },
