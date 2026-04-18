@@ -387,36 +387,42 @@ fn engine_phase_verify_passed_round_trip() {
 // ---------------------------------------------------------------------------
 // Test: VerifyRequired error variant
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-error-display-verify-required-preserves-phase-id
 #[test]
 fn error_verify_required_message() {
+    let phase_id = "build".to_string();
     let err = BeltError::VerifyRequired {
-        phase_id: "build".to_string(),
+        phase_id: phase_id.clone(),
     };
     let msg = err.to_string();
     assert!(
-        msg.contains("verify required for phase 'build'"),
-        "error message should mention phase_id: {msg}"
+        msg.contains(&format!("for phase '{phase_id}'")),
+        "error message must preserve phase_id '{phase_id}' in quoted form: {msg}"
     );
 }
 
 // ---------------------------------------------------------------------------
 // Test: MaxRetriesExceeded error variant
 // ---------------------------------------------------------------------------
+/// scenario: belt-core-error-display-max-retries-preserves-phase-id-and-counter
 #[test]
 fn error_max_retries_exceeded_message() {
+    let phase_id = "deploy".to_string();
+    let attempts = 3u32;
+    let max_retries = 3u32;
     let err = BeltError::MaxRetriesExceeded {
-        phase_id: "deploy".to_string(),
-        attempts: 3,
-        max_retries: 3,
+        phase_id: phase_id.clone(),
+        attempts,
+        max_retries,
     };
     let msg = err.to_string();
     assert!(
-        msg.contains("max retries exceeded for phase 'deploy'"),
-        "error message should mention phase_id: {msg}"
+        msg.contains(&format!("for phase '{phase_id}'")),
+        "error message must preserve phase_id '{phase_id}' in quoted form: {msg}"
     );
     assert!(
-        msg.contains("3/3"),
-        "error message should show attempts/max_retries: {msg}"
+        msg.contains(&format!("{attempts}/{max_retries}")),
+        "error message must preserve attempts/max_retries ratio '{attempts}/{max_retries}': {msg}"
     );
 }
 

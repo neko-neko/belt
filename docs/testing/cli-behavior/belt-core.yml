@@ -677,6 +677,20 @@ scenarios:
     given: "a BeltError::RegateFailed{phase_id, targets} treated as a miette::Diagnostic"
     when: "Display::to_string() and Diagnostic::code() are evaluated"
     then: "Display yields 'regate failed for phase <phase_id>: targets <debug-formatted targets> did not pass' and code() equals 'belt::regate_failed'"
+  - id: belt-core-error-display-verify-required-preserves-phase-id
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::VerifyRequired with a given phase_id"
+    when: "Display is rendered via to_string"
+    then: "the rendered message contains the quoted phase_id form 'for phase '<phase_id>'', independent of surrounding wording"
+  - id: belt-core-error-display-max-retries-preserves-phase-id-and-counter
+    category: error
+    severity: medium
+    technique: equivalence-partition
+    given: "a BeltError::MaxRetriesExceeded with phase_id, attempts, max_retries"
+    when: "Display is rendered via to_string"
+    then: "the rendered message contains 'for phase '<phase_id>'' and the ratio '{attempts}/{max_retries}'"
 
   # --- expander module ---
   - id: belt-core-expander-invoke-pipeline-to-namespaced-ids
