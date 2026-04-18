@@ -165,6 +165,13 @@ impl Resolver<'_> {
     }
 }
 
+impl belt_core::gate::UriResolver for Resolver<'_> {
+    fn resolve(&self, uri: &str) -> Result<std::path::PathBuf, String> {
+        let parsed = BeltUri::parse(uri).map_err(|e| e.to_string())?;
+        Resolver::resolve(self, &parsed).map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -605,5 +612,26 @@ mod tests {
             r.resolve(&uri),
             Err(ResolveError::RunNotFound { .. })
         ));
+    }
+
+    #[test]
+    fn impl_uri_resolver_trait_for_current_uri() {
+        use belt_core::gate::UriResolver as _;
+        let tmp = tempfile::tempdir().unwrap();
+        let belt_dir = tmp.path().join(".belt");
+        let run_dir = belt_dir.join("runs").join("01947zzz");
+        fs::create_dir_all(run_dir.join("notes")).unwrap();
+
+        let r = Resolver {
+            belt_dir: &belt_dir,
+            current_branch: None,
+            current_run_id: Some("01947zzz".to_string()),
+        };
+        let resolved = <Resolver<'_> as belt_core::gate::UriResolver>::resolve(
+            &r,
+            "belt://current/notes/phase-design.md",
+        )
+        .unwrap();
+        assert_eq!(resolved, run_dir.join("notes").join("phase-design.md"));
     }
 }
