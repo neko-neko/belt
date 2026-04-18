@@ -46,8 +46,10 @@ phase-specific overrides. Phases not listed (`fix-plan-review` / `execute` /
 
 ## Narrative Notes
 
-These phases produce a narrative note so context can be restored after `/clear`
-(`.belt/runs/{run_id}/notes/phase-<id>.md`):
+These phases produce a narrative note so context can be restored after `/clear`.
+The note paths are declared in `pipeline.yml` as `belt://current/notes/phase-<id>.md` URIs.
+Resolve the physical path via `belt-agent status` (read `phases[].produces[].resolved_path`)
+or `belt-agent locate belt://current/notes/phase-<id>.md`:
 
 - `rca` / `fix-plan` / `execute` / `code-review`
 - `monkey-test` (`--e2e`) / `dogfood` (`--e2e`)
