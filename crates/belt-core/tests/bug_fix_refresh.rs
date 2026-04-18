@@ -1,10 +1,12 @@
 //! Integration tests for the refreshed /bug-fix pipeline.
 //!
-//! Shape contract (spec docs/specs/2026-04-15-debug-flow-refresh-design.md):
+//! Shape contract (specs docs/specs/2026-04-15-debug-flow-refresh-design.md +
+//! docs/specs/2026-04-18-pre-execute-handover-sub-pipeline-design.md):
 //! - args = { e2e: bool, codex: bool } only (iterations / swarm / ui / smoke removed)
 //! - 9 phases: rca → fix-plan → fix-plan-review → pre-execute-handover → execute →
 //!   code-review → monkey-test → dogfood → integrate
-//! - All phases use skill: invoke (no pipeline:)
+//! - Phases use `skill:` invoke except `pre-execute-handover`, which delegates
+//!   via `pipeline:` to `../handover/checkpoint.yml`
 //! - Review phases (fix-plan-review, code-review) pass codex
 //! - code-review has regate: [execute]; no other phase has regate
 //! - Supplement injection for 5 phases (rca, fix-plan, monkey-test, dogfood, integrate)
