@@ -28,16 +28,23 @@ If a design document exists in the current run's output directory (filename matc
 
 ## Parallel Dispatch
 
+Before dispatching agents, call `belt-agent status` and read each finding artifact's
+`resolved_path` (artifacts named `findings-security`, `findings-test`,
+`findings-ai-antipattern`, `findings-cross-cutting`, optionally `findings-codex`,
+and `findings` for the merged output). Pass the resolved physical path to each
+agent in its prompt as `output_path`. Agents write to that path without knowing
+the underlying URI semantics.
+
 Dispatch observation agents in parallel via the Agent (Task) tool. Send all Task calls in **one single message** with multiple tool-use blocks so they run concurrently:
 
-- `Task(subagent_type: belt:security-reviewer, prompt: <diff + path to write findings-security.json>)`
-- `Task(subagent_type: belt:test-reviewer, prompt: <diff + path to write findings-test.json>)`
-- `Task(subagent_type: belt:ai-antipattern-reviewer, prompt: <diff + path to write findings-ai-antipattern.json>)`
-- `Task(subagent_type: belt:cross-cutting-reviewer, prompt: <diff + optional design-doc Impact Analysis + path to write findings-cross-cutting.json>)`
+- `Task(subagent_type: belt:security-reviewer, prompt: <diff + output_path: <resolved-findings-security>>)`
+- `Task(subagent_type: belt:test-reviewer, prompt: <diff + output_path: <resolved-findings-test>>)`
+- `Task(subagent_type: belt:ai-antipattern-reviewer, prompt: <diff + output_path: <resolved-findings-ai-antipattern>>)`
+- `Task(subagent_type: belt:cross-cutting-reviewer, prompt: <diff + optional design-doc Impact Analysis + output_path: <resolved-findings-cross-cutting>>)`
 
-If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the diff, the expected `findings-codex.json` format (same shape as observation agents, `source: "codex"`), and the output path `.belt/runs/<run_id>/review/findings-codex.json`.
+If `--codex` is set, also invoke `/codex:rescue` in the same parallel batch with a review-specific prompt: supply the diff, the expected `findings-codex.json` format (same shape as observation agents, `source: "codex"`), and the resolved `output_path` (from `belt-agent status` `findings-codex` artifact).
 
-All agents write to `.belt/runs/<run_id>/review/findings-<observation>.json`. Each file is independent — no race condition between agents.
+Each finding artifact is independent — no race condition between agents.
 
 Announce each dispatched agent (and Codex, if `--codex`) before sending.
 
@@ -45,14 +52,17 @@ Announce each dispatched agent (and Codex, if `--codex`) before sending.
 
 After all agents complete:
 
-1. Read each `findings-<observation>.json` file under `.belt/runs/<run_id>/review/`.
+1. For each finding artifact name (`findings-security`, `findings-test`,
+   `findings-ai-antipattern`, `findings-cross-cutting`, optionally `findings-codex`),
+   call `belt-agent status` to get the resolved_path, then read the JSON file at that path.
 2. For each finding, determine if it is the same issue as a finding from another agent. Use file + line + description overlap as the primary signal (LLM judgment — when `file` + `line` match and descriptions share core vocabulary, treat as the same issue candidate).
 3. For same-issue candidates, apply the dedup rule:
    - **Severity-first**: keep the finding with the highest severity (critical > high > medium > low).
    - **Tie-break on severity equality — observation priority (actionability order)**:
      `Security > Impact > Quality > Test > AI-antipattern > Performance > Simplification`
    - **Codex findings are NOT deduplicated**. If a Codex finding overlaps with another observation, keep both — Codex signal carries separate "external-provider adversarial" value.
-4. Write the merged `.belt/runs/<run_id>/review/findings.json`:
+4. Resolve `findings` artifact's path via `belt-agent status` (or
+   `belt-agent locate belt://current/review/findings.json`) and write the merged JSON there:
 
 ```json
 {
