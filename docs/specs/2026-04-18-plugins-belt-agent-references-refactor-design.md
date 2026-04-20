@@ -222,6 +222,7 @@ plugins/belt-agent/references/evidence-schema.md
   - 新: `criteria/<phase>.md` が `uses_evidence: [E-XXX]` で evidence を直接 pick
 - **根拠**: belt 既存モデル (phase が declare する形) との整合、weekly-sync 観察 (activity type 抽象が実質無機能) の裏付け
 - **副次効果**: evidence-catalog が read-only カタログとして再利用しやすい
+- **既存 phase-auditor への影響**: `plugins/belt-agent/agents/phase-auditor.md` の Step 2b (Deferred Impact Verification) の gate は旧 `review-fix` activity 指定から evidence presence (Evidence Plan 内の `E-DEFERRED-IMPACT` 有無) に変わる。phase-auditor および本 references layer 内のロジックは activity_type を一切参照しない (enum 自体が belt layer から消滅するため)。
 
 ### Decision 4: Narrative 4 sections 維持 (Option B-1)
 
