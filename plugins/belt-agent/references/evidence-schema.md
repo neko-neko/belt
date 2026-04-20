@@ -8,77 +8,81 @@ description: >-
 
 # Evidence Schema
 
-Evidence collection と verification の型・protocol 定義。具体の
-evidence-id は各 skill 配下の `./references/evidence-catalog.md` で定義する。
+Type and protocol definition for evidence collection and verification.
+Concrete evidence-ids are defined in each skill's
+`./references/evidence-catalog.md`.
 
 ## 2-Layer Model
 
-- **Claimed (Layer 1)**: Executor が collect/store する "what happened" 記録
-- **Verified (Layer 2)**: Audit Agent の独立 check による "really holds" 検証
+- **Claimed (Layer 1)**: "what happened" record that the Executor collects and stores
+- **Verified (Layer 2)**: "really holds" check independently run by the Audit Agent
 
-Layer 1 は必ず phase 実行中に生成する。Layer 2 は required_capabilities が
-環境で満たされる場合のみ実施、満たされない場合は Layer 1 evidence のみで
-annotation 付きの audit を実施。
+Layer 1 must always be produced during phase execution. Layer 2 runs only when
+the environment satisfies the declared `required_capabilities`; when it does
+not, the auditor proceeds with Layer 1 evidence alone, annotated to flag the
+coverage gap.
 
-## Applicability Condition 記法
+## Applicability Condition Notation
 
-Evidence の applicability は observable fact (file existence, keyword
-occurrence 等) ベースの述語で判定する:
+Evidence applicability is decided by predicates based on observable facts
+(file existence, keyword occurrence, etc.):
 
-- `condition: always` — 常に該当
-- `condition: require_all: [<predicate>, ...]` — 全て satisfy 時のみ該当
-- `condition: require_any: [<predicate>, ...]` — いずれか satisfy 時該当
+- `condition: always` — always applicable
+- `condition: require_all: [<predicate>, ...]` — applicable only when all predicates hold
+- `condition: require_any: [<predicate>, ...]` — applicable when any predicate holds
 
-述語は glob pattern / grep pattern / spec 本文中の keyword 出現判定等。
-decidable で独立再現可能なものに限定する。
+Predicates are things like glob patterns, grep patterns, or keyword
+occurrences in the spec body. They must be decidable and independently
+reproducible.
 
-## if_unavailable Policy (3 種)
+## if_unavailable Policy (3 kinds)
 
-Evidence の required_capabilities が満たされない場合の挙動:
+Behavior when the evidence's `required_capabilities` are not satisfied:
 
-| Policy | 動作 |
+| Policy | Behavior |
 |---|---|
-| `skip_with_warning` | Evidence を除外、verdict に影響なし (警告のみ) |
-| `manual_fallback` | PAUSE して user が収集する。user 提供後に再開 |
-| `block` | 収集不能なら blocker FAIL、phase を通さない |
+| `skip_with_warning` | Exclude the evidence; no impact on the verdict (warning only) |
+| `manual_fallback` | PAUSE and let the user collect it; resume after user input |
+| `block` | Fail as a blocker if collection is impossible; the phase does not pass |
 
 ## Evidence Declaration Structure
 
-各 evidence-id は skill-local な `evidence-catalog.md` で以下フィールドを持つ:
+Each evidence-id in a skill-local `evidence-catalog.md` has the following fields:
 
-| Field | Required | 説明 |
+| Field | Required | Description |
 |---|---|---|
-| `id` | Yes | 一意識別子 (例: `E-TEST`, `E-LINT`) |
-| `description` | Yes | 1 行説明 |
-| `claimed` | Yes | Layer 1 記録先 path (template 含む) |
-| `verified` | Yes | Layer 2 検証手順 (独立に実行可能) |
-| `required_capabilities` | Yes | Layer 2 実行に必要な capability (例: `[bash]`, `[browser-automation]`) |
-| `condition` | Yes | applicability 判定 (上記記法) |
-| `if_unavailable` | Yes | Policy 選択 |
-| `collection` | Yes | Claimed 収集手順 (Executor が artifact を生成する具体手段) |
-| `variants` | No | 同一 id 内の variant (例: `[desktop, mobile]`) |
+| `id` | Yes | Unique identifier (e.g., `E-TEST`, `E-LINT`) |
+| `description` | Yes | One-line description |
+| `claimed` | Yes | Layer 1 storage path (may include templates) |
+| `verified` | Yes | Layer 2 verification procedure (independently runnable) |
+| `required_capabilities` | Yes | Capabilities needed for Layer 2 (e.g., `[bash]`, `[browser-automation]`) |
+| `condition` | Yes | Applicability decision (notation above) |
+| `if_unavailable` | Yes | Policy choice |
+| `collection` | Yes | Claimed-evidence collection procedure (how the Executor produces the artifact) |
+| `variants` | No | Variants within the same id (e.g., `[desktop, mobile]`) |
 
 ## Phase Reference (Inversion of Control)
 
-各 phase の `criteria/<phase>.md` が `uses_evidence: [E-XXX]` で evidence を
-**pick する**。Evidence 側から phase を指定する逆方向 (`applies_to: [...]`) は
-採用しない。Activity type enum は存在しない。
+Each phase's `criteria/<phase>.md` **picks** evidence via
+`uses_evidence: [E-XXX]`. The reverse direction, where evidence specifies
+phases (`applies_to: [...]`), is not adopted. There is no activity type enum.
 
 ```markdown
 ### <ID>: <criterion title>
 - severity, verify_type, verification, pass_condition, fail_diagnosis_hint
-- uses_evidence: [E-TEST, E-LINT]   (optional, skill-local evidence-catalog 参照)
-- depends_on_artifacts: [path]       (optional, path 直接参照)
+- uses_evidence: [E-TEST, E-LINT]   (optional, references skill-local evidence-catalog)
+- depends_on_artifacts: [path]       (optional, direct path reference)
 - forward_check
 ```
 
-`uses_evidence` は optional field。既存 `depends_on_artifacts` との並存可能。
+`uses_evidence` is an optional field. It coexists with the existing
+`depends_on_artifacts` field.
 
-## 所在
+## Locations
 
-- Schema (本ファイル): `plugins/belt-agent/references/evidence-schema.md`
+- Schema (this file): `plugins/belt-agent/references/evidence-schema.md`
 - Concrete catalogs: `plugins/belt/skills/<skill>/references/evidence-catalog.md`
-- Phase 側 pick: `plugins/belt/skills/<skill>/criteria/<phase>.md` の `uses_evidence:` field
+- Phase-side pick: `uses_evidence:` field in `plugins/belt/skills/<skill>/criteria/<phase>.md`
 
 ## See also
 
