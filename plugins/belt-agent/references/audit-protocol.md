@@ -1,3 +1,10 @@
+---
+name: audit-protocol
+description: >-
+  Dispatch procedure, verdict format, and failure handling for
+  phase-auditor subagent invocations during audit phases.
+---
+
 # Audit Protocol
 
 ## Overview

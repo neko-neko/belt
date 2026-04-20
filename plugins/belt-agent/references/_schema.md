@@ -1,3 +1,11 @@
+---
+name: _schema
+description: >-
+  Done-criteria schema for files consumed by the phase-auditor
+  subagent during audit phases. Defines frontmatter fields,
+  criterion structure, and severity semantics.
+---
+
 # Done-Criteria Schema
 
 This document defines the format for done-criteria files used by the audit-gate pattern.

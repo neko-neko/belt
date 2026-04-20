@@ -1,3 +1,12 @@
+---
+name: narrative-convention
+description: >-
+  Convention for phase-scoped narrative notes produced across any
+  belt pipeline. Defines the canonical 4 sections (Decisions,
+  Concerns, Directives, Observations), path conventions, and
+  ownership rules.
+---
+
 # Narrative Note Convention
 
 Convention for phase-scoped narrative notes produced by narrative-producing phases across any belt pipeline (development, data-sync, audit, triage, or other domains). belt does not parse note content, so this convention is owned by the SKILL layer.
