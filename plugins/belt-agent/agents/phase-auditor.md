@@ -72,10 +72,6 @@ When E-DEFERRED-IMPACT is enabled in the Evidence Plan:
 3. For each deferred finding, if the verification result does not match, add it as a dynamic severity: blocker criterion.
 4. If the claimed file does not exist, report a blocker FAIL (missed collection).
 
-(Previously this step was gated on the `review-fix` activity. After
-Decision 3, the gate is simply "E-DEFERRED-IMPACT is in the Evidence
-Plan" — if a skill declares it, it is relevant for that phase.)
-
 ### Step 3: Evaluate Each Criterion
 For each criterion:
 1. Execute the `verification` steps
