@@ -38,7 +38,7 @@ writing-plans 段階で surface し、ユーザーが決定済み:
 
 ---
 
-### Task 1: Spike — dual-format (Pipeline 形式 YAML の sub 参照)
+### Task 1: Spike — dual-format (Pipeline 形式 YAML の sub 参照) — **spike 結果: PASS (fallback 不要、model.rs 無変更)**
 
 **Files:**
 - Test: `crates/belt-core/tests/expander_test.rs` (末尾に追加)
