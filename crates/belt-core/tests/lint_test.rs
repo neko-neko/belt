@@ -1098,3 +1098,50 @@ phases:
         "expected a diagnostic naming the nested phase and the missing file, got: {messages:?}"
     );
 }
+
+/// A pipeline containing a self-referencing phase must not have its own file
+/// re-traversed as a "sub-pipeline". `check_invoke_pipeline_exists`'s cycle
+/// detection is seeded only from nested `visited.push()` calls, not from the
+/// root file itself, so a self-reference (`invoke: { pipeline: pipeline.yml }`)
+/// causes the whole root pipeline to be re-walked once under a spurious
+/// `self-ref/` namespace — duplicating every other phase's diagnostics.
+///
+/// scenario: belt-core-lint-nested-invoke-pipeline-missing-file-reported
+#[test]
+fn self_referencing_phase_does_not_duplicate_other_phase_diagnostics() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: self-ref
+    invoke:
+      pipeline: pipeline.yml
+  - id: broken
+    invoke:
+      pipeline: missing.yml
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&pipeline_path).expect("lint_pipeline should succeed");
+    let missing_yml_diags: Vec<&String> = diagnostics
+        .iter()
+        .map(|d| &d.message)
+        .filter(|m| m.contains("missing.yml"))
+        .collect();
+    assert_eq!(
+        missing_yml_diags.len(),
+        1,
+        "expected exactly one diagnostic mentioning 'missing.yml', got: {missing_yml_diags:?}"
+    );
+    assert!(
+        !diagnostics.iter().any(|d| d.message.contains("self-ref/")),
+        "root pipeline must not be re-traversed as its own sub-pipeline under a \
+         'self-ref/' namespace, got: {:?}",
+        diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+}

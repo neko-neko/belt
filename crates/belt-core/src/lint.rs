@@ -137,7 +137,7 @@ pub fn lint_pipeline(path: &Path) -> BeltResult<Vec<LintDiagnostic>> {
     check_gate_uses_exist(&pipeline, base_dir, &mut diagnostics);
 
     // Check: invoke.pipeline references exist
-    check_invoke_pipeline_exists(&pipeline, base_dir, &mut diagnostics);
+    check_invoke_pipeline_exists(&pipeline, base_dir, path, &mut diagnostics);
 
     // Check: invoke.skill has leading slash
     check_invoke_skill_format(&pipeline, &mut diagnostics);
@@ -299,12 +299,23 @@ fn check_gate_uses_exist(
 /// file on disk — recursively through sub-pipelines. The `Skill` variant is
 /// not path-like and is checked elsewhere. Cycles terminate via the visited
 /// set (the cycle itself is reported by expansion, not here).
+///
+/// `visited` is seeded with the root pipeline's own canonical path, mirroring
+/// `expand_pipeline`'s `canonical_or_self` seeding. Without this, a
+/// self-referencing phase (`invoke: { pipeline: <own file> }`) would cause
+/// the root pipeline to be re-traversed once as its own "sub-pipeline",
+/// duplicating every other phase's diagnostics under a spurious namespace.
 fn check_invoke_pipeline_exists(
     pipeline: &Pipeline,
     base_dir: &Path,
+    pipeline_path: &Path,
     diagnostics: &mut Vec<LintDiagnostic>,
 ) {
-    let mut visited: Vec<std::path::PathBuf> = Vec::new();
+    let mut visited: Vec<std::path::PathBuf> = vec![
+        pipeline_path
+            .canonicalize()
+            .unwrap_or_else(|_| pipeline_path.to_path_buf()),
+    ];
     check_phases_invoke_pipeline(&pipeline.phases, base_dir, "", &mut visited, diagnostics);
 }
 
