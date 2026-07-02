@@ -1,0 +1,80 @@
+name: build
+version: 1
+description: "Shared build stage (execute -> code-review -> verify -> integrate)"
+
+args:
+  e2e:
+    type: bool
+    default: false
+    description: "Run the browser-based verify stage (monkey-test, dogfood)"
+  codex:
+    type: bool
+    default: false
+    description: "Enable Codex parallel review in code-review"
+
+phases:
+  - id: execute
+    description: "Execute the implementation plan via TDD subagents"
+    invoke:
+      skill: /subagent-driven-development
+    produces:
+      - name: execute_notes
+        path: "belt://current/notes/phase-execute.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: "belt://current/notes/phase-execute.md"
+    validate: ./criteria/execute.md
+    confirm: true
+    max_retries: 3
+
+  - id: code-review
+    description: "Multi-perspective code review"
+    invoke:
+      skill: /belt:code-review
+      args:
+        codex: "args.codex"
+    consumes:
+      - execute_notes
+    produces:
+      - name: findings-security
+        path: "belt://current/review/findings-security.json"
+        description: "Security observation findings"
+      - name: findings-test
+        path: "belt://current/review/findings-test.json"
+        description: "Test observation findings"
+      - name: findings-ai-antipattern
+        path: "belt://current/review/findings-ai-antipattern.json"
+        description: "AI antipattern observation findings"
+      - name: findings-cross-cutting
+        path: "belt://current/review/findings-cross-cutting.json"
+        description: "Cross-cutting observation findings"
+      - name: findings-codex
+        path: "belt://current/review/findings-codex.json"
+        description: "Codex adversarial review findings"
+        when: "args.codex"
+      - name: findings
+        path: "belt://current/review/findings.json"
+        description: "Merged findings (post-dedup)"
+      - name: code_review_notes
+        path: "belt://current/notes/phase-code-review.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: "belt://current/notes/phase-code-review.md"
+      - file_exists: "belt://current/review/findings.json"
+    validate: ./criteria/code-review.md
+    regate: [execute]
+    confirm: true
+    max_retries: 3
+
+  - id: verify
+    when: "args.e2e"
+    invoke:
+      pipeline: ../verify/pipeline.yml
+
+  - id: integrate
+    description: "Integrate changes (user chooses: wt merge or gh pr create)"
+    invoke:
+      skill: /worktrunk
+    validate: ./criteria/integrate.md
+    confirm: true
+    max_retries: 3

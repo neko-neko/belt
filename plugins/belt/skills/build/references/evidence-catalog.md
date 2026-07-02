@@ -1,14 +1,14 @@
 ---
 name: evidence-catalog
 description: >-
-  Concrete evidence catalog for feature-dev pipeline. Conforms to
+  Concrete evidence catalog for the build stage. Conforms to
   plugins/belt-agent/references/evidence-schema.md. Evidence is picked
   by each phase's criteria/<phase>.md via uses_evidence (IoC).
 ---
 
-# Evidence Catalog (feature-dev)
+# Evidence Catalog (build)
 
-Concrete evidence items available to feature-dev pipeline phases. Each
+Concrete evidence items available to build stage phases. Each
 phase's `criteria/<phase>.md` declares which evidence it `uses_evidence`.
 
 Schema: [`plugins/belt-agent/references/evidence-schema.md`](../../../../belt-agent/references/evidence-schema.md)

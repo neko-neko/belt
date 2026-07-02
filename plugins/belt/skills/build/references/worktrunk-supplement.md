@@ -1,17 +1,17 @@
 ---
 name: worktrunk-supplement
 description: >-
-  feature-dev Phase 8 only. Read BEFORE invoking /worktrunk to define the
-  merge-vs-PR user choice flow and the PR-body template.
+  build stage integrate phase only. Read BEFORE invoking /worktrunk to define
+  the merge-vs-PR user choice flow, pre-merge checks, and the PR-body template.
 ---
 
-# Worktrunk Supplement for feature-dev (Phase 8 Integrate)
+# Worktrunk Supplement for the build stage (integrate)
 
-Read BEFORE invoking `/worktrunk` in Phase 8.
+Read BEFORE invoking `/worktrunk` in the integrate phase.
 
 ## Required User Prompt
 
-At the start of Phase 8, present exactly:
+At the start of the integrate phase, present exactly:
 
 ```
 Select integration mode:
@@ -20,6 +20,26 @@ Select integration mode:
 ```
 
 Wait for explicit (A) or (B). Do not proceed on any other input.
+
+## Branch Naming
+
+- Feature runs: `feature/<YYYY-MM-DD-topic>`
+- Bug runs: `bugfix/<YYYY-MM-DD-topic>`
+
+See `plugins/belt/skills/design/references/path-convention.md`.
+
+## Pre-merge Checks
+
+Before invoking `/worktrunk`:
+
+1. Project test suite (e.g. `cargo test`) exit 0
+2. Project linter (e.g. `cargo clippy --workspace -- -D warnings`) exit 0
+3. Formatter check (e.g. `cargo fmt --check`) exit 0 for modified packages
+4. `belt lint` exit 0 for any modified pipeline.yml files
+5. Bug runs: the reproduction test (from the RCA report) PASSes on this branch
+
+If any check fails, abort the integrate phase and report to the user — do
+NOT merge.
 
 ## (A) Merge Flow
 
@@ -79,7 +99,18 @@ section. If args.e2e is false, copy directly from design.md with an
 - Plan: <link to plan.md at the merged SHA>
 ```
 
-## Completion Criteria (for Phase 8 gate)
+## Commit Message Convention (bug runs)
+
+Fix commits (from the execute phase) should follow:
+
+```
+fix(<scope>): <short description of bug fix>
+```
+
+Where `<scope>` is derived from the RCA Impact Scope (primary module).
+Example: `fix(auth): redirect expired session cookies to /login instead of 500`.
+
+## Completion Criteria (for the integrate gate)
 
 - User explicitly selected (A) or (B).
 - (A): merge commit exists in parent branch; worktree removed.

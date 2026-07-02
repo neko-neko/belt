@@ -4,6 +4,10 @@ max_retries: 3
 audit: required
 ---
 
+Document mapping: feature runs read `design.md` / `plan.md`; bug runs read
+`rca-report.md` / `fix-plan.md` as the equivalent design/plan pair. Criteria
+below say "design document" / "plan document" generically.
+
 ## Criteria
 
 ### EXECUTE-01: Code changes exist for every task
@@ -16,7 +20,7 @@ audit: required
   4. List task IDs that have no corresponding code changes
 - **pass_condition**: Step 4 list is empty (all tasks have corresponding code changes)
 - **fail_diagnosis_hint**: Identify task IDs without code changes and check the corresponding tasks in the plan document. Determine whether it is a missing implementation or a documentation-only task whose changes do not appear in git diff
-- **depends_on_artifacts**: [docs/plans/*-plan.md]
+- **depends_on_artifacts**: [docs/features/*/plan.md, docs/features/*/fix-plan.md]
 
 ### EXECUTE-02: Build/compilation succeeds
 - **severity**: blocker
@@ -55,7 +59,7 @@ audit: required
   4. List planned test cases without corresponding test code
 - **pass_condition**: Step 4 list is empty (all planned test cases have corresponding test code)
 - **fail_diagnosis_hint**: Identify test cases without corresponding test code and check the naming conventions. If test function names differ from planned test case names, verify correspondence by content inspection
-- **depends_on_artifacts**: [docs/plans/*-plan.md, tests/]
+- **depends_on_artifacts**: [docs/features/*/plan.md, docs/features/*/fix-plan.md, tests/]
 
 ### EXECUTE-06: Implementation respects component boundaries
 - **severity**: quality
@@ -66,7 +70,7 @@ audit: required
   3. Verify that changes do not introduce new direct dependencies (import/require) that cross component boundaries
 - **pass_condition**: Zero new direct dependencies that cross design-defined boundaries
 - **fail_diagnosis_hint**: Identify the boundary-violating import/require statements and cross-reference with the design document's component diagram. Check for cases where dependencies should go through an interface layer instead of direct references
-- **depends_on_artifacts**: [docs/plans/*-design.md, src/]
+- **depends_on_artifacts**: [docs/features/*/design.md, docs/features/*/rca-report.md, src/]
 
 ### EXECUTE-07: End-to-end traceability from design to plan to implementation
 - **severity**: blocker
@@ -79,7 +83,7 @@ audit: required
   5. Verify no "surplus implementation" exists that has no corresponding requirement or task
 - **pass_condition**: Step 4: zero gaps in the three-tier mapping. Step 5: zero implementation files without corresponding plan tasks
 - **fail_diagnosis_hint**: Identify where the mapping gap occurs (between requirement-to-task or task-to-implementation). For surplus implementations, determine whether to add them to the design/plan documents or remove the excess code
-- **depends_on_artifacts**: [docs/plans/*-design.md, docs/plans/*-plan.md, src/]
+- **depends_on_artifacts**: [docs/features/*/design.md, docs/features/*/plan.md, docs/features/*/rca-report.md, docs/features/*/fix-plan.md, src/]
 
 ### EXECUTE-08: Newly added tests are not tautological
 - **severity**: blocker
@@ -104,7 +108,7 @@ audit: required
   5. Verify no existing tests for impacted code have been deleted or disabled (detect additions of `.skip`, `.only`, test function commenting out, or deletion via `git diff`)
 - **pass_condition**: Step 3: all requirements have corresponding tests. Step 4: all impacted areas have corresponding tests. Step 5: zero deletions or disablements of existing tests
 - **fail_diagnosis_hint**: For step 3 gaps, identify missing requirement IDs and add tests. For step 4 gaps, identify uncovered impacted files and assess whether existing tests exist or new ones are needed. For step 5 detections, verify whether the deletion/disablement was intentional; if not, restore the tests
-- **depends_on_artifacts**: [docs/plans/*-design.md, tests/, src/]
+- **depends_on_artifacts**: [docs/features/*/design.md, docs/features/*/rca-report.md, tests/, src/]
 - **forward_check**: Prevents "insufficient test coverage" findings during the Code Review phase
 
 ### EXECUTE-10: Narrative note captures phase decisions and directives

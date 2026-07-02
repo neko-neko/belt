@@ -13,7 +13,6 @@ test-fn-count: 16
 cross-coupling:
   - crates/belt-core/tests/bug_fix_refresh.rs
   - crates/belt-core/tests/review_skills_refresh.rs
-  - crates/belt-core/tests/shared_criteria_parity.rs
   - crates/belt-core/tests/shared_filter_parity.rs
 ```
 
@@ -53,7 +52,6 @@ cross-coupling:
 
 **Cross-coupling** (C):
 
-- `shared_criteria_parity.rs` — feature-dev と bug-fix の criteria/execute.md + code-review.md の byte-identical 確認
 - `shared_filter_parity.rs` — code-review 4 agent + spec-review 3 agent の `## Filtering` prefix bullet byte-identical 確認
 - `bug_fix_refresh.rs` — bug-fix pipeline shape (同 tuple pattern で parallel)
 - `review_skills_refresh.rs` — review skill の consolidated agent 削除 / per-observation agent 存在 lock
@@ -68,7 +66,6 @@ pipeline: plugins/belt/skills/bug-fix/pipeline.yml
 test-fn-count: 25
 cross-coupling:
   - crates/belt-core/tests/feature_dev_refresh.rs
-  - crates/belt-core/tests/shared_criteria_parity.rs
 ```
 
 **25 test fn 名** (A):
@@ -126,7 +123,6 @@ cross-coupling:
 **Cross-coupling** (C):
 
 - `feature_dev_refresh.rs` — feature-dev pipeline shape (同 tuple pattern で parallel)
-- `shared_criteria_parity.rs` — feature-dev と bug-fix の criteria/execute.md + code-review.md の byte-identical 確認
 
 ---
 
@@ -161,18 +157,6 @@ test-fn-count: 7
 **locked shape dimensions** (B):
 
 - per-observation agents (`security-reviewer.md`, `test-reviewer.md`, `ai-antipattern-reviewer.md`, `cross-cutting-reviewer.md`, `cross-cutting-spec-reviewer.md`, `feasibility-reviewer.md`, `ui-design-reviewer.md`) reference `output_path` in their Output Format section and do not hardcode `.belt/runs/` literals
-
----
-
-## shared_criteria_parity.rs
-
-```yaml
-locks-file: crates/belt-core/tests/shared_criteria_parity.rs
-parity-pairs:
-  - [plugins/belt/skills/feature-dev/criteria/execute.md, plugins/belt/skills/bug-fix/criteria/execute.md]
-  - [plugins/belt/skills/feature-dev/criteria/code-review.md, plugins/belt/skills/bug-fix/criteria/code-review.md]
-test-fn-count: 2
-```
 
 ---
 
