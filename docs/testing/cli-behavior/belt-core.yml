@@ -749,6 +749,13 @@ scenarios:
     given: "a parent phase with args.X and a sub-pipeline that substitutes X in its own scope"
     when: "expand_pipeline runs substitution"
     then: "parent phase args are unchanged; only sub-phase values get rewritten"
+  - id: belt-core-expander-pipeline-format-accepted-as-sub-pipeline
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a standalone Pipeline-format YAML with a top-level `args:` map, referenced from a main pipeline via `invoke: { pipeline: ... }`"
+    when: "expand_pipeline is called"
+    then: "the unknown `args` field is ignored and the file expands as a sub-pipeline with namespaced phase IDs"
 
   # --- parser module ---
   - id: belt-core-parser-parses-valid-pipeline-yaml

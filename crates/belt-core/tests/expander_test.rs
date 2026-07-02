@@ -254,3 +254,52 @@ phases:
     assert_eq!(expanded[0].id, "review/work");
     assert_eq!(expanded[1].id, "review/audit");
 }
+
+/// A standalone Pipeline-format YAML (with a top-level `args:` map) can be
+/// referenced via `invoke: { pipeline: ... }`: parse_sub_pipeline ignores
+/// the unknown `args` field. This is the dual-format guarantee that lets
+/// one file serve both `belt-agent init` and sub-pipeline composition.
+///
+/// scenario: belt-core-expander-pipeline-format-accepted-as-sub-pipeline
+#[test]
+fn pipeline_format_yaml_accepted_as_sub_pipeline() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    // Pipeline format: has `args:` (unknown to SubPipeline) and description.
+    write_yaml(
+        &dir,
+        "standalone.yml",
+        r#"
+name: standalone
+version: 1
+description: "Standalone pipeline also usable as a sub-pipeline"
+args:
+  e2e:
+    type: bool
+    default: false
+    description: "flag"
+phases:
+  - id: work
+    description: "Do the work"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: stage
+    invoke:
+      pipeline: standalone.yml
+"#,
+    );
+
+    let expanded = expand_pipeline(&pipeline_path).expect("dual-format expand should succeed");
+    assert_eq!(expanded.len(), 1);
+    assert_eq!(expanded[0].id, "stage/work");
+}
