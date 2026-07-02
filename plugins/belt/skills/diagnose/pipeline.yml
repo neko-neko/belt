@@ -1,0 +1,88 @@
+name: diagnose
+version: 1
+description: "Bug diagnosis stage (rca -> fix-plan -> fix-plan-review)"
+
+args:
+  e2e:
+    type: bool
+    default: false
+    description: "Author reproduction scenarios (rca-scenarios.yml) for monkey-test replay"
+  codex:
+    type: bool
+    default: false
+    description: "Enable Codex parallel review in fix-plan-review"
+
+phases:
+  - id: rca
+    description: "Investigate root cause via parallel exploration"
+    invoke:
+      skill: /systematic-debugging
+    produces:
+      - name: rca_report
+        path: "docs/features/*/rca-report.md"
+        description: "Root cause analysis report (Symptom / Investigation Record / Root Cause / Reproduction Test / Fix Strategy)"
+      - name: rca_scenarios
+        path: "docs/features/*/rca-scenarios.yml"
+        description: "Reproduction scenarios in Given/When/Then YAML for monkey-test replay"
+        when: "args.e2e"
+      - name: rca_notes
+        path: "belt://current/notes/phase-rca.md"
+        description: "Phase narrative: decisions, concerns, directives, observations"
+    gate:
+      - file_exists: "docs/features/*/rca-report.md"
+      - file_exists: "belt://current/notes/phase-rca.md"
+    validate: ./criteria/rca.md
+    confirm: true
+    max_retries: 3
+
+  - id: fix-plan
+    description: "Create fix plan from RCA report"
+    invoke:
+      skill: /writing-plans
+    consumes:
+      - rca_report
+      - rca_notes
+    produces:
+      - name: fix_plan_doc
+        path: "docs/features/*/fix-plan.md"
+        description: "Fix plan with RCA Fix Strategy -> task mapping"
+      - name: fix_plan_notes
+        path: "belt://current/notes/phase-fix-plan.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: "docs/features/*/fix-plan.md"
+      - file_exists: "belt://current/notes/phase-fix-plan.md"
+    validate: ./criteria/fix-plan.md
+    confirm: true
+    max_retries: 3
+
+  - id: fix-plan-review
+    description: "Plan review via spec-review"
+    invoke:
+      skill: /belt:spec-review
+      args:
+        codex: "args.codex"
+    consumes:
+      - fix_plan_doc
+    produces:
+      - name: findings-feasibility
+        path: "belt://current/review/findings-feasibility.json"
+        description: "Feasibility observation findings"
+      - name: findings-cross-cutting-spec
+        path: "belt://current/review/findings-cross-cutting-spec.json"
+        description: "Cross-cutting spec observation findings"
+      - name: findings-ui-design
+        path: "belt://current/review/findings-ui-design.json"
+        description: "UI design observation findings"
+      - name: findings-codex
+        path: "belt://current/review/findings-codex.json"
+        description: "Codex adversarial spec review findings"
+        when: "args.codex"
+      - name: findings
+        path: "belt://current/review/findings.json"
+        description: "Merged spec-review findings"
+    gate:
+      - file_exists: "belt://current/review/findings.json"
+    validate: ./criteria/fix-plan-review.md
+    confirm: true
+    max_retries: 3
