@@ -6,26 +6,16 @@ audit: required
 
 ## Criteria
 
-### CODE-REVIEW-01: Review executed across all 7 perspectives
+### CODE-REVIEW-01: Review executed across all observation agents
 - **severity**: quality
 - **verify_type**: automated
 - **verification**:
-  Read the review result file (`artifacts/reviews/code-review-review.json` or review log) and confirm execution records exist for all 7 perspectives (simplify, code-quality, code-security, code-performance, code-test, ai-antipattern, code-impact).
-- **pass_condition**: Execution records exist for all 7 perspectives. Recorded perspective count is 7
-- **fail_diagnosis_hint**: Identify the missing perspective and check the /code-review invocation options. Determine whether it was a missing perspective argument or a mid-execution interruption of the review agent
-- **depends_on_artifacts**: [artifacts/reviews/]
-
-### CODE-REVIEW-02: All user-approved findings have been fixed
-- **severity**: blocker
-- **verify_type**: inspection
-- **verification**:
-  1. List all user-approved findings from the review results
-  2. Identify the target file and line for each finding
-  3. Read the target file location using `Read` and verify the fix corresponding to each finding has been applied
-  4. List findings where the fix has not been applied
-- **pass_condition**: Step 4 list is empty (all user-approved findings have fixes applied)
-- **fail_diagnosis_hint**: Identify unapplied findings and check the target file at the relevant line. Determine whether the fix was omitted or applied in a different form. Use `git log --oneline` to check for the existence of fix commits
-- **depends_on_artifacts**: [artifacts/reviews/, src/]
+  1. Read `belt-agent status` and locate the resolved_path of each per-observation finding artifact: `findings-security`, `findings-test`, `findings-ai-antipattern`, `findings-cross-cutting` (plus `findings-codex` when the run was started with codex enabled)
+  2. Verify each file exists at its resolved_path
+  3. Parse each as JSON and confirm the `findings` array field is present
+- **pass_condition**: All four per-observation finding files exist and parse as valid JSON with a `findings` array (five including findings-codex when codex is enabled)
+- **fail_diagnosis_hint**: A missing file means the corresponding reviewer subagent was never dispatched or was interrupted mid-run. Check the /belt:code-review invocation and re-dispatch the missing reviewer
+- **depends_on_artifacts**: [findings-security, findings-test, findings-ai-antipattern, findings-cross-cutting]
 
 ### CODE-REVIEW-03: No uncommitted changes and branch is within 50 commits of latest main
 - **severity**: blocker
@@ -41,16 +31,16 @@ audit: required
 - **severity**: blocker
 - **verify_type**: automated + inspection
 - **verification**:
-  1. Extract findings from the review result file where category is code-impact and severity is high or critical
+  1. Read `belt-agent status`, locate the `findings` resolved_path, and extract findings where `observation` is `impact` and `severity` is `high` or `critical`
   2. If zero such findings exist, PASS
   3. If one or more such findings exist, verify each has one of the following records:
      a. Fixed: a corresponding code change is included in a commit
-     b. User-approved deferral: user's approval statement exists in the conversation log
+     b. User-approved deferral: the user's approval statement exists in the conversation log or the deferral is recorded in the code-review narrative note
      c. User-approved rejection: rationale for false positive was presented to the user and the user approved the rejection
   4. Verify no findings were deferred or rejected by the orchestrator without user confirmation
 - **pass_condition**: All findings in step 3 fall under a, b, or c, and step 4 finds zero user-unconfirmed deferrals/rejections
 - **fail_diagnosis_hint**: Identify user-unconfirmed findings and PAUSE to request user judgment. Check whether the orchestrator auto-deferred any findings without user confirmation
-- **depends_on_artifacts**: [artifacts/reviews/]
+- **depends_on_artifacts**: [findings]
 
 ### CODE-REVIEW-05: Narrative note captures review findings and directives
 - **severity**: blocker

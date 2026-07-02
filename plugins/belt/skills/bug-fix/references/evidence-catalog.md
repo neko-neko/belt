@@ -50,11 +50,11 @@ E-BUILD), the Audit Agent treats it as a blocker FAIL.
 
 ### E-REVIEW: Review results
 - **condition**: always
-- **claimed**: `artifacts/reviews/phase-{N}-review.json`
+- **claimed**: `belt://current/review/findings.json` (resolve via `belt-agent locate`)
 - **verified**: N/A (re-running a review is impractical).
 - **required_capabilities**: []
 - **if_unavailable**: block
-- **collection**: Aggregate review agent output into JSON and save.
+- **collection**: The code-review skill merges the per-observation finding files (findings-security / findings-test / findings-ai-antipattern / findings-cross-cutting, plus findings-codex when enabled) into the merged `findings` artifact.
 
 ### E-DIFF: git diff snapshot
 - **condition**: always
@@ -136,8 +136,8 @@ E-BUILD), the Audit Agent treats it as a blocker FAIL.
 ### E-DEFERRED-IMPACT: Deferred impact findings — actual harm verification
 - **condition**:
   - require_all:
-    - The review result (`artifacts/reviews/phase-{N}-review.json`) contains 1 or more findings with category: code-impact and user_decision: deferred
-- **claimed**: `artifacts/reviews/phase-{N}-deferred-impact-verification.md`
+    - The merged findings artifact (`belt://current/review/findings.json`) contains 1 or more findings with `observation: impact` whose triage disposition was deferral (recorded in the code-review narrative note)
+- **claimed**: `belt://current/review/deferred-impact-verification.md`
 - **verified**: Actually exercise the consumer named by each deferred finding and confirm no inconsistency.
 - **required_capabilities**: [bash, browser-automation]
 - **if_unavailable**: manual_fallback
