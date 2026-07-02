@@ -13,7 +13,7 @@ audit: lite
   1. Search for an RCA Report file using `Glob("docs/features/*/rca-report.md")`
   2. Verify the file contains 5 section headings: `## Symptom`, `## Investigation Record`, `## Root Cause`, `## Reproduction Test`, `## Fix Strategy`
 - **pass_condition**: At least one Glob result found, and all 5 section headings are present
-- **fail_diagnosis_hint**: Verify that the RCA phase executor output the report under `docs/features/`. Confirm the filename matches the `*-rca-report.md` pattern and section headings use `##` level with exact titles
+- **fail_diagnosis_hint**: Verify that the RCA phase executor output the report under `docs/features/`. Confirm the file is named `rca-report.md` inside the `docs/features/<YYYY-MM-DD-topic>/` directory and section headings use `##` level with exact titles
 - **depends_on_artifacts**: [docs/features/]
 - **forward_check**: Fix Plan phase uses the RCA Report's Fix Strategy as input
 

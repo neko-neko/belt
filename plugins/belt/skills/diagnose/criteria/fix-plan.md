@@ -12,7 +12,7 @@ audit: lite
 - **verification**:
   Search for a fix plan document file using `Glob("docs/features/*/fix-plan.md")`.
 - **pass_condition**: At least one Glob result found
-- **fail_diagnosis_hint**: Verify that the Phase executor output the fix plan document under `docs/features/`. Confirm the filename matches the `YYYY-MM-DD-*-fix-plan.md` pattern
+- **fail_diagnosis_hint**: Verify that the Phase executor output the fix plan document under `docs/features/`. Confirm the file is named `fix-plan.md` inside the `docs/features/<YYYY-MM-DD-topic>/` directory
 - **depends_on_artifacts**: [docs/features/]
 
 ### FIX-PLAN-02: Traceability from RCA Report's Fix Strategy to tasks
