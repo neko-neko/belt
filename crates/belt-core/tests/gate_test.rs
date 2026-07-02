@@ -268,6 +268,30 @@ fn cmd_timeout_duration_reflects_timeout() {
     assert!(ms < 4000, "duration_ms too high: {ms}");
 }
 
+/// Timeout kills the whole process group and returns promptly even when
+/// the shell forks a grandchild that inherits the stdout/stderr pipes.
+/// A compound command forces the fork on every platform (bash and dash
+/// both skip the exec optimization for `cmd1; cmd2`); Ubuntu's dash forks
+/// even for a single command, which is how CI first exposed this.
+/// scenario: belt-core-gate-cmd-timeout-kills-and-reports
+#[test]
+fn cmd_timeout_kills_grandchild_and_returns_promptly() {
+    let check = GateCheck::Cmd {
+        cmd: "sleep 8; true".to_owned(),
+        timeout: 1,
+    };
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let result = execute_gate(&check, tmp.path(), tmp.path(), &NoopUriResolver);
+    assert!(result.timed_out);
+    assert!(!result.passed);
+    let ms = result.duration_ms.unwrap();
+    assert!(ms >= 1000, "duration_ms too low: {ms}");
+    assert!(
+        ms < 4000,
+        "returned only after grandchild exit (pipe held open): {ms}"
+    );
+}
+
 /// Fast command finishes before timeout.
 /// scenario: belt-core-gate-cmd-zero-exit-passes
 #[test]

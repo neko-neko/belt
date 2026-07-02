@@ -1,3 +1,4 @@
+use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -123,12 +124,20 @@ fn execute_cmd(cmd: &str, work_dir: &Path, timeout_secs: u64) -> GateResult {
         return execute_cmd_no_timeout(cmd, work_dir, start);
     }
 
+    // `process_group(0)` makes the shell the leader of a fresh process
+    // group so the timeout path can kill the whole group: the shell may
+    // fork the command instead of exec-ing it (Ubuntu's dash always does,
+    // bash does for compound commands), and a surviving grandchild would
+    // otherwise keep running and hold the stdout/stderr pipes open.
+    // Trade-off: the group no longer receives terminal SIGINT, so a
+    // Ctrl-C on the driver leaves the gate command to its timeout.
     let mut child = match Command::new("sh")
         .arg("-c")
         .arg(cmd)
         .current_dir(work_dir)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0)
         .spawn()
     {
         Ok(c) => c,
@@ -168,15 +177,13 @@ fn execute_cmd(cmd: &str, work_dir: &Path, timeout_secs: u64) -> GateResult {
             Ok(Some(s)) => break Some(s),
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    kill_process_group(&mut child);
                     break None;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                kill_process_group(&mut child);
                 return GateResult {
                     check_type: "cmd".to_owned(),
                     passed: false,
@@ -188,19 +195,27 @@ fn execute_cmd(cmd: &str, work_dir: &Path, timeout_secs: u64) -> GateResult {
         }
     };
 
-    let stderr_bytes = stderr_handle.join().unwrap_or_default();
-    let _stdout_bytes = stdout_handle.join().unwrap_or_default();
     let duration_ms = elapsed_ms(start);
 
     match status {
-        None => GateResult {
-            check_type: "cmd".to_owned(),
-            passed: false,
-            detail: Some(format!("timed out after {timeout_secs}s")),
-            duration_ms: Some(duration_ms),
-            timed_out: true,
-        },
+        None => {
+            // Do NOT join the pipe-reader threads on the timeout path: a
+            // grandchild that escaped the group kill would hold the pipe
+            // write ends open and block the join until it exits. The
+            // detached threads finish on their own once the pipes close.
+            drop(stdout_handle);
+            drop(stderr_handle);
+            GateResult {
+                check_type: "cmd".to_owned(),
+                passed: false,
+                detail: Some(format!("timed out after {timeout_secs}s")),
+                duration_ms: Some(duration_ms),
+                timed_out: true,
+            }
+        }
         Some(exit_status) => {
+            let stderr_bytes = stderr_handle.join().unwrap_or_default();
+            let _stdout_bytes = stdout_handle.join().unwrap_or_default();
             let passed = exit_status.success();
             let detail = if passed {
                 None
@@ -220,6 +235,19 @@ fn execute_cmd(cmd: &str, work_dir: &Path, timeout_secs: u64) -> GateResult {
             }
         }
     }
+}
+
+/// Kill the child's entire process group, then reap the direct child.
+/// The child is its own group leader (spawned with `process_group(0)`),
+/// so `-<pid>` addresses the whole group including forked grandchildren.
+/// The external `kill` binary is used because `killpg` needs `unsafe`
+/// libc calls and `unsafe_code` is forbidden workspace-wide.
+fn kill_process_group(child: &mut std::process::Child) {
+    let _ = Command::new("kill")
+        .args(["-9", "--", &format!("-{}", child.id())])
+        .output();
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Execute cmd without timeout — uses simple `output()` (original behavior).
