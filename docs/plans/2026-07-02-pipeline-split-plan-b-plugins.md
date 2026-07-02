@@ -2950,8 +2950,8 @@ Expected: 全 PASS
 Run: `cargo run -p belt -- lint plugins/belt/skills/bug-fix/pipeline.yml && echo LINT-OK`
 Expected: `LINT-OK`
 
-Run: `grep -rn "docs/plans" plugins/belt/skills/ ; echo "exit=$?"`
-Expected: `exit=1` (旧 path 規約への言及が plugins/belt/skills 配下からゼロ)
+Run: `grep -rn "docs/plans" plugins/belt/skills/ | grep -v "path-convention.md" ; echo "exit=$?"`
+Expected: `exit=1` (旧 path 規約への言及が plugins/belt/skills 配下からゼロ。唯一の例外は path-convention.md の意図的な retirement 記述「(`docs/plans/YYYY-MM-DD-<topic>-*` flat files) is retired」— 旧規約の行き先を読者に示す歴史的注記として保持)
 
 - [ ] **Step 7: Commit**
 
@@ -3903,8 +3903,8 @@ Expected: (a) next の `phase.id == "design/design"`、`invoke.skill == "/brains
 
 - [ ] **Step 4: 残渣 grep を流す**
 
-Run: `grep -rn "docs/plans" plugins/belt/skills/; grep -rn "Phase [0-9]" plugins/; grep -rn "# Phase " plugins/belt/skills/*/criteria/ 2>/dev/null; echo "sweeps done"`
-Expected: 3 つの grep すべて no match (`sweeps done` のみ出力)
+Run: `grep -rn "docs/plans" plugins/belt/skills/ | grep -v "path-convention.md"; grep -rn "Phase [0-9]" plugins/; grep -rn "# Phase " plugins/belt/skills/*/criteria/ 2>/dev/null; echo "sweeps done"`
+Expected: 3 つの grep すべて no match (`sweeps done` のみ出力)。path-convention.md の retirement 記述 1 件のみ意図的例外 (Task 6 で裁定済み)
 
 - [ ] **Step 5: push して CI green を確認する**
 
