@@ -756,6 +756,41 @@ scenarios:
     given: "a standalone Pipeline-format YAML with a top-level `args:` map, referenced from a main pipeline via `invoke: { pipeline: ... }`"
     when: "expand_pipeline is called"
     then: "the unknown `args` field is ignored and the file expands as a sub-pipeline with namespaced phase IDs"
+  - id: belt-core-expander-nested-sub-pipeline-expands-recursively
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a pipeline referencing a sub-pipeline whose phase itself references another sub-pipeline"
+    when: "expand_pipeline is called"
+    then: "phases expand recursively with `{parent}/{sub}/{subsub}` namespaced IDs and the outer parent gate is appended to the last innermost leaf only"
+  - id: belt-core-expander-cyclic-reference-yields-invalid-pipeline
+    category: expander
+    severity: high
+    technique: error-guessing
+    given: "sub-pipelines that reference each other in a cycle (a.yml -> b.yml -> a.yml)"
+    when: "expand_pipeline is called"
+    then: "returns BeltError::InvalidPipeline naming the cyclic reference instead of recursing infinitely"
+  - id: belt-core-expander-depth-limit-exceeded-yields-invalid-pipeline
+    category: expander
+    severity: medium
+    technique: boundary-value
+    given: "a reference chain nested deeper than 4 sub-pipeline levels"
+    when: "expand_pipeline is called"
+    then: "returns BeltError::InvalidPipeline naming the depth limit"
+  - id: belt-core-expander-sub-internal-regate-targets-namespaced
+    category: expander
+    severity: high
+    technique: equivalence-partition
+    given: "a sub-pipeline whose phase declares `regate:` targeting a sibling phase in the same file"
+    when: "expand_pipeline is called"
+    then: "the regate target is renamed into the sub-pipeline's expansion namespace so it matches the expanded phase id"
+  - id: belt-core-expander-parent-when-propagates-through-nested-levels
+    category: expander
+    severity: medium
+    technique: state-transition
+    given: "an outermost phase with `when:` referencing a sub-pipeline that itself references another sub-pipeline whose leaf has no when"
+    when: "expand_pipeline is called"
+    then: "the outermost when reaches the innermost expanded leaf verbatim"
 
   # --- parser module ---
   - id: belt-core-parser-parses-valid-pipeline-yaml

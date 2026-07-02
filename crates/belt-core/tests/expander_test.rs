@@ -303,3 +303,298 @@ phases:
     assert_eq!(expanded.len(), 1);
     assert_eq!(expanded[0].id, "stage/work");
 }
+
+/// Nested `invoke: { pipeline: ... }` references expand recursively with
+/// `{parent}/{sub}/{subsub}` namespaced IDs, and the outermost parent's
+/// gate is appended to the LAST innermost leaf.
+///
+/// scenario: belt-core-expander-nested-sub-pipeline-expands-recursively
+#[test]
+fn nested_sub_pipeline_expands_recursively() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "inner.yml",
+        r#"
+name: inner
+version: 1
+phases:
+  - id: monkey-test
+    description: "Replay scenarios"
+    gate:
+      - cmd: "true"
+  - id: dogfood
+    description: "Exploratory testing"
+    gate:
+      - cmd: "true"
+"#,
+    );
+
+    write_yaml(
+        &dir,
+        "middle.yml",
+        r#"
+name: middle
+version: 1
+phases:
+  - id: execute
+    description: "Implement"
+    gate:
+      - cmd: "true"
+  - id: verify
+    invoke:
+      pipeline: inner.yml
+"#,
+    );
+
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: build
+    invoke:
+      pipeline: middle.yml
+    gate:
+      - git_clean: true
+"#,
+    );
+
+    let expanded = expand_pipeline(&pipeline_path).expect("nested expand should succeed");
+    let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "build/execute",
+            "build/verify/monkey-test",
+            "build/verify/dogfood"
+        ]
+    );
+    // Outer parent gate lands on the LAST innermost leaf only.
+    assert_eq!(expanded[0].gate.len(), 1, "inner leaves keep own gates");
+    assert_eq!(expanded[1].gate.len(), 1);
+    assert_eq!(
+        expanded[2].gate.len(),
+        2,
+        "last leaf inherits the outer parent gate appended"
+    );
+}
+
+/// A cyclic sub-pipeline reference (a.yml -> b.yml -> a.yml) is rejected
+/// with InvalidPipeline instead of infinite recursion.
+///
+/// scenario: belt-core-expander-cyclic-reference-yields-invalid-pipeline
+#[test]
+fn cyclic_sub_pipeline_reference_yields_invalid_pipeline() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "a.yml",
+        r#"
+name: a
+version: 1
+phases:
+  - id: to-b
+    invoke:
+      pipeline: b.yml
+"#,
+    );
+    write_yaml(
+        &dir,
+        "b.yml",
+        r#"
+name: b
+version: 1
+phases:
+  - id: back-to-a
+    invoke:
+      pipeline: a.yml
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: entry
+    invoke:
+      pipeline: a.yml
+"#,
+    );
+
+    let err = expand_pipeline(&pipeline_path).expect_err("cycle must be rejected");
+    assert!(
+        matches!(err, BeltError::InvalidPipeline { ref message } if message.contains("cyclic")),
+        "unexpected error: {err:?}"
+    );
+}
+
+/// Nesting deeper than 4 sub-pipeline levels is rejected with
+/// InvalidPipeline naming the depth limit.
+///
+/// scenario: belt-core-expander-depth-limit-exceeded-yields-invalid-pipeline
+#[test]
+fn nesting_beyond_depth_limit_yields_invalid_pipeline() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    // Chain: pipeline.yml -> d1 -> d2 -> d3 -> d4 -> d5 (leaf). Depth 5 > 4.
+    for i in 1..=4 {
+        write_yaml(
+            &dir,
+            &format!("d{i}.yml"),
+            &format!(
+                r#"
+name: d{i}
+version: 1
+phases:
+  - id: next
+    invoke:
+      pipeline: d{}.yml
+"#,
+                i + 1
+            ),
+        );
+    }
+    write_yaml(
+        &dir,
+        "d5.yml",
+        r#"
+name: d5
+version: 1
+phases:
+  - id: leaf
+    description: "Bottom"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: entry
+    invoke:
+      pipeline: d1.yml
+"#,
+    );
+
+    let err = expand_pipeline(&pipeline_path).expect_err("depth must be limited");
+    assert!(
+        matches!(err, BeltError::InvalidPipeline { ref message } if message.contains("depth")),
+        "unexpected error: {err:?}"
+    );
+}
+
+/// A regate target declared inside a sub-pipeline is renamed into the
+/// sub-pipeline's expansion namespace so it points at the expanded id.
+///
+/// scenario: belt-core-expander-sub-internal-regate-targets-namespaced
+#[test]
+fn sub_internal_regate_targets_are_namespaced() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "stage.yml",
+        r#"
+name: stage
+version: 1
+phases:
+  - id: execute
+    description: "Implement"
+    gate:
+      - cmd: "true"
+  - id: code-review
+    description: "Review"
+    regate: [execute]
+    gate:
+      - cmd: "true"
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: build
+    invoke:
+      pipeline: stage.yml
+"#,
+    );
+
+    let expanded = expand_pipeline(&pipeline_path).expect("expand should succeed");
+    assert_eq!(expanded[1].id, "build/code-review");
+    assert_eq!(
+        expanded[1].regate,
+        vec!["build/execute".to_string()],
+        "sub-internal regate target must be renamed into the expansion namespace"
+    );
+}
+
+/// The outermost parent `when:` propagates through nested levels to every
+/// expanded leaf that does not declare its own when.
+///
+/// scenario: belt-core-expander-parent-when-propagates-through-nested-levels
+#[test]
+fn parent_when_propagates_through_nested_levels() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "inner.yml",
+        r#"
+name: inner
+version: 1
+phases:
+  - id: check
+    description: "Inner check"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    write_yaml(
+        &dir,
+        "middle.yml",
+        r#"
+name: middle
+version: 1
+phases:
+  - id: deep
+    invoke:
+      pipeline: inner.yml
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: gated
+    when: "args.e2e"
+    invoke:
+      pipeline: middle.yml
+"#,
+    );
+
+    let expanded = expand_pipeline(&pipeline_path).expect("expand should succeed");
+    assert_eq!(expanded.len(), 1);
+    assert_eq!(expanded[0].id, "gated/deep/check");
+    assert_eq!(
+        expanded[0].when.as_deref(),
+        Some("args.e2e"),
+        "outer when must reach the innermost leaf"
+    );
+}

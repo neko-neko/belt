@@ -1,148 +1,229 @@
 use crate::error::{BeltError, BeltResult};
-use crate::model::{ExpandedPhase, Invoker, Phase, SubPipeline};
+use crate::model::{ExpandedPhase, Invoker, Phase};
 use crate::parser::{parse_pipeline, parse_sub_pipeline};
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
-/// Parse a pipeline and expand all `invoke: { pipeline: ... }` references into
-/// flat, namespaced phases.
+/// Maximum sub-pipeline reference depth (root pipeline = depth 0).
+const MAX_EXPANSION_DEPTH: usize = 4;
+
+/// Parse a pipeline and expand all `invoke: { pipeline: ... }` references
+/// into flat, namespaced phases — recursively.
 ///
 /// Each phase whose `invoke` is an [`Invoker::Pipeline`] references a
-/// sub-pipeline YAML file (resolved relative to `pipeline_path`'s directory).
-/// The sub-pipeline's phases are flattened with namespaced IDs
-/// (`{parent_id}/{sub_phase_id}`).
+/// sub-pipeline YAML file (resolved relative to the referencing file's
+/// directory). Sub-pipeline phases are flattened with namespaced IDs
+/// (`{parent_id}/{sub_phase_id}`, nested levels concatenate:
+/// `{a}/{b}/{c}`). A sub-pipeline phase may itself reference another
+/// sub-pipeline; cycles are rejected and nesting is capped at
+/// [`MAX_EXPANSION_DEPTH`].
 ///
-/// Inheritance rules for the **last** sub-phase of each expansion:
-/// - `gate`, `regate`, `validate`: parent entries are **appended**
-/// - `config`: merged with parent keys winning on conflict
+/// Inheritance rules at every level, applied to the expansion of each
+/// referencing phase:
+/// - `gate`, `regate`, `validate`: parent entries are **appended** to the
+///   LAST expanded (innermost) leaf
+/// - `config`: merged into the last leaf with parent keys winning
+/// - `when`: propagates to **all** expanded leaves that lack their own
 ///
-/// **All** sub-phases inherit the parent's `when` if they lack their own.
+/// `regate` targets declared inside a sub-pipeline are renamed into that
+/// sub-pipeline's expansion namespace (`execute` → `{parent_id}/execute`).
 ///
-/// A leaf phase (no `invoke: { pipeline: ... }`) **must** have a `description`;
-/// otherwise `BeltError::InvalidPipeline` is returned.
+/// Every leaf phase (no `invoke: { pipeline: ... }`) **must** have a
+/// `description`; otherwise `BeltError::InvalidPipeline` is returned.
 pub fn expand_pipeline(pipeline_path: &Path) -> BeltResult<Vec<ExpandedPhase>> {
     let pipeline = parse_pipeline(pipeline_path)?;
     let base_dir = pipeline_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut visited = vec![canonical_or_self(pipeline_path)];
+    expand_phase_list(
+        &pipeline.phases,
+        base_dir,
+        "",
+        &HashMap::new(),
+        &mut visited,
+    )
+}
 
+/// Canonicalize for cycle detection; fall back to the raw path when the
+/// file cannot be canonicalized (missing file errors surface in parsing).
+fn canonical_or_self(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Expand one level of phases, recursing into `Invoker::Pipeline` refs.
+///
+/// - `ns`: namespace prefix — `""` at the root, `"{parent}/"` below.
+/// - `with`: the substitution scope THIS level's phases were referenced
+///   with (empty at the root). Applied to leaf `when`/`config`/`invoke`
+///   and folded into child reference `with` maps before descending.
+/// - `visited`: reference-path stack for cycle and depth detection.
+fn expand_phase_list(
+    phases: &[Phase],
+    base_dir: &Path,
+    ns: &str,
+    with: &HashMap<String, serde_json::Value>,
+    visited: &mut Vec<PathBuf>,
+) -> BeltResult<Vec<ExpandedPhase>> {
+    let local_ids: Vec<&str> = phases.iter().map(|p| p.id.as_str()).collect();
     let mut expanded = Vec::new();
-    for phase in &pipeline.phases {
-        if let Some(Invoker::Pipeline { pipeline, with }) = &phase.invoke {
-            let sub_path = base_dir.join(pipeline);
+    for phase in phases {
+        if let Some(Invoker::Pipeline {
+            pipeline: sub_ref,
+            with: phase_with,
+        }) = &phase.invoke
+        {
+            // Resolve the child's `with` in THIS level's scope first —
+            // mirrors substitute_in_invoker (I1 parent-scope rule).
+            let mut child_with = phase_with.clone();
+            if !with.is_empty() {
+                substitute_in_value_map(&mut child_with, with);
+            }
+
+            let sub_path = base_dir.join(sub_ref);
+            let canonical = canonical_or_self(&sub_path);
+            if visited.contains(&canonical) {
+                return Err(BeltError::InvalidPipeline {
+                    message: format!(
+                        "phase '{ns}{}': cyclic sub-pipeline reference '{sub_ref}'",
+                        phase.id
+                    ),
+                });
+            }
+            if visited.len() > MAX_EXPANSION_DEPTH {
+                return Err(BeltError::InvalidPipeline {
+                    message: format!(
+                        "phase '{ns}{}': sub-pipeline nesting exceeds depth {MAX_EXPANSION_DEPTH}",
+                        phase.id
+                    ),
+                });
+            }
+
             let sub = parse_sub_pipeline(&sub_path)?;
-            let sub_phases = expand_sub_pipeline(&phase.id, phase, &sub, with);
-            expanded.extend(sub_phases);
+            let sub_base = sub_path
+                .parent()
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+            let child_ns = format!("{ns}{}/", phase.id);
+
+            visited.push(canonical);
+            let mut sub_expanded =
+                expand_phase_list(&sub.phases, &sub_base, &child_ns, &child_with, visited)?;
+            visited.pop();
+
+            if sub_expanded.is_empty() {
+                return Err(BeltError::InvalidPipeline {
+                    message: format!(
+                        "phase '{ns}{}': sub-pipeline '{sub_ref}' has no phases",
+                        phase.id
+                    ),
+                });
+            }
+
+            // Parent `when` propagates to every expanded leaf lacking one.
+            // The parent's when is authored in the parent's arg scope, so
+            // it is substituted against THIS level's `with`, not the child's.
+            let parent_when = substituted_when(phase.when.as_deref(), with);
+            for sub_phase in &mut sub_expanded {
+                if sub_phase.when.is_none() {
+                    sub_phase.when.clone_from(&parent_when);
+                }
+            }
+
+            // gate/regate/validate append + config merge on the LAST leaf.
+            if let Some(last) = sub_expanded.last_mut() {
+                last.gate.extend(phase.gate.clone());
+                last.regate.extend(phase.regate.clone());
+                last.validate.extend(phase.validate.clone());
+                let mut parent_config = phase.config.clone();
+                if !with.is_empty() {
+                    substitute_in_value_map(&mut parent_config, with);
+                }
+                for (k, v) in parent_config {
+                    last.config.insert(k, v);
+                }
+            }
+
+            expanded.extend(sub_expanded);
         } else {
-            expanded.push(leaf_phase(phase)?);
+            expanded.push(leaf_phase(phase, ns, with, &local_ids)?);
         }
     }
     Ok(expanded)
 }
 
-fn expand_sub_pipeline(
-    parent_id: &str,
-    parent: &Phase,
-    sub: &SubPipeline,
-    with: &std::collections::HashMap<String, serde_json::Value>,
-) -> Vec<ExpandedPhase> {
-    let mut phases = Vec::new();
-    for (i, sub_phase) in sub.phases.iter().enumerate() {
-        let namespaced_id = format!("{parent_id}/{}", sub_phase.id);
-        let is_last = i == sub.phases.len() - 1;
-
-        // Merge config: parent config overrides sub-phase config (on last sub-phase only).
-        // Substitute against sub_phase's OWN config first — parent config values are
-        // authored in the parent's arg scope and must not be rewritten against the
-        // sub-pipeline's `with` map. Mirrors the I1 `when` scope rule fix (6493cf2).
-        let mut merged_config = sub_phase.config.clone();
-        if !with.is_empty() {
-            substitute_in_value_map(&mut merged_config, with);
-        }
-        if is_last {
-            for (k, v) in &parent.config {
-                merged_config.insert(k.clone(), v.clone());
+/// Substitute a `when` template against a `with` scope; returns the
+/// (possibly rewritten) owned when.
+fn substituted_when(
+    when: Option<&str>,
+    with: &HashMap<String, serde_json::Value>,
+) -> Option<String> {
+    let w = when?;
+    if !with.is_empty() {
+        if let Some(replacement) = substitute_arg_in_value(w, with) {
+            if let Some(rewritten) = value_to_when_string(&replacement) {
+                return Some(rewritten);
             }
         }
-
-        // Last sub-phase inherits parent's gate, regate, validate
-        let mut gate = sub_phase.gate.clone();
-        let mut regate = sub_phase.regate.clone();
-        let mut validate = sub_phase.validate.clone();
-
-        if is_last {
-            gate.extend(parent.gate.clone());
-            regate.extend(parent.regate.clone());
-            validate.extend(parent.validate.clone());
-        }
-
-        // Substitute against sub_phase's OWN when first. Parent's when is evaluated
-        // in the parent run's arg scope and must not be rewritten against the
-        // sub-pipeline's `with` map.
-        let mut sub_when = sub_phase.when.clone();
-        if !with.is_empty() {
-            if let Some(w_str) = sub_when.as_deref() {
-                if let Some(replacement) = substitute_arg_in_value(w_str, with) {
-                    if let Some(rewritten) = value_to_when_string(&replacement) {
-                        sub_when = Some(rewritten);
-                    }
-                }
-            }
-        }
-        let when = sub_when.or_else(|| parent.when.clone());
-
-        phases.push(ExpandedPhase {
-            id: namespaced_id,
-            description: sub_phase.description.clone().unwrap_or_default(),
-            config: merged_config,
-            produces: sub_phase.produces.clone(),
-            consumes: sub_phase.consumes.clone(),
-            gate,
-            validate,
-            regate,
-            confirm: sub_phase.confirm,
-            max_retries: sub_phase.max_retries,
-            when,
-            invoke: {
-                let mut inv = sub_phase.invoke.clone();
-                if !with.is_empty() {
-                    if let Some(v) = inv.as_mut() {
-                        substitute_in_invoker(v, with);
-                    }
-                }
-                inv
-            },
-            output_dir: None,
-        });
     }
-    phases
+    Some(w.to_owned())
 }
 
-fn leaf_phase(phase: &Phase) -> BeltResult<ExpandedPhase> {
-    // Sanity: if the phase has `invoke: { pipeline: ... }`, it should have
-    // been handled by the sub-pipeline branch in `expand_pipeline`. Hitting
-    // this case is a bug in the expander branching logic, not a user error.
-    debug_assert!(
-        !matches!(phase.invoke, Some(Invoker::Pipeline { .. })),
-        "leaf_phase called with Invoker::Pipeline — expander branch logic is wrong"
-    );
-
+/// Materialize a leaf phase at namespace `ns`, applying this level's
+/// `with` substitution to `when`, `config`, and the invoker, and renaming
+/// sibling-scoped `regate` targets into the namespace.
+fn leaf_phase(
+    phase: &Phase,
+    ns: &str,
+    with: &HashMap<String, serde_json::Value>,
+    local_ids: &[&str],
+) -> BeltResult<ExpandedPhase> {
     let description = phase
         .description
         .clone()
         .ok_or_else(|| BeltError::InvalidPipeline {
-            message: format!("leaf phase '{}' must have a description", phase.id),
+            message: format!("leaf phase '{ns}{}' must have a description", phase.id),
         })?;
+
+    let mut config = phase.config.clone();
+    if !with.is_empty() {
+        substitute_in_value_map(&mut config, with);
+    }
+
+    let invoke = {
+        let mut inv = phase.invoke.clone();
+        if !with.is_empty() {
+            if let Some(v) = inv.as_mut() {
+                substitute_in_invoker(v, with);
+            }
+        }
+        inv
+    };
+
+    // Regate targets naming a sibling phase in this file are renamed into
+    // the expansion namespace; anything else is left verbatim.
+    let regate = phase
+        .regate
+        .iter()
+        .map(|t| {
+            if local_ids.contains(&t.as_str()) {
+                format!("{ns}{t}")
+            } else {
+                t.clone()
+            }
+        })
+        .collect();
+
     Ok(ExpandedPhase {
-        id: phase.id.clone(),
+        id: format!("{ns}{}", phase.id),
         description,
-        config: phase.config.clone(),
+        config,
         produces: phase.produces.clone(),
         consumes: phase.consumes.clone(),
         gate: phase.gate.clone(),
         validate: phase.validate.clone(),
-        regate: phase.regate.clone(),
+        regate,
         confirm: phase.confirm,
         max_retries: phase.max_retries,
-        when: phase.when.clone(),
-        invoke: phase.invoke.clone(),
+        when: substituted_when(phase.when.as_deref(), with),
+        invoke,
         output_dir: None,
     })
 }
@@ -209,8 +290,10 @@ fn substitute_in_invoker(
 
 #[cfg(test)]
 #[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
     clippy::panic,
-    reason = "panic! is the conventional assertion failure in test-only code"
+    reason = "unwrap/expect/panic are the conventional assertion style in test-only code"
 )]
 mod tests {
     use super::*;
@@ -274,54 +357,6 @@ mod tests {
         assert_eq!(substitute_arg_in_value("args.x", &w), Some(Value::Null));
     }
 
-    #[test]
-    fn expand_sub_pipeline_with_empty_with_is_byte_identical_to_legacy() {
-        use crate::model::{Phase, SubPipeline};
-
-        let parent = Phase {
-            id: "p".into(),
-            description: None,
-            with: HashMap::new(),
-            when: None,
-            invoke: None,
-            config: HashMap::new(),
-            produces: Vec::new(),
-            consumes: Vec::new(),
-            gate: Vec::new(),
-            validate: Vec::new(),
-            regate: Vec::new(),
-            confirm: false,
-            max_retries: 0,
-        };
-        let sub = SubPipeline {
-            name: "s".into(),
-            description: None,
-            version: 1,
-            inputs: HashMap::new(),
-            phases: vec![Phase {
-                id: "leaf".into(),
-                description: Some("d".into()),
-                with: HashMap::new(),
-                when: Some("args.x".into()),
-                invoke: None,
-                config: HashMap::new(),
-                produces: Vec::new(),
-                consumes: Vec::new(),
-                gate: Vec::new(),
-                validate: Vec::new(),
-                regate: Vec::new(),
-                confirm: false,
-                max_retries: 0,
-            }],
-        };
-        let empty: HashMap<String, serde_json::Value> = HashMap::new();
-        let out = expand_sub_pipeline("p", &parent, &sub, &empty);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].id, "p/leaf");
-        // Empty with must not rewrite anything — when stays as-is.
-        assert_eq!(out[0].when.as_deref(), Some("args.x"));
-    }
-
     fn mk_leaf_phase(id: &str, when: Option<&str>) -> crate::model::Phase {
         crate::model::Phase {
             id: id.into(),
@@ -340,121 +375,105 @@ mod tests {
         }
     }
 
-    fn mk_parent_phase() -> crate::model::Phase {
-        crate::model::Phase {
-            id: "p".into(),
-            description: None,
-            with: HashMap::new(),
-            when: None,
-            invoke: None,
-            config: HashMap::new(),
-            produces: Vec::new(),
-            consumes: Vec::new(),
-            gate: Vec::new(),
-            validate: Vec::new(),
-            regate: Vec::new(),
-            confirm: false,
-            max_retries: 0,
-        }
-    }
-
-    fn mk_sub(phases: Vec<crate::model::Phase>) -> crate::model::SubPipeline {
-        crate::model::SubPipeline {
-            name: "s".into(),
-            description: None,
-            version: 1,
-            inputs: HashMap::new(),
-            phases,
-        }
-    }
+    // The substitute-scope rules below were originally locked through the old
+    // `expand_sub_pipeline(parent, sub, with)` entry point. After the recursive
+    // rewrite, a sub-phase's OWN when/config/invoker substitution lives in
+    // `leaf_phase(phase, ns, with, local_ids)` / `substituted_when`, so these
+    // tests exercise those directly. Parent-inheritance scope rules (parent
+    // values resolved in the PARENT scope, never the sub `with`) are locked via
+    // `substituted_when` / `substitute_in_value_map` against a parent scope.
 
     #[test]
     fn when_rename_string_to_string() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.inner"))]);
         let w = mk_with(&[("inner", json!("args.outer"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("args.outer"));
+        let out = leaf_phase(&mk_leaf_phase("leaf", Some("args.inner")), "p/", &w, &[])
+            .expect("leaf phase");
+        assert_eq!(out.when.as_deref(), Some("args.outer"));
     }
 
     #[test]
     fn when_rewrites_bool_true_to_string_literal_true() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.enabled"))]);
         let w = mk_with(&[("enabled", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("true"));
+        let out = leaf_phase(&mk_leaf_phase("leaf", Some("args.enabled")), "p/", &w, &[])
+            .expect("leaf phase");
+        assert_eq!(out.when.as_deref(), Some("true"));
     }
 
     #[test]
     fn when_rewrites_bool_false_to_string_literal_false() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.enabled"))]);
         let w = mk_with(&[("enabled", json!(false))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("false"));
+        let out = leaf_phase(&mk_leaf_phase("leaf", Some("args.enabled")), "p/", &w, &[])
+            .expect("leaf phase");
+        assert_eq!(out.when.as_deref(), Some("false"));
     }
 
     #[test]
     fn when_left_untouched_when_compound_expression() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.x && args.y"))]);
         let w = mk_with(&[("x", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        let out = leaf_phase(
+            &mk_leaf_phase("leaf", Some("args.x && args.y")),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
         // Compound expression — not a full-string match.
-        assert_eq!(out[0].when.as_deref(), Some("args.x && args.y"));
+        assert_eq!(out.when.as_deref(), Some("args.x && args.y"));
     }
 
     #[test]
     fn when_left_untouched_when_key_missing() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.missing"))]);
         let w = mk_with(&[("other", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("args.missing"));
+        let out = leaf_phase(&mk_leaf_phase("leaf", Some("args.missing")), "p/", &w, &[])
+            .expect("leaf phase");
+        assert_eq!(out.when.as_deref(), Some("args.missing"));
     }
 
     #[test]
     fn when_inherited_from_parent_is_not_rewritten_by_sub_with() {
-        let mut parent = mk_parent_phase();
-        parent.when = Some("args.flag".into());
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", None)]); // sub.when is None
-        // Sub-pipeline's with happens to have a key named "flag" — this must
-        // NOT rewrite the parent's inherited when.
-        let w = mk_with(&[("flag", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("args.flag"));
+        // In the recursive expander a leaf that declares no `when` inherits the
+        // parent's when, which is resolved in the PARENT arg scope — never the
+        // sub-pipeline `with`. Lock both halves of that guarantee.
+        // 1. A None-when leaf materialized under the sub `with` stays None: it
+        //    does not fabricate a when from a coincidentally-named sub key.
+        let sub_with = mk_with(&[("flag", json!(true))]);
+        let out =
+            leaf_phase(&mk_leaf_phase("leaf", None), "p/", &sub_with, &[]).expect("leaf phase");
+        assert_eq!(out.when, None);
+        // 2. The parent's own when resolves in the parent scope (here empty),
+        //    so a same-named key in the sub `with` cannot rewrite it.
+        assert_eq!(
+            substituted_when(Some("args.flag"), &HashMap::new()).as_deref(),
+            Some("args.flag")
+        );
     }
 
     #[test]
     fn when_left_untouched_when_with_value_is_number() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.count"))]);
         let w = mk_with(&[("count", json!(5))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("args.count"));
+        let out = leaf_phase(&mk_leaf_phase("leaf", Some("args.count")), "p/", &w, &[])
+            .expect("leaf phase");
+        assert_eq!(out.when.as_deref(), Some("args.count"));
     }
 
     #[test]
     fn when_left_untouched_when_with_value_is_null() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.x"))]);
         let w = mk_with(&[("x", serde_json::Value::Null)]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].when.as_deref(), Some("args.x"));
+        let out =
+            leaf_phase(&mk_leaf_phase("leaf", Some("args.x")), "p/", &w, &[]).expect("leaf phase");
+        assert_eq!(out.when.as_deref(), Some("args.x"));
     }
 
     #[test]
     fn when_bool_rewrite_evaluates_correctly_in_eval_when() {
         use crate::engine::eval_when_for_test;
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", Some("args.enabled"))]);
         let w = mk_with(&[("enabled", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        let out = leaf_phase(&mk_leaf_phase("leaf", Some("args.enabled")), "p/", &w, &[])
+            .expect("leaf phase");
         let empty_args: HashMap<String, serde_json::Value> = HashMap::new();
         // The rewritten when is "true"; with the engine's literal handling,
         // this must evaluate to true even without any runtime args.
-        assert!(eval_when_for_test(out[0].when.as_ref(), &empty_args));
+        assert!(eval_when_for_test(out.when.as_ref(), &empty_args));
     }
 
     fn mk_leaf_with_config(
@@ -471,114 +490,121 @@ mod tests {
 
     #[test]
     fn config_string_value_rewritten_to_literal() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_config(
-            "leaf",
-            vec![("k", json!("args.n"))],
-        )]);
         let w = mk_with(&[("n", json!(7))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].config.get("k"), Some(&json!(7)));
+        let out = leaf_phase(
+            &mk_leaf_with_config("leaf", vec![("k", json!("args.n"))]),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
+        assert_eq!(out.config.get("k"), Some(&json!(7)));
     }
 
     #[test]
     fn config_string_value_rewritten_to_template() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_config(
-            "leaf",
-            vec![("k", json!("args.n"))],
-        )]);
         let w = mk_with(&[("n", json!("args.outer"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].config.get("k"), Some(&json!("args.outer")));
+        let out = leaf_phase(
+            &mk_leaf_with_config("leaf", vec![("k", json!("args.n"))]),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
+        assert_eq!(out.config.get("k"), Some(&json!("args.outer")));
     }
 
     #[test]
     fn config_non_string_values_untouched() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_config(
-            "leaf",
-            vec![("k", json!([1, 2]))],
-        )]);
         let w = mk_with(&[("k", json!("args.outer"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].config.get("k"), Some(&json!([1, 2])));
+        let out = leaf_phase(
+            &mk_leaf_with_config("leaf", vec![("k", json!([1, 2]))]),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
+        assert_eq!(out.config.get("k"), Some(&json!([1, 2])));
     }
 
     #[test]
     fn config_inherited_from_parent_is_not_rewritten_by_sub_with() {
-        let mut parent = mk_parent_phase();
-        parent
-            .config
-            .insert("custom_key".into(), json!("args.outer_flag"));
-        let sub = mk_sub(vec![mk_leaf_phase("leaf", None)]);
-        // Sub's `with` happens to have a key named `outer_flag` — this must NOT
-        // rewrite the parent's inherited config value for `custom_key`.
-        let w = mk_with(&[("outer_flag", json!("args.renamed"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
+        // A leaf with no config of its own gains nothing from the sub `with`,
+        // and the parent's config value is substituted in the PARENT scope — a
+        // same-named key in the sub `with` must not rewrite it.
+        let sub_with = mk_with(&[("outer_flag", json!("args.renamed"))]);
+        let out =
+            leaf_phase(&mk_leaf_phase("leaf", None), "p/", &sub_with, &[]).expect("leaf phase");
+        assert!(out.config.is_empty());
+        let mut parent_config = mk_with(&[("custom_key", json!("args.outer_flag"))]);
+        substitute_in_value_map(&mut parent_config, &HashMap::new());
         assert_eq!(
-            out[0].config.get("custom_key"),
+            parent_config.get("custom_key"),
             Some(&json!("args.outer_flag"))
         );
     }
 
     #[test]
     fn config_bool_value_from_with_replaces_string_template() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_config(
-            "leaf",
-            vec![("k", json!("args.flag"))],
-        )]);
         let w = mk_with(&[("flag", json!(true))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].config.get("k"), Some(&json!(true)));
+        let out = leaf_phase(
+            &mk_leaf_with_config("leaf", vec![("k", json!("args.flag"))]),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
+        assert_eq!(out.config.get("k"), Some(&json!(true)));
     }
 
     #[test]
     fn config_null_value_from_with_replaces_string_template() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_config(
-            "leaf",
-            vec![("k", json!("args.x"))],
-        )]);
         let w = mk_with(&[("x", serde_json::Value::Null)]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].config.get("k"), Some(&serde_json::Value::Null));
+        let out = leaf_phase(
+            &mk_leaf_with_config("leaf", vec![("k", json!("args.x"))]),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
+        assert_eq!(out.config.get("k"), Some(&serde_json::Value::Null));
     }
 
     #[test]
     fn config_multi_key_mix_of_matching_and_non_matching_templates() {
-        let parent = mk_parent_phase();
-        let sub = mk_sub(vec![mk_leaf_with_config(
-            "leaf",
-            vec![
-                ("k1", json!("args.present")),
-                ("k2", json!("args.absent")),
-                ("k3", json!("literal")),
-                ("k4", json!(42)),
-            ],
-        )]);
         let w = mk_with(&[("present", json!("replaced"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        assert_eq!(out[0].config.get("k1"), Some(&json!("replaced")));
-        assert_eq!(out[0].config.get("k2"), Some(&json!("args.absent")));
-        assert_eq!(out[0].config.get("k3"), Some(&json!("literal")));
-        assert_eq!(out[0].config.get("k4"), Some(&json!(42)));
+        let out = leaf_phase(
+            &mk_leaf_with_config(
+                "leaf",
+                vec![
+                    ("k1", json!("args.present")),
+                    ("k2", json!("args.absent")),
+                    ("k3", json!("literal")),
+                    ("k4", json!(42)),
+                ],
+            ),
+            "p/",
+            &w,
+            &[],
+        )
+        .expect("leaf phase");
+        assert_eq!(out.config.get("k1"), Some(&json!("replaced")));
+        assert_eq!(out.config.get("k2"), Some(&json!("args.absent")));
+        assert_eq!(out.config.get("k3"), Some(&json!("literal")));
+        assert_eq!(out.config.get("k4"), Some(&json!(42)));
     }
 
     #[test]
     fn invoker_skill_args_rewritten() {
         use crate::model::Invoker;
-        let parent = mk_parent_phase();
         let mut leaf = mk_leaf_phase("leaf", None);
         leaf.invoke = Some(Invoker::Skill {
             skill: "/s".into(),
             args: [("k".to_string(), json!("args.n"))].into_iter().collect(),
         });
-        let sub = mk_sub(vec![leaf]);
         let w = mk_with(&[("n", json!(42))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
+        let out = leaf_phase(&leaf, "p/", &w, &[]).expect("leaf phase");
+        match &out.invoke {
             Some(Invoker::Skill { args, .. }) => {
                 assert_eq!(args.get("k"), Some(&json!(42)));
             }
@@ -589,7 +615,6 @@ mod tests {
     #[test]
     fn invoker_pipeline_nested_with_rewritten() {
         use crate::model::Invoker;
-        let parent = mk_parent_phase();
         let mut leaf = mk_leaf_phase("leaf", None);
         leaf.invoke = Some(Invoker::Pipeline {
             pipeline: "nested.yml".into(),
@@ -597,10 +622,9 @@ mod tests {
                 .into_iter()
                 .collect(),
         });
-        let sub = mk_sub(vec![leaf]);
         let w = mk_with(&[("outer", json!("args.iterations"))]);
-        let out = expand_sub_pipeline("p", &parent, &sub, &w);
-        match &out[0].invoke {
+        let out = leaf_phase(&leaf, "p/", &w, &[]).expect("leaf phase");
+        match &out.invoke {
             Some(Invoker::Pipeline {
                 with: inner_with, ..
             }) => {
