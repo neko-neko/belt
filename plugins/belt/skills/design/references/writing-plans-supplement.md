@@ -1,13 +1,13 @@
 ---
 name: writing-plans-supplement
 description: >-
-  feature-dev Phase 3 only. Read BEFORE invoking superpowers:writing-plans to
+  design stage, plan phase only. Read BEFORE invoking superpowers:writing-plans to
   override input paths, output path, and test-case expansion rules.
 ---
 
 # Writing-Plans Supplement for feature-dev
 
-Read BEFORE invoking `/writing-plans` in Phase 3. Path convention reference:
+Read BEFORE invoking `/writing-plans` in the plan phase. Path convention reference:
 `./path-convention.md`.
 
 ## Input Paths (read these)
@@ -53,7 +53,7 @@ Beyond the standard writing-plans output:
   the UI can be reached by the corresponding `scenarios.yml` scenario's
   `given` preconditions.
 
-## Completion Criteria (for Phase 3 gate)
+## Completion Criteria (for the plan gate)
 
 - `docs/features/<topic>/plan.md` exists, committed in the worktree.
 - All four plan-content requirements above are satisfied.

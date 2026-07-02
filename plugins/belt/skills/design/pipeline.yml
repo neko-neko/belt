@@ -1,0 +1,89 @@
+name: design
+version: 1
+description: "Feature design stage (design -> test-scenarios -> spec-review -> plan)"
+
+args:
+  e2e:
+    type: bool
+    default: false
+    description: "Author agent-browser scenarios (scenarios.yml) alongside the test strategy"
+  codex:
+    type: bool
+    default: false
+    description: "Enable Codex parallel review in spec-review"
+
+phases:
+  - id: design
+    description: "Generate design document via interactive brainstorming"
+    invoke:
+      skill: /brainstorming
+    produces:
+      - name: design_doc
+        path: "docs/features/*/design.md"
+        description: "Design document with explored context and test perspectives"
+      - name: design_notes
+        path: "belt://current/notes/phase-design.md"
+        description: "Phase narrative: decisions, concerns, directives, observations"
+    gate:
+      - file_exists: "docs/features/*/design.md"
+      - file_exists: "belt://current/notes/phase-design.md"
+    validate: ./criteria/design.md
+    confirm: true
+    max_retries: 3
+
+  - id: test-scenarios
+    description: "Design comprehensive test cases and agent-browser scenarios"
+    invoke:
+      skill: /belt:test-scenarios
+      args:
+        e2e: "args.e2e"
+    consumes:
+      - design_doc
+    produces:
+      - name: test_strategy
+        path: "docs/features/*/test-strategy.md"
+        description: "Human-readable test strategy (ISTQB/ISO 25010)"
+      - name: scenarios
+        path: "docs/features/*/scenarios.yml"
+        description: "Agent-browser replay scenarios (Given/When/Then YAML)"
+        when: "args.e2e"
+    gate:
+      - file_exists: "docs/features/*/test-strategy.md"
+    validate: ./criteria/test-scenarios.md
+    confirm: true
+    max_retries: 3
+
+  - id: spec-review
+    description: "Review test strategy (and scenarios if --e2e) via spec-review"
+    invoke:
+      skill: /belt:spec-review
+      args:
+        codex: "args.codex"
+    consumes:
+      - test_strategy
+    validate: ./criteria/spec-review.md
+    regate: [test-scenarios]
+    confirm: true
+    max_retries: 3
+
+  - id: plan
+    description: "Generate implementation plan from design and test strategy"
+    invoke:
+      skill: /writing-plans
+    consumes:
+      - design_doc
+      - test_strategy
+      - design_notes
+    produces:
+      - name: plan_doc
+        path: "docs/features/*/plan.md"
+        description: "Task-level implementation plan (TDD)"
+      - name: plan_notes
+        path: "belt://current/notes/phase-plan.md"
+        description: "Phase narrative"
+    gate:
+      - file_exists: "docs/features/*/plan.md"
+      - file_exists: "belt://current/notes/phase-plan.md"
+    validate: ./criteria/plan.md
+    confirm: true
+    max_retries: 3

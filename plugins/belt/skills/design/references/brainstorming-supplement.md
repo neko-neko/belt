@@ -1,7 +1,7 @@
 ---
 name: brainstorming-supplement
 description: >-
-  feature-dev Phase 1 only. Read BEFORE invoking superpowers:brainstorming to
+  design stage, design phase only. Read BEFORE invoking superpowers:brainstorming to
   inject path override, parallel codebase exploration, implicit rules
   extraction, required design sections, and worktree creation order.
 ---
@@ -9,7 +9,7 @@ description: >-
 # Brainstorming Supplement for feature-dev
 
 This supplement is Read into context BEFORE `/brainstorming` is invoked by
-feature-dev Phase 1. Once loaded, the constraints below override/augment the
+the design phase. Once loaded, the constraints below override/augment the
 standard brainstorming flow.
 
 Path convention reference: `./path-convention.md`.
@@ -87,22 +87,22 @@ Add a "Test Perspectives" section to the design document containing:
 - Boundary / error-case scenarios (named).
 - Non-functional requirements (performance, security, accessibility).
 
-Quality bar (applied in Phase 3 when expanding to Given/When/Then):
+Quality bar (applied in test-scenarios when expanding to Given/When/Then):
 For every input parameter, cover at minimum one case from EACH of:
 - Normal (representative value)
 - Boundary (min, max, exactly at boundary)
 - Abnormal (wrong type, null/undefined, out of range)
 - State transition (different preconditions)
 
-Cases failing to meet this bar will be rejected by Phase 2 (test-scenarios)
-and Phase 5 (code-review) review.
+Cases failing to meet this bar will be rejected by test-scenarios
+and code-review review.
 
 ## Workspace Creation (before committing design document)
 
 Before committing `design.md`:
 
 1. Invoke `worktrunk:worktrunk` with `wt switch -c feature/<YYYY-MM-DD-topic>`
-   (base = current branch at Phase 1 start).
+   (base = current branch at design phase start).
 2. Let worktrunk's pre-start hook install dependencies.
 3. Run baseline tests.
    - Pass → commit `design.md` inside the new worktree.
@@ -111,7 +111,7 @@ Before committing `design.md`:
 5. Record worktree path and branch name; the belt-agent will read these from
    git at verify-time.
 
-## Completion Criteria (for Phase 1 gate)
+## Completion Criteria (for the design gate)
 
 - `docs/features/<YYYY-MM-DD-topic>/design.md` exists, committed in the worktree.
 - All required sections (Prerequisites / Impact Scope / Impact Analysis /
