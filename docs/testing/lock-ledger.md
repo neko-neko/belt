@@ -9,52 +9,40 @@ belt-core/tests/ 配下の shape lock tests の台帳。各 entry は `locks-fil
 ```yaml
 locks-file: crates/belt-core/tests/feature_dev_refresh.rs
 pipeline: plugins/belt/skills/feature-dev/pipeline.yml
-test-fn-count: 16
+test-fn-count: 8
 cross-coupling:
   - crates/belt-core/tests/bug_fix_refresh.rs
+  - crates/belt-core/tests/pipeline_split_refresh.rs
   - crates/belt-core/tests/review_skills_refresh.rs
   - crates/belt-core/tests/shared_filter_parity.rs
 ```
 
-**16 test fn 名** (A):
+**8 test fn 名** (A):
 
-- `feature_dev_has_ten_phases`
-- `feature_dev_expands_cleanly`
-- `monkey_test_and_dogfood_are_conditional_on_e2e`
-- `scenarios_produce_is_conditional_on_e2e`
-- `code_review_regates_execute_only`
+- `feature_dev_composes_three_stages`
+- `stages_delegate_with_e2e_and_codex_passthrough`
+- `checkpoint_delegates_with_no_args`
 - `top_level_args_are_e2e_and_codex_only`
-- `feature_dev_scenarios_artifact_has_typed_when_field`
-- `feature_dev_narrative_phases_produce_notes`
-- `feature_dev_narrative_phases_gate_notes`
-- `feature_dev_narrative_accumulating_consumes`
-- `feature_dev_non_narrative_phases_have_no_notes`
-- `pre_execute_handover_delegates_to_sub_pipeline`
-- `pre_execute_handover_expands_to_namespaced_checkpoint`
-- `feature_dev_produces_use_belt_current_uri`
+- `feature_dev_expands_to_ten_namespaced_leaves`
+- `expanded_regate_targets_are_namespaced`
+- `expanded_verify_leaves_inherit_e2e_when`
 - `feature_dev_pipeline_has_no_run_id_template`
-- `feature_dev_code_review_produces_seven_artifacts`
 
 **pipeline.yml shape dimensions locked** (B):
 
-- `args` set が exactly `{codex, e2e}` (余分な arg は fail)
-- 10 phase の順序 (`design → test-scenarios → spec-review → plan → pre-execute-handover → execute → code-review → monkey-test → dogfood → integrate`)
-- `code-review.regate = [execute]` (regate target 数と identity)
-- `scenarios.when = "args.e2e"` typed enum field (string ではなく ArtifactWhen)
-- 各 phase の `max_retries` (全 `= 3` in this pipeline)
-- `invoke.skill` field の leading slash 存在 (`/brainstorming` 等)
-- `validate` が criteria file reference (`./criteria/*.md`) であることの shape
-- `consumes` の accumulating narrative pattern (phase N は phase 1..N-1 の notes を consume)
-- `pre-execute-handover` が `../handover/checkpoint.yml` sub-pipeline に delegate (展開後 phase id: `pre-execute-handover/checkpoint`)
-- narrative artifact 6 phase の path が exactly `belt://current/notes/phase-<id>.md` URI 形式
-- code-review.produces が 7 entries (findings-security / findings-test / findings-ai-antipattern / findings-cross-cutting / findings-codex with `when: args.codex` / findings (merged) / code_review_notes)
-- 全 phase の `produces[].path` および `gate.file_exists` が `belt://...` URI または `docs/`/`src/` raw path のみ (`.belt/runs/` リテラル + `{run_id}` template の non-existence)
+- `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` / default false
+- 3 top-level phase の順序 (`design → pre-execute-handover → build`)、全て `Invoker::Pipeline`
+- design/build の `with` が exactly `{e2e: "args.e2e", codex: "args.codex"}` (bare full-string form)、checkpoint は `with` 空
+- 展開 leaf ids が exactly 10 件 (`design/design → ... → build/integrate`、File Structure 節の展開形)
+- stage 内 regate の namespace 展開 (`design/spec-review → [design/test-scenarios]`、`build/code-review → [build/execute]`)
+- verify leaves (`build/verify/monkey-test` / `build/verify/dogfood`) が `when: args.e2e` を継承、`build/execute` は when なし
+- `.belt/runs/` リテラル + `{run_id}` template の non-existence
 
 **Cross-coupling** (C):
 
-- `shared_filter_parity.rs` — code-review 4 agent + spec-review 3 agent の `## Filtering` prefix bullet byte-identical 確認
-- `bug_fix_refresh.rs` — bug-fix pipeline shape (同 tuple pattern で parallel)
-- `review_skills_refresh.rs` — review skill の consolidated agent 削除 / per-observation agent 存在 lock
+- `pipeline_split_refresh.rs` — stage 内部 shape (phase 順序 / narrative / criteria) は stage 側で lock
+- `bug_fix_refresh.rs` — bug-fix 合成 shape (同 tuple pattern で parallel)
+- `review_skills_refresh.rs` / `shared_filter_parity.rs` — 従来どおり
 
 ---
 

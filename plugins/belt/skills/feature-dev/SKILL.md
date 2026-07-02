@@ -11,72 +11,38 @@ argument-hint: "[--e2e] [--codex]"
 
 # feature-dev
 
-Belt pipeline for quality-gated development. Pipeline structure, args, phase
-order, and invocation mapping are defined in `pipeline.yml` and surfaced
-dynamically by `belt-agent next` / `belt-agent status`. This SKILL.md covers
-the supplement loading contract, phase-specific runtime notes, and red flags
-that cannot be expressed in pipeline.yml.
+Composed belt pipeline: the design stage, a context-reset checkpoint, and the
+shared build stage. `pipeline.yml` declares three `invoke.pipeline`
+references; `belt-agent init` expands them inline, so `next` returns
+namespaced leaf phases (`design/design`, `build/execute`,
+`build/verify/monkey-test`, ...) in a single run — status, resume, and
+narrative notes work exactly as in a flat pipeline.
 
-## Supplement Loading
+## Stage Skills
 
-Before invoking a phase's skill, read the referenced supplement to inject
-phase-specific overrides. Phases not listed (`test-scenarios` / `spec-review` /
-`execute` / `code-review`) have no supplement; invoke their declared skill
-directly.
+When `next` returns a phase, load the owning stage's SKILL.md before
+executing it — the supplement loading contracts, entry checks, and red flags
+live there:
 
-| Phase | Supplement | Purpose |
-|---|---|---|
-| design | `./references/brainstorming-supplement.md` | parallel exploration (code-explorer / code-architect / impact-analyzer), implicit-rules extraction, required design sections, worktree creation order |
-| plan | `./references/writing-plans-supplement.md` | path override, Must-Verify, scenarios cross-referencing |
-| monkey-test | `./references/monkey-test-supplement.md` | context injection for replay |
-| dogfood | `./references/dogfood-supplement.md` | overrides and prior-phase artifact hints |
-| integrate | `./references/worktrunk-supplement.md` | A/B choice logic (wt merge / gh pr create) |
+| Phase id prefix | Stage skill |
+|---|---|
+| `design/` | `plugins/belt/skills/design/SKILL.md` |
+| `pre-execute-handover/` | (none — follow the phase description: `/belt:handover`, `/clear`, `/belt:resume`) |
+| `build/verify/` | `plugins/belt/skills/verify/SKILL.md` |
+| `build/` (other) | `plugins/belt/skills/build/SKILL.md` |
 
-## Phase-specific Runtime Notes
-
-- **spec-review**: grill-me dialogue for `requirements` / `design-judgment`
-  findings; direct selection triage for the remaining observations.
-- **execute**: orchestrator must reconstruct plan tasks into self-contained
-  implementation specs before dispatching `belt-agent:feature-implementer`
-  subagents. Do not forward broad research verbatim.
-- **integrate**: prompt user for mode (A: `wt merge` / B: `gh pr create`)
-  before executing `/worktrunk`.
-
-## Narrative Notes
-
-These phases produce a narrative note so context can be restored after `/clear`.
-The note paths are declared in `pipeline.yml` as `belt://current/notes/phase-<id>.md` URIs.
-Resolve the physical path via `belt-agent status` (read `phases[].produces[].resolved_path`)
-or `belt-agent locate belt://current/notes/phase-<id>.md`:
-
-- `design` / `plan` / `execute` / `code-review`
-- `monkey-test` (`--e2e`) / `dogfood` (`--e2e`)
-
-Each note contains four sections (`## Decisions` / `## Concerns` /
-`## Directives` / `## Observations`) and minimal frontmatter (`phase`,
-`run_id`).
-
-Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugins/belt-agent/references/narrative-convention.md)
-
-`/clear` itself is the user's call — Claude Code runtime constraints prevent
-automation. Use narrative notes as an option when context has grown large
-after a heavy phase (for example, right after design, execute, or
-code-review).
+Smaller runs are available directly: `/belt:design` for design-only work,
+`/belt:build` when a plan already exists, `/belt:verify` for browser
+verification alone.
 
 ## Red Flags
 
-- **Never skip supplement loading when listed above**: phase-specific overrides are lost and behavior drifts.
-- **Never bypass the integrate A/B choice**: merge-vs-PR is always user-decided.
-- **Never modify the consumed global skills**: all overrides go through `references/*-supplement.md`.
-- **Never hand-edit files under `docs/features/<topic>/`**: they are phase-produced; manual edits break belt's phase-start mtime filter.
-- **Never leave the narrative note's four sections blank**: the gate is `file_exists` only and empty sections still pass, but downstream consumers cannot restore context. Use at least `(none)` as a placeholder and always keep the heading.
+- **Never execute a stage phase without loading its stage SKILL.md**: supplement contracts are defined per stage, not here.
+- **Never bypass the pre-execute-handover checkpoint**: the context reset before execute is the pipeline's core ergonomics.
 
 ## References
 
-- `./references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
-- `./references/brainstorming-supplement.md` — design phase overrides
-- `./references/writing-plans-supplement.md` — plan phase overrides
-- `./references/monkey-test-supplement.md` — monkey-test phase context injection
-- `./references/dogfood-supplement.md` — dogfood phase overrides and hints
-- `./references/worktrunk-supplement.md` — integrate phase A/B choice logic
-- `plugins/belt-agent/references/narrative-convention.md` — narrative note schema (shared with bug-fix)
+- `plugins/belt/skills/design/SKILL.md` — design stage contract
+- `plugins/belt/skills/build/SKILL.md` — build stage contract
+- `plugins/belt/skills/verify/SKILL.md` — verify stage contract (when `--e2e`)
+- `plugins/belt/skills/design/references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)

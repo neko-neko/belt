@@ -1774,8 +1774,8 @@ fn feature_dev_migrated_pipeline_boots() {
         serde_json::from_slice(&next_out.stdout).expect("next stdout is JSON");
     assert_eq!(
         next_json["phase"]["id"].as_str(),
-        Some("design"),
-        "first phase should be 'design'"
+        Some("design/design"),
+        "first phase should be the expanded leaf 'design/design'"
     );
     // The phase should carry the new invoke shape.
     let invoke = &next_json["phase"]["invoke"];
