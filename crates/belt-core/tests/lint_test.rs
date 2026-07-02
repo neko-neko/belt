@@ -1099,12 +1099,10 @@ phases:
     );
 }
 
-/// A pipeline containing a self-referencing phase must not have its own file
-/// re-traversed as a "sub-pipeline". `check_invoke_pipeline_exists`'s cycle
-/// detection is seeded only from nested `visited.push()` calls, not from the
-/// root file itself, so a self-reference (`invoke: { pipeline: pipeline.yml }`)
-/// causes the whole root pipeline to be re-walked once under a spurious
-/// `self-ref/` namespace — duplicating every other phase's diagnostics.
+/// Regression guard: prior to seeding `visited` with the root pipeline
+/// path, a self-referencing phase caused the root file to be re-walked as
+/// its own sub-pipeline, duplicating every other diagnostic under a
+/// spurious namespace.
 ///
 /// scenario: belt-core-lint-nested-invoke-pipeline-missing-file-reported
 #[test]

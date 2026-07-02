@@ -660,3 +660,102 @@ phases:
         "regate on a sub-reference phase must be renamed into the expansion namespace"
     );
 }
+
+/// A sub-pipeline file with an empty `phases: []` list is rejected with
+/// InvalidPipeline instead of silently expanding to nothing.
+///
+/// scenario: belt-core-expander-empty-sub-pipeline-yields-invalid-pipeline
+#[test]
+fn empty_sub_pipeline_yields_invalid_pipeline() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "empty.yml",
+        r#"
+name: empty
+version: 1
+phases: []
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: stage
+    invoke:
+      pipeline: empty.yml
+"#,
+    );
+
+    let err = expand_pipeline(&pipeline_path).expect_err("empty sub-pipeline must be rejected");
+    assert!(
+        matches!(err, BeltError::InvalidPipeline { ref message } if message.contains("no phases")),
+        "unexpected error: {err:?}"
+    );
+}
+
+/// `with:` maps fold through multiple nesting levels: each level's
+/// templates are resolved in its referencing level's scope, so a leaf
+/// `when` template chains back to the root arg name.
+///
+/// scenario: belt-core-expander-with-parent-scope-not-rewritten-by-sub-substitution
+#[test]
+fn with_maps_fold_through_nested_levels() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "inner.yml",
+        r#"
+name: inner
+version: 1
+phases:
+  - id: check
+    description: "Inner check"
+    when: "args.flag"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    write_yaml(
+        &dir,
+        "middle.yml",
+        r#"
+name: middle
+version: 1
+phases:
+  - id: deep
+    invoke:
+      pipeline: inner.yml
+      with:
+        flag: "args.flag"
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: gated
+    invoke:
+      pipeline: middle.yml
+      with:
+        flag: "args.e2e"
+"#,
+    );
+
+    let expanded = expand_pipeline(&pipeline_path).expect("expand should succeed");
+    assert_eq!(expanded.len(), 1);
+    assert_eq!(expanded[0].id, "gated/deep/check");
+    assert_eq!(
+        expanded[0].when.as_deref(),
+        Some("args.e2e"),
+        "leaf when template must fold back to the root arg through both with maps"
+    );
+}

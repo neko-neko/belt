@@ -798,6 +798,13 @@ scenarios:
     given: "an outermost phase with `when:` referencing a sub-pipeline that itself references another sub-pipeline whose leaf has no when"
     when: "expand_pipeline is called"
     then: "the outermost when reaches the innermost expanded leaf verbatim"
+  - id: belt-core-expander-empty-sub-pipeline-yields-invalid-pipeline
+    category: expander
+    severity: low
+    technique: boundary-value
+    given: "a sub-pipeline file whose `phases:` list is empty, referenced via `invoke: { pipeline: ... }`"
+    when: "expand_pipeline is called"
+    then: "returns BeltError::InvalidPipeline naming the empty sub-pipeline instead of expanding to nothing"
 
   # --- parser module ---
   - id: belt-core-parser-parses-valid-pipeline-yaml
