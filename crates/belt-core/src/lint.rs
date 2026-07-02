@@ -296,13 +296,26 @@ fn check_gate_uses_exist(
 }
 
 /// Verify that every `phase.invoke.pipeline` reference points to an existing
-/// file on disk. The `Skill` variant is not path-like and is checked elsewhere.
+/// file on disk — recursively through sub-pipelines. The `Skill` variant is
+/// not path-like and is checked elsewhere. Cycles terminate via the visited
+/// set (the cycle itself is reported by expansion, not here).
 fn check_invoke_pipeline_exists(
     pipeline: &Pipeline,
     base_dir: &Path,
     diagnostics: &mut Vec<LintDiagnostic>,
 ) {
-    for phase in &pipeline.phases {
+    let mut visited: Vec<std::path::PathBuf> = Vec::new();
+    check_phases_invoke_pipeline(&pipeline.phases, base_dir, "", &mut visited, diagnostics);
+}
+
+fn check_phases_invoke_pipeline(
+    phases: &[crate::model::Phase],
+    base_dir: &Path,
+    ns: &str,
+    visited: &mut Vec<std::path::PathBuf>,
+    diagnostics: &mut Vec<LintDiagnostic>,
+) {
+    for phase in phases {
         if let Some(Invoker::Pipeline {
             pipeline: sub_path, ..
         }) = &phase.invoke
@@ -312,10 +325,31 @@ fn check_invoke_pipeline_exists(
                 diagnostics.push(LintDiagnostic {
                     severity: Severity::Error,
                     message: format!(
-                        "phase '{}': invoke pipeline '{}' not found",
+                        "phase '{ns}{}': invoke pipeline '{}' not found",
                         phase.id, sub_path
                     ),
                 });
+                continue;
+            }
+            let canonical = resolved.canonicalize().unwrap_or_else(|_| resolved.clone());
+            if visited.contains(&canonical) {
+                continue; // cycle: expansion reports it
+            }
+            if let Ok(sub) = crate::parser::parse_sub_pipeline(&resolved) {
+                let sub_base = resolved.parent().map_or_else(
+                    || std::path::PathBuf::from("."),
+                    std::path::Path::to_path_buf,
+                );
+                let child_ns = format!("{ns}{}/", phase.id);
+                visited.push(canonical);
+                check_phases_invoke_pipeline(
+                    &sub.phases,
+                    &sub_base,
+                    &child_ns,
+                    visited,
+                    diagnostics,
+                );
+                visited.pop();
             }
         }
     }

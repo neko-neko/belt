@@ -335,6 +335,13 @@ scenarios:
     given: "a phase with invoke.pipeline pointing to either a nonexistent file or to an existing sibling sub-pipeline file"
     when: "lint_pipeline() is called"
     then: "missing file yields an Error-severity diagnostic naming the path and invoke/pipeline; existing file yields no errors"
+  - id: belt-core-lint-nested-invoke-pipeline-missing-file-reported
+    category: lint
+    severity: medium
+    technique: error-guessing
+    given: "a pipeline whose sub-pipeline contains an `invoke: { pipeline: ... }` reference to a nonexistent file"
+    when: "lint_pipeline is called"
+    then: "a lint Error diagnostic names the nested phase (namespaced) and the missing file"
   - id: belt-core-lint-invoke-skill-validation
     category: lint
     severity: high

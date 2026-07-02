@@ -1054,3 +1054,47 @@ phases:
                 && (d.message.contains("{run_id}") || d.message.contains(".belt/runs/")))
     );
 }
+
+/// A missing `invoke.pipeline` reference INSIDE a sub-pipeline is reported
+/// as a lint error naming the nested phase, not just a parse failure.
+///
+/// scenario: belt-core-lint-nested-invoke-pipeline-missing-file-reported
+#[test]
+fn nested_invoke_pipeline_missing_file_is_reported() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "stage.yml",
+        r#"
+name: stage
+version: 1
+phases:
+  - id: deep
+    invoke:
+      pipeline: missing.yml
+"#,
+    );
+
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: build
+    invoke:
+      pipeline: stage.yml
+"#,
+    );
+
+    let diagnostics = lint_pipeline(&pipeline_path).expect("lint_pipeline should succeed");
+    let messages: Vec<String> = diagnostics.iter().map(|d| d.message.clone()).collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("missing.yml") && m.contains("deep")),
+        "expected a diagnostic naming the nested phase and the missing file, got: {messages:?}"
+    );
+}
