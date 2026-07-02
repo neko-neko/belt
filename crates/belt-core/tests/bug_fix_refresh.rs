@@ -1,442 +1,110 @@
-//! Integration tests for the refreshed /bug-fix pipeline.
+//! Integration tests for the composed bug-fix pipeline (2026-07-02 pipeline
+//! split): diagnose(sub) + pre-execute-handover(sub) + build(sub).
 //!
-//! Shape contract (specs docs/specs/2026-04-15-debug-flow-refresh-design.md +
-//! docs/specs/2026-04-18-pre-execute-handover-sub-pipeline-design.md):
-//! - args = { e2e: bool, codex: bool } only (iterations / swarm / ui / smoke removed)
-//! - 9 phases: rca → fix-plan → fix-plan-review → pre-execute-handover → execute →
-//!   code-review → monkey-test → dogfood → integrate
-//! - Phases use `skill:` invoke except `pre-execute-handover`, which delegates
-//!   via `pipeline:` to `../handover/checkpoint.yml`
-//! - Review phases (fix-plan-review, code-review) pass codex
-//! - code-review has regate: [execute]; no other phase has regate
-//! - Supplement injection for 5 phases (rca, fix-plan, monkey-test, dogfood, integrate)
-//! - criteria skill-local (6 files) + shared (execute.md, code-review.md)
-//! - `rca_scenarios.when` = "args.e2e" (type-level, not just YAML text)
-//! - Dead letter references removed.
+//! Shape contract (spec docs/specs/2026-07-02-pipeline-split-design.md):
+//! - args = { e2e: bool, codex: bool } only (legacy args stay removed)
+//! - 3 top-level phases, all Invoker::Pipeline delegations:
+//!   diagnose -> ../diagnose/pipeline.yml,
+//!   pre-execute-handover -> ../handover/checkpoint.yml,
+//!   build -> ../build/pipeline.yml
+//! - diagnose/build receive with = { e2e: "args.e2e", codex: "args.codex" }
+//! - expansion flattens to exactly 9 namespaced leaves
+//! - stage-internal regate expands namespaced; verify leaves inherit
+//!   when: "args.e2e"
+//!
+//! Stage-internal shape (phase order, docs/features artifact paths,
+//! narrative notes, criteria files) is locked per stage in
+//! `pipeline_split_refresh.rs`.
 
 #![allow(
-    clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::match_wildcard_for_single_variants,
     reason = "integration test: panic-on-mismatch is the intended assertion style"
 )]
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use belt_core::{
+    error::BeltError,
     expander::expand_pipeline,
-    model::{ArgType, Invoker, Pipeline},
+    model::{ArgType, Invoker},
     parser::parse_pipeline,
 };
 
 mod common;
 use common::helpers::repo_root;
-use common::narrative::{
-    assert_narrative_accumulating_consumes, assert_narrative_gate_paths,
-    assert_narrative_produce_paths, assert_non_narrative_phases_have_no_notes,
-};
-
-fn bug_fix_dir() -> PathBuf {
-    repo_root().join("plugins/belt/skills/bug-fix")
-}
 
 fn bug_fix_pipeline_path() -> PathBuf {
-    bug_fix_dir().join("pipeline.yml")
+    repo_root().join("plugins/belt/skills/bug-fix/pipeline.yml")
 }
 
-fn bug_fix_pipeline() -> Pipeline {
-    parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline.yml must parse")
-}
-
-const EXPECTED_PHASES: &[&str] = &[
-    "rca",
-    "fix-plan",
-    "fix-plan-review",
-    "pre-execute-handover",
-    "execute",
-    "code-review",
-    "monkey-test",
-    "dogfood",
-    "integrate",
+const EXPECTED_LEAVES: &[&str] = &[
+    "diagnose/rca",
+    "diagnose/fix-plan",
+    "diagnose/fix-plan-review",
+    "pre-execute-handover/checkpoint",
+    "build/execute",
+    "build/code-review",
+    "build/verify/monkey-test",
+    "build/verify/dogfood",
+    "build/integrate",
 ];
 
 #[test]
-fn args_are_e2e_and_codex_only() {
-    let pipeline = bug_fix_pipeline();
-    let mut keys: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
-    keys.sort_unstable();
-    assert_eq!(keys, vec!["codex", "e2e"]);
-
-    for (name, def) in &pipeline.args {
-        assert!(
-            matches!(def.arg_type, ArgType::Bool),
-            "arg '{name}' must be bool"
-        );
-    }
+fn bug_fix_composes_three_stages() -> Result<(), BeltError> {
+    let pipeline = parse_pipeline(&bug_fix_pipeline_path())?;
+    let got: Vec<&str> = pipeline.phases.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(
+        got,
+        vec!["diagnose", "pre-execute-handover", "build"],
+        "top-level composition must be diagnose -> checkpoint -> build"
+    );
+    Ok(())
 }
 
 #[test]
-fn no_legacy_args() {
-    let pipeline = bug_fix_pipeline();
-    for legacy in ["iterations", "swarm", "ui", "smoke"] {
-        assert!(
-            !pipeline.args.contains_key(legacy),
-            "legacy arg '{legacy}' must be removed"
-        );
-    }
-}
-
-#[test]
-fn phase_count_and_order() {
-    let pipeline = bug_fix_pipeline();
-    let actual: Vec<&str> = pipeline.phases.iter().map(|p| p.id.as_str()).collect();
-    assert_eq!(actual, EXPECTED_PHASES);
-}
-
-#[test]
-fn all_phases_use_skill_or_pipeline_invoke() {
-    // Contract: if a phase invokes anything, it must be either a /-prefixed
-    // skill (Invoker::Skill) or a sub-pipeline (Invoker::Pipeline). Pure
-    // checkpoints (phase.invoke.is_none()) continue to bypass this check by
-    // design. Invoker::Cmd is not a defined variant in belt-core model —
-    // match is exhaustive on the two variants; no wildcard arm is required.
-    let pipeline = bug_fix_pipeline();
-    for phase in pipeline.phases.iter().filter(|p| p.invoke.is_some()) {
-        let invoker = phase
-            .invoke
-            .as_ref()
-            .expect("filter guarantees invoke.is_some()");
-        match invoker {
-            Invoker::Skill { skill, .. } => {
-                assert!(
-                    skill.starts_with('/'),
-                    "phase '{}' skill must start with '/', got '{skill}'",
-                    phase.id
-                );
-            }
-            Invoker::Pipeline {
-                pipeline: sub_path, ..
-            } => {
-                assert!(
-                    !sub_path.is_empty(),
-                    "phase '{}' sub-pipeline path must be non-empty",
-                    phase.id
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn review_phases_pass_codex_only() {
-    let pipeline = bug_fix_pipeline();
-    for phase in &pipeline.phases {
-        if !matches!(phase.id.as_str(), "fix-plan-review" | "code-review") {
-            continue;
-        }
-        let Some(Invoker::Skill { args, .. }) = phase.invoke.as_ref() else {
-            panic!("phase '{}' must use Invoker::Skill variant", phase.id);
+fn stages_delegate_with_e2e_and_codex_passthrough() {
+    let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
+    for (phase_id, expected_sub) in [
+        ("diagnose", "../diagnose/pipeline.yml"),
+        ("build", "../build/pipeline.yml"),
+    ] {
+        let phase = pipeline
+            .phases
+            .iter()
+            .find(|p| p.id == phase_id)
+            .unwrap_or_else(|| panic!("phase '{phase_id}' must exist"));
+        let Some(Invoker::Pipeline {
+            pipeline: sub_path,
+            with,
+        }) = phase.invoke.as_ref()
+        else {
+            panic!("phase '{phase_id}' must use Invoker::Pipeline");
         };
-        let mut keys: Vec<&str> = args.keys().map(String::as_str).collect();
+        assert_eq!(sub_path, expected_sub, "phase '{phase_id}' sub path");
+        let mut keys: Vec<&str> = with.keys().map(String::as_str).collect();
         keys.sort_unstable();
         assert_eq!(
             keys,
-            vec!["codex"],
-            "phase '{}' must pass only codex",
-            phase.id
+            vec!["codex", "e2e"],
+            "phase '{phase_id}' must pass exactly {{codex, e2e}}"
         );
         assert_eq!(
-            args.get("codex").and_then(|v| v.as_str()),
+            with.get("e2e").and_then(|v| v.as_str()),
+            Some("args.e2e"),
+            "phase '{phase_id}' e2e must be the bare full-string form"
+        );
+        assert_eq!(
+            with.get("codex").and_then(|v| v.as_str()),
             Some("args.codex"),
-            "phase '{}' codex must passthrough from args",
-            phase.id
+            "phase '{phase_id}' codex must be the bare full-string form"
         );
     }
 }
 
 #[test]
-fn only_code_review_has_regate() {
-    let pipeline = bug_fix_pipeline();
-    for phase in &pipeline.phases {
-        if phase.id == "code-review" {
-            assert_eq!(
-                phase.regate,
-                vec!["execute".to_string()],
-                "code-review must have regate == [\"execute\"]"
-            );
-        } else {
-            assert!(
-                phase.regate.is_empty(),
-                "phase '{}' must have empty regate, got {:?}",
-                phase.id,
-                phase.regate
-            );
-        }
-    }
-}
-
-#[test]
-fn rca_scenarios_when_is_typed() {
-    let pipeline = bug_fix_pipeline();
-    let rca = pipeline
-        .phases
-        .iter()
-        .find(|p| p.id == "rca")
-        .expect("rca phase must exist");
-    let scenarios = rca
-        .produces
-        .iter()
-        .find(|a| a.name == "rca_scenarios")
-        .expect("rca_scenarios artifact must exist");
-    assert_eq!(
-        scenarios.when,
-        Some("args.e2e".to_string()),
-        "rca_scenarios.when must parse as a typed field (not silent-dropped)"
-    );
-}
-
-#[test]
-fn rca_scenarios_filtered_when_e2e_false() {
-    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("expansion must succeed");
-    let mut args_false: HashMap<String, serde_json::Value> = HashMap::new();
-    args_false.insert("e2e".to_string(), serde_json::Value::Bool(false));
-    let active = belt_core::view::active_produces(&expanded[0], &args_false);
-    let names: Vec<&str> = active.iter().map(|a| a.name.as_str()).collect();
-    assert!(
-        !names.contains(&"rca_scenarios"),
-        "rca_scenarios must be omitted when args.e2e=false, got: {names:?}"
-    );
-    assert!(
-        names.contains(&"rca_report"),
-        "rca_report must always be present, got: {names:?}"
-    );
-}
-
-#[test]
-fn rca_scenarios_present_when_e2e_true() {
-    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("expansion must succeed");
-    let mut args_true: HashMap<String, serde_json::Value> = HashMap::new();
-    args_true.insert("e2e".to_string(), serde_json::Value::Bool(true));
-    let active = belt_core::view::active_produces(&expanded[0], &args_true);
-    let names: Vec<&str> = active.iter().map(|a| a.name.as_str()).collect();
-    assert!(names.contains(&"rca_scenarios"));
-    assert!(names.contains(&"rca_report"));
-}
-
-#[test]
-fn all_phases_have_max_retries_3_and_confirm_true() {
-    // Sub-pipeline delegation phases (Invoker::Pipeline) are thin stubs: the
-    // real confirm/gate/max_retries live on the sub-phase. Top-level shape
-    // assertions skip them. Pure-checkpoint phases (invoke.is_none()) are
-    // also exempt from max_retries — retry has no meaning without a
-    // retry-able body. All non-delegation phases still require confirm: true;
-    // skill-invoke phases additionally require max_retries == 3.
-    let pipeline = bug_fix_pipeline();
-    for phase in &pipeline.phases {
-        if matches!(phase.invoke, Some(Invoker::Pipeline { .. })) {
-            continue;
-        }
-        assert!(phase.confirm, "phase '{}' confirm must be true", phase.id);
-        if phase.invoke.is_some() {
-            assert_eq!(
-                phase.max_retries, 3,
-                "phase '{}' max_retries must be 3",
-                phase.id
-            );
-        }
-    }
-}
-
-#[test]
-fn supplement_files_exist() {
-    let refs_dir = bug_fix_dir().join("references");
-    for name in [
-        "path-convention.md",
-        "rca-supplement.md",
-        "fix-plan-supplement.md",
-        "monkey-test-supplement.md",
-        "dogfood-supplement.md",
-        "worktrunk-supplement.md",
-    ] {
-        assert!(
-            refs_dir.join(name).exists(),
-            "supplement file '{name}' must exist"
-        );
-    }
-}
-
-#[test]
-fn dead_letter_references_removed() {
-    let refs_dir = bug_fix_dir().join("references");
-    for name in ["evidence-plan-protocol.md", "fix-dispatch-strategy.md"] {
-        assert!(
-            !refs_dir.join(name).exists(),
-            "dead-letter reference '{name}' must be removed"
-        );
-    }
-}
-
-#[test]
-fn criteria_files_exist() {
-    let criteria_dir = bug_fix_dir().join("criteria");
-    for name in [
-        "rca.md",
-        "fix-plan.md",
-        "fix-plan-review.md",
-        "monkey-test.md",
-        "dogfood.md",
-        "integrate.md",
-    ] {
-        assert!(
-            criteria_dir.join(name).exists(),
-            "criteria file '{name}' must exist"
-        );
-    }
-
-    // Shared criteria: after plugin migration, pipeline.yml uses `./criteria/`
-    // and the shared files are physically duplicated into each plugin.
-    // Drift between feature-dev and bug-fix copies is checked in
-    // `shared_criteria_parity.rs`.
-    for name in ["execute.md", "code-review.md"] {
-        assert!(
-            criteria_dir.join(name).exists(),
-            "duplicated shared criteria '{name}' must exist at {}",
-            criteria_dir.display()
-        );
-    }
-}
-
-#[test]
-fn skill_md_has_expected_sections() {
-    let skill_md = bug_fix_dir().join("SKILL.md");
-    let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
-    for section in [
-        "## Supplement Loading",
-        "## Phase-specific Runtime Notes",
-        "## Red Flags",
-        "## References",
-        "argument-hint:",
-    ] {
-        assert!(
-            content.contains(section),
-            "SKILL.md must contain '{section}'"
-        );
-    }
-}
-
-#[test]
-fn skill_md_declares_supplement_injection_per_phase() {
-    let skill_md = bug_fix_dir().join("SKILL.md");
-    let content = std::fs::read_to_string(&skill_md).expect("SKILL.md must exist");
-    // rca, fix-plan, monkey-test, dogfood, and integrate phases must each
-    // reference a specific supplement inside SKILL.md's Supplement Loading table.
-    for supplement in [
-        "rca-supplement.md",
-        "fix-plan-supplement.md",
-        "monkey-test-supplement.md",
-        "dogfood-supplement.md",
-        "worktrunk-supplement.md",
-    ] {
-        assert!(
-            content.contains(supplement),
-            "SKILL.md must reference supplement '{supplement}'"
-        );
-    }
-}
-
-// --- narrative artifact shape (context reset) ---
-
-// Path form: `belt://current/notes/phase-<id>.md` (2026-04-18 URI migration).
-const BUG_FIX_NARRATIVE_PHASES: &[(&str, &str, &str)] = &[
-    ("rca", "rca_notes", "belt://current/notes/phase-rca.md"),
-    (
-        "fix-plan",
-        "fix_plan_notes",
-        "belt://current/notes/phase-fix-plan.md",
-    ),
-    (
-        "execute",
-        "execute_notes",
-        "belt://current/notes/phase-execute.md",
-    ),
-    (
-        "code-review",
-        "code_review_notes",
-        "belt://current/notes/phase-code-review.md",
-    ),
-    (
-        "monkey-test",
-        "monkey_test_notes",
-        "belt://current/notes/phase-monkey-test.md",
-    ),
-    (
-        "dogfood",
-        "dogfood_notes",
-        "belt://current/notes/phase-dogfood.md",
-    ),
-];
-
-#[test]
-fn bug_fix_narrative_phases_produce_notes() {
-    let pipeline = bug_fix_pipeline();
-    assert_narrative_produce_paths(&pipeline, BUG_FIX_NARRATIVE_PHASES);
-}
-
-#[test]
-fn bug_fix_narrative_phases_gate_notes() {
-    let pipeline = bug_fix_pipeline();
-    assert_narrative_gate_paths(&pipeline, BUG_FIX_NARRATIVE_PHASES);
-}
-
-#[test]
-fn bug_fix_narrative_accumulating_consumes() {
-    let pipeline = bug_fix_pipeline();
-
-    let expected_consumes: &[(&str, &[&str])] = &[
-        ("rca", &[]),
-        ("fix-plan", &["rca_notes"]),
-        ("execute", &["rca_notes", "fix_plan_notes"]),
-        (
-            "code-review",
-            &["rca_notes", "fix_plan_notes", "execute_notes"],
-        ),
-        (
-            "monkey-test",
-            &[
-                "rca_notes",
-                "fix_plan_notes",
-                "execute_notes",
-                "code_review_notes",
-            ],
-        ),
-        (
-            "dogfood",
-            &[
-                "rca_notes",
-                "fix_plan_notes",
-                "execute_notes",
-                "code_review_notes",
-                "monkey_test_notes",
-            ],
-        ),
-    ];
-
-    assert_narrative_accumulating_consumes(&pipeline, expected_consumes);
-}
-
-#[test]
-fn bug_fix_non_narrative_phases_have_no_notes() {
-    let pipeline = bug_fix_pipeline();
-    assert_non_narrative_phases_have_no_notes(&pipeline, &["fix-plan-review", "integrate"]);
-}
-
-// --- pre-execute-handover sub-pipeline delegation (spec 2026-04-18) ---
-
-#[test]
-fn pre_execute_handover_delegates_to_sub_pipeline() {
-    let pipeline = bug_fix_pipeline();
+fn checkpoint_delegates_with_no_args() {
+    let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
     let phase = pipeline
         .phases
         .iter()
@@ -461,42 +129,80 @@ fn pre_execute_handover_delegates_to_sub_pipeline() {
 }
 
 #[test]
-fn pre_execute_handover_expands_to_namespaced_checkpoint() {
-    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
-    let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
-    assert!(
-        ids.contains(&"pre-execute-handover/checkpoint"),
-        "expanded pipeline must contain phase id 'pre-execute-handover/checkpoint', got: {ids:?}"
-    );
+fn args_are_e2e_and_codex_only() {
+    let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
+    let mut keys: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, vec!["codex", "e2e"]);
+
+    for (name, def) in &pipeline.args {
+        assert!(
+            matches!(def.arg_type, ArgType::Bool),
+            "arg '{name}' must be bool"
+        );
+        assert_eq!(
+            def.default.as_ref().and_then(serde_json::Value::as_bool),
+            Some(false),
+            "arg '{name}' default must be false"
+        );
+    }
 }
 
-// --- belt://current URI shape lock (2026-04-18 URI migration) ---
+#[test]
+fn no_legacy_args() {
+    let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
+    for legacy in ["iterations", "swarm", "ui", "smoke"] {
+        assert!(
+            !pipeline.args.contains_key(legacy),
+            "legacy arg '{legacy}' must be removed"
+        );
+    }
+}
 
 #[test]
-fn bug_fix_produces_use_belt_current_uri() {
-    let pipeline = bug_fix_pipeline();
-    let narrative_phases = [
-        "rca",
-        "fix-plan",
-        "execute",
-        "code-review",
-        "monkey-test",
-        "dogfood",
-    ];
-    for phase in &pipeline.phases {
-        if !narrative_phases.contains(&phase.id.as_str()) {
-            continue;
+fn bug_fix_expands_to_nine_namespaced_leaves() {
+    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
+    let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(ids, EXPECTED_LEAVES, "expanded leaf ids + order must match");
+}
+
+#[test]
+fn expanded_regate_targets_are_namespaced() {
+    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
+    let code_review = expanded
+        .iter()
+        .find(|p| p.id == "build/code-review")
+        .expect("build/code-review leaf must exist");
+    assert_eq!(
+        code_review.regate,
+        vec!["build/execute".to_string()],
+        "stage-internal regate must expand into the stage namespace"
+    );
+    // diagnose declares no regate; every other leaf must have none.
+    for leaf in &expanded {
+        if leaf.id != "build/code-review" {
+            assert!(
+                leaf.regate.is_empty(),
+                "leaf '{}' must have empty regate, got {:?}",
+                leaf.id,
+                leaf.regate
+            );
         }
-        let notes_artifact = phase
-            .produces
+    }
+}
+
+#[test]
+fn expanded_verify_leaves_inherit_e2e_when() {
+    let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
+    for id in ["build/verify/monkey-test", "build/verify/dogfood"] {
+        let leaf = expanded
             .iter()
-            .find(|a| a.name.ends_with("_notes"))
-            .unwrap_or_else(|| panic!("phase {} missing notes artifact", phase.id));
-        let expected = format!("belt://current/notes/phase-{}.md", phase.id);
+            .find(|p| p.id == id)
+            .unwrap_or_else(|| panic!("leaf '{id}' must exist"));
         assert_eq!(
-            notes_artifact.path, expected,
-            "phase {} notes path must equal {expected}",
-            phase.id
+            leaf.when.as_deref(),
+            Some("args.e2e"),
+            "leaf '{id}' must inherit when: args.e2e from build's verify phase"
         );
     }
 }
@@ -512,55 +218,5 @@ fn bug_fix_pipeline_has_no_run_id_template() {
     assert!(
         !yaml.contains(".belt/runs/"),
         "pipeline must not contain .belt/runs/ literal anywhere"
-    );
-}
-
-#[test]
-fn bug_fix_code_review_produces_seven_artifacts() {
-    let pipeline = bug_fix_pipeline();
-    let code_review = pipeline
-        .phases
-        .iter()
-        .find(|p| p.id == "code-review")
-        .expect("code-review phase must exist");
-    let names: Vec<&str> = code_review
-        .produces
-        .iter()
-        .map(|a| a.name.as_str())
-        .collect();
-    let expected = [
-        "findings-security",
-        "findings-test",
-        "findings-ai-antipattern",
-        "findings-cross-cutting",
-        "findings-codex",
-        "findings",
-        "code_review_notes",
-    ];
-    assert_eq!(
-        names, expected,
-        "code-review produces names + order must match"
-    );
-}
-
-#[test]
-fn bug_fix_fix_plan_review_produces_spec_findings() {
-    let pipeline = bug_fix_pipeline();
-    let fpr = pipeline
-        .phases
-        .iter()
-        .find(|p| p.id == "fix-plan-review")
-        .expect("fix-plan-review phase must exist");
-    let names: Vec<&str> = fpr.produces.iter().map(|a| a.name.as_str()).collect();
-    let expected = [
-        "findings-feasibility",
-        "findings-cross-cutting-spec",
-        "findings-ui-design",
-        "findings-codex",
-        "findings",
-    ];
-    assert_eq!(
-        names, expected,
-        "fix-plan-review produces names + order must match spec-review shape"
     );
 }
