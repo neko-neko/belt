@@ -598,3 +598,65 @@ phases:
         "outer when must reach the innermost leaf"
     );
 }
+
+/// A regate declared ON a sub-reference phase (invoke: pipeline) inside a
+/// sub-pipeline file is renamed into that file's expansion namespace when
+/// it targets a sibling phase, exactly like leaf regate targets.
+///
+/// scenario: belt-core-expander-sub-internal-regate-targets-namespaced
+#[test]
+fn sub_reference_phase_regate_targets_are_namespaced() {
+    let dir = TempDir::new().expect("failed to create tempdir");
+
+    write_yaml(
+        &dir,
+        "inner.yml",
+        r#"
+name: inner
+version: 1
+phases:
+  - id: check
+    description: "Inner check"
+    gate:
+      - cmd: "true"
+"#,
+    );
+    write_yaml(
+        &dir,
+        "middle.yml",
+        r#"
+name: middle
+version: 1
+phases:
+  - id: execute
+    description: "Implement"
+    gate:
+      - cmd: "true"
+  - id: verify
+    invoke:
+      pipeline: inner.yml
+    regate: [execute]
+"#,
+    );
+    let pipeline_path = write_yaml(
+        &dir,
+        "pipeline.yml",
+        r#"
+name: main
+version: 1
+phases:
+  - id: build
+    invoke:
+      pipeline: middle.yml
+"#,
+    );
+
+    let expanded = expand_pipeline(&pipeline_path).expect("expand should succeed");
+    let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(ids, vec!["build/execute", "build/verify/check"]);
+    assert_eq!(
+        expanded[1].regate,
+        vec!["build/execute".to_string()],
+        "regate on a sub-reference phase must be renamed into the expansion namespace"
+    );
+}

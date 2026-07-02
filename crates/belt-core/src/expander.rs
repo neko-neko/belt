@@ -130,7 +130,12 @@ fn expand_phase_list(
             // gate/regate/validate append + config merge on the LAST leaf.
             if let Some(last) = sub_expanded.last_mut() {
                 last.gate.extend(phase.gate.clone());
-                last.regate.extend(phase.regate.clone());
+                last.regate.extend(
+                    phase
+                        .regate
+                        .iter()
+                        .map(|t| rename_sibling_target(t, ns, &local_ids)),
+                );
                 last.validate.extend(phase.validate.clone());
                 let mut parent_config = phase.config.clone();
                 if !with.is_empty() {
@@ -147,6 +152,16 @@ fn expand_phase_list(
         }
     }
     Ok(expanded)
+}
+
+/// Rename a regate target into the expansion namespace when it names a
+/// sibling phase declared in the same file; leave anything else verbatim.
+fn rename_sibling_target(target: &str, ns: &str, local_ids: &[&str]) -> String {
+    if local_ids.contains(&target) {
+        format!("{ns}{target}")
+    } else {
+        target.to_owned()
+    }
 }
 
 /// Substitute a `when` template against a `with` scope; returns the
@@ -202,13 +217,7 @@ fn leaf_phase(
     let regate = phase
         .regate
         .iter()
-        .map(|t| {
-            if local_ids.contains(&t.as_str()) {
-                format!("{ns}{t}")
-            } else {
-                t.clone()
-            }
-        })
+        .map(|t| rename_sibling_target(t, ns, local_ids))
         .collect();
 
     Ok(ExpandedPhase {
