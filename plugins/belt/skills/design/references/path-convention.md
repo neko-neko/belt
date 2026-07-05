@@ -33,7 +33,7 @@ Examples:
 - Must not collide with an existing directory under `docs/features/`.
 - Must be stable for the duration of the run (do not rename mid-flight).
 
-If a collision is detected, the first phase's supplement appends `-N`
+If a collision is detected, the first phase appends `-N`
 (e.g. `-2`) until unique.
 
 ## Worktree Branch Correspondence
@@ -54,9 +54,9 @@ branch `feature/2026-04-14-user-authentication`.
 | `evidence.md` | intake | /belt:goal (later phases append); the build Entry check creates it for bug runs | feature runs; bug runs (from build) |
 | `design.md` | design | /belt:design (Phase: design) | feature runs |
 | `scenarios.yml` | design | /belt:design (Phase: design) | feature runs, when `args.e2e` |
-| `rca-report.md` | rca | /systematic-debugging (+ rca-supplement) | bug runs |
-| `rca-scenarios.yml` | rca | /systematic-debugging (+ rca-supplement) | bug runs, when `args.e2e` |
-| `fix-plan.md` | fix-plan | /writing-plans (+ fix-plan-supplement) | bug runs |
+| `rca-report.md` | rca | /systematic-debugging | bug runs |
+| `rca-scenarios.yml` | rca | /systematic-debugging | bug runs, when `args.e2e` |
+| `fix-plan.md` | fix-plan | /writing-plans | bug runs |
 | `e2e-report.md` | e2e | /belt:verify | when `args.e2e` |
 
 The execute and code-review phases write to git history and
