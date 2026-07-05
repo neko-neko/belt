@@ -17,7 +17,7 @@ document for naming rules. The former bug-fix convention
 
 `docs/features/<YYYY-MM-DD-topic>/`
 
-- `<YYYY-MM-DD>`: the date the run's first phase (design for feature runs,
+- `<YYYY-MM-DD>`: the date the run's first phase (intake for feature runs,
   rca for bug runs) is first invoked, in UTC (ISO 8601).
 - `<topic>`: a kebab-case slug (lowercase letters, digits, hyphens; no spaces,
   no underscores). Chosen interactively with the user during the first phase.
@@ -50,10 +50,10 @@ branch `feature/2026-04-14-user-authentication`.
 
 | File | Producing phase | Producer | When |
 |------|-----------------|----------|------|
-| `design.md` | design | /brainstorming (+ brainstorming-supplement) | feature runs |
-| `test-strategy.md` | test-scenarios | /belt:test-scenarios | feature runs |
-| `scenarios.yml` | test-scenarios | /belt:test-scenarios | feature runs, when `args.e2e` |
-| `plan.md` | plan | /writing-plans (+ writing-plans-supplement) | feature runs |
+| `goal-sheet.md` | intake | /belt:goal | feature runs |
+| `evidence.md` | intake | /belt:goal (later phases append) | feature runs |
+| `design.md` | design | /belt:design (Phase: design) | feature runs |
+| `scenarios.yml` | design | /belt:design (Phase: design) | feature runs, when `args.e2e` |
 | `rca-report.md` | rca | /systematic-debugging (+ rca-supplement) | bug runs |
 | `rca-scenarios.yml` | rca | /systematic-debugging (+ rca-supplement) | bug runs, when `args.e2e` |
 | `fix-plan.md` | fix-plan | /writing-plans (+ fix-plan-supplement) | bug runs |

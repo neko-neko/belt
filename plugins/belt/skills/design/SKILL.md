@@ -1,61 +1,57 @@
 ---
 name: design
 description: >-
-  Runs the feature design stage: brainstormed design document, test strategy,
-  spec review, and implementation plan. Use standalone for design-only work,
-  or composed as the upstream stage of /belt:feature-dev. --e2e also authors
-  agent-browser scenarios; --codex enables adversarial spec review.
+  Runs the feature design stage: goal-sheet intake (/belt:goal) followed by
+  a single design document (architecture + test strategy + implementation
+  tasks) reviewed by belt:spec-reviewer. Use standalone for design-only
+  work, or composed as the upstream stage of /belt:feature-dev. --e2e also
+  authors agent-browser scenarios; --codex enables adversarial spec review.
 user-invocable: true
-argument-hint: "[--e2e] [--codex]"
+argument-hint: "<linear-id | url | free-text> [--e2e] [--codex]"
 ---
 
 # design
 
-Belt pipeline for the feature design stage. Pipeline structure, args, phase
-order, and invocation mapping are defined in `pipeline.yml` and surfaced
-dynamically by `belt-agent next` / `belt-agent status`. This SKILL.md covers
-the supplement loading contract, phase-specific runtime notes, and red flags.
+Belt pipeline for the design stage. Structure, gates, and done criteria
+live in `pipeline.yml`; this file defines how to execute each phase.
 
-## Supplement Loading
+## Phase: intake
 
-Before invoking a phase's skill, read the referenced supplement to inject
-phase-specific overrides. Phases not listed (`test-scenarios` / `spec-review`)
-have no supplement; invoke their declared skill directly.
+Invoke `/belt:goal`, passing the user's original input (ticket id, URL,
+or free text) verbatim. The skill writes goal-sheet.md and evidence.md.
 
-| Phase | Supplement | Purpose |
-|---|---|---|
-| design | `./references/brainstorming-supplement.md` | parallel exploration (code-explorer / code-architect / impact-analyzer), implicit-rules extraction, required design sections, worktree creation order |
-| plan | `./references/writing-plans-supplement.md` | path override, Must-Verify, scenarios cross-referencing |
+## Phase: design
 
-## Phase-specific Runtime Notes
+This phase has no `invoke` — execute these steps directly:
 
-- **spec-review**: grill-me dialogue for `requirements` / `design-judgment`
-  findings; direct selection triage for the remaining observations.
+1. Read goal-sheet.md (resolve the path via `belt-agent status`, artifact
+   `goal_sheet`).
+2. Explore the code the change touches with Grep/Read. Dispatch explorer
+   subagents only if the area is unfamiliar AND spans 10+ files.
+3. Write `docs/features/<topic>/design.md` with exactly these sections:
+   - `## Architecture` — approach, components, data flow; rejected
+     alternatives in one line each
+   - `## Test Strategy` — for each acceptance criterion in goal-sheet.md,
+     the test(s) that verify it (level: unit/integration/e2e + test name)
+   - `## Implementation Tasks` — checkbox list; every task names its
+     target files and its test
+   If the e2e arg is true, also write `scenarios.yml` (Given/When/Then,
+   one scenario per acceptance criterion).
+4. Invoke `/belt:spec-review` (pass `--codex` if the codex arg is true)
+   and complete its batched triage.
+5. Append the design entry to evidence.md (format:
+   `plugins/belt-agent/references/authoring-principles.md`).
 
-## Narrative Notes
+## Red flags
 
-`design` and `plan` produce a narrative note so context can be restored after
-`/clear`. Note paths are declared in `pipeline.yml` as
-`belt://current/notes/phase-<id>.md` URIs; resolve the physical path via
-`belt-agent status` (read `phases[].produces[].resolved_path`) or
-`belt-agent locate belt://current/notes/phase-<id>.md`.
-
-Each note contains four sections (`## Decisions` / `## Concerns` /
-`## Directives` / `## Observations`) and minimal frontmatter (`phase`,
-`run_id`).
-
-Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugins/belt-agent/references/narrative-convention.md)
-
-## Red Flags
-
-- **Never skip supplement loading when listed above**: phase-specific overrides are lost and behavior drifts.
-- **Never modify the consumed global skills**: all overrides go through `references/*-supplement.md`.
-- **Never hand-edit files under `docs/features/<topic>/`**: they are phase-produced; manual edits break belt's phase-start mtime filter.
-- **Never leave the narrative note's four sections blank**: use `(none)` placeholders and keep headings.
+- Never ask the user design questions one at a time — batch remaining
+  open points in one AskUserQuestion call.
+- Never write an Implementation Task without file paths — execute
+  dispatches subagents from this list alone.
+- Never hand-edit files under `docs/features/<topic>/` after a phase
+  completes (breaks the phase-start mtime filter).
 
 ## References
 
-- `./references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT, shared by all stages)
-- `./references/brainstorming-supplement.md` — design phase overrides
-- `./references/writing-plans-supplement.md` — plan phase overrides
-- `plugins/belt-agent/references/narrative-convention.md` — narrative note schema
+- `./references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
+- `plugins/belt-agent/references/authoring-principles.md` — evidence entry format
