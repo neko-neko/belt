@@ -240,6 +240,7 @@ belt は Claude Code plugin として **2 plugin 構成**で配布する:
 
 - `belt` は `belt-agent` を依存として要求する (Claude Code plugin manifest に hard dependency field が無いため、README / CHANGELOG で明示)
 - Skill tool invoke および agent reference は常に fully-qualified (`/belt:code-review`, `belt-agent:phase-auditor`) で記述する。Shorthand (`/code-review`) は使用禁止
+- SKILL.md / agents / pipeline.yml の記述は `plugins/belt-agent/references/authoring-principles.md`(Sonnet-lean 規範)に従う。criteria ファイル・supplement 連鎖の新設は禁止
 - CLI binary `belt-agent` と plugin `belt-agent` が同名だが、前者は executable、後者は Claude Code config。context で区別する
 
 ## Non-Goals (やらないこと)
