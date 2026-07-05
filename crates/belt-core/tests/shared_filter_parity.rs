@@ -1,24 +1,27 @@
 //! Integration test locking byte-identity of the `## Filtering` section prefix
-//! bullets across per-observation reviewer agent markdown files.
+//! bullets across the consolidated diff-scope reviewer agent markdown files.
 //!
 //! Background:
-//! - The 2026-04-16 review-skills refactor split /code-review and /spec-review
-//!   into per-observation subagents. Each agent's `## Filtering` section opens
-//!   with the same bullet preface so that parallel findings can be merged and
-//!   cross-agent deduplicated on uniform filtering contracts.
-//! - Two drift incidents (Phase B I3 in commit f191a22 and Phase C C-1 in
-//!   db73c7d) had the preface bullets diverge. Both were caught only at
-//!   review time. This lock test closes that gap at commit time.
+//! - The 2026-07-05 sonnet-lean consolidation
+//!   (docs/specs/2026-07-05-sonnet-lean-pipeline-design.md) merged the seven
+//!   per-observation reviewer agents into three: spec-reviewer, code-reviewer,
+//!   and quality-reviewer.
+//! - /belt:code-review still dispatches code-reviewer and quality-reviewer in
+//!   parallel and merges their findings, so both agents open their
+//!   `## Filtering` section with the same bullet preface (confidence
+//!   threshold, occurrence-count folding, no stylistic opinions). Two earlier
+//!   drift incidents (Phase B I3 in commit f191a22 and Phase C C-1 in
+//!   db73c7d) showed this preface diverges silently without a commit-time
+//!   lock.
 //!
 //! Contract enforced here:
 //! - code-review: the first 3 bullets after `## Filtering` are byte-identical
-//!   across security / test / ai-antipattern / cross-cutting agents.
-//! - spec-review: the first 2 bullets after `## Filtering` are byte-identical
-//!   across feasibility / ui-design / cross-cutting-spec agents.
+//!   across code-reviewer / quality-reviewer.
+//! - spec-reviewer is intentionally OUT of scope: it reviews spec documents,
+//!   not diffs, so its Filtering wording legitimately differs.
 //!
-//! The cross-cutting agents append an additional Internal self-dedup bullet
-//! and may carry a heading suffix (e.g. "(applies to all four observations)"),
-//! so this test intentionally ignores everything beyond the shared prefix.
+//! Each agent appends further agent-specific bullets after the shared prefix,
+//! so this test intentionally ignores everything beyond the first 3 bullets.
 
 #![allow(
     clippy::panic,
@@ -69,43 +72,40 @@ fn extract_filtering_prefix_bullets(content: &str, n: usize) -> String {
 }
 
 const CODE_REVIEW_AGENTS: &[&str] = &[
-    "plugins/belt/agents/security-reviewer.md",
-    "plugins/belt/agents/test-reviewer.md",
-    "plugins/belt/agents/ai-antipattern-reviewer.md",
-    "plugins/belt/agents/cross-cutting-reviewer.md",
+    "plugins/belt/agents/code-reviewer.md",
+    "plugins/belt/agents/quality-reviewer.md",
 ];
 
-const SPEC_REVIEW_AGENTS: &[&str] = &[
-    "plugins/belt/agents/feasibility-reviewer.md",
-    "plugins/belt/agents/ui-design-reviewer.md",
-    "plugins/belt/agents/cross-cutting-spec-reviewer.md",
+/// Markers that must appear in the shared prefix so the parity check cannot
+/// silently pass on the wrong three bullets.
+const SHARED_PREFIX_MARKERS: &[&str] = &[
+    "at least 80% confident",
+    "occurrence count",
+    "No stylistic opinions",
 ];
-
-fn assert_filtering_prefix_identical(agents: &[&str], prefix_bullets: usize) {
-    let mut baseline: Option<(&str, String)> = None;
-    for rel in agents {
-        let path = repo_root().join(rel);
-        let content = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-        let extracted = extract_filtering_prefix_bullets(&content, prefix_bullets);
-        match &baseline {
-            None => baseline = Some((rel, extracted)),
-            Some((base_path, base_content)) => {
-                assert_eq!(
-                    &extracted, base_content,
-                    "Filtering prefix drift in {rel} vs baseline {base_path}"
-                );
-            }
-        }
-    }
-}
 
 #[test]
 fn code_review_filtering_prefix_identical_across_agents() {
-    assert_filtering_prefix_identical(CODE_REVIEW_AGENTS, 3);
-}
+    let mut extracted: Vec<(&str, String)> = Vec::with_capacity(CODE_REVIEW_AGENTS.len());
+    for rel in CODE_REVIEW_AGENTS {
+        let path = repo_root().join(rel);
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+        extracted.push((rel, extract_filtering_prefix_bullets(&content, 3)));
+    }
 
-#[test]
-fn spec_review_filtering_prefix_identical_across_agents() {
-    assert_filtering_prefix_identical(SPEC_REVIEW_AGENTS, 2);
+    let (base_rel, baseline) = &extracted[0];
+    for marker in SHARED_PREFIX_MARKERS {
+        assert!(
+            baseline.contains(marker),
+            "{base_rel}: shared Filtering prefix must contain {marker:?}, got:\n{baseline}"
+        );
+    }
+
+    for (rel, bullets) in &extracted[1..] {
+        assert_eq!(
+            bullets, baseline,
+            "Filtering prefix drift in {rel} vs baseline {base_rel}"
+        );
+    }
 }

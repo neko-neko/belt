@@ -90,10 +90,11 @@ cross-coupling:
 
 ```yaml
 locks-file: crates/belt-core/tests/review_skills_refresh.rs
-consolidated-agents-deleted:
-  - code-reviewer
-  - spec-reviewer
-per-observation-agents:
+consolidated-agents:
+  - spec-reviewer.md
+  - code-reviewer.md
+  - quality-reviewer.md
+per-observation-agents-deleted:
   - security-reviewer.md
   - test-reviewer.md
   - ai-antipattern-reviewer.md
@@ -101,22 +102,22 @@ per-observation-agents:
   - feasibility-reviewer.md
   - ui-design-reviewer.md
   - cross-cutting-spec-reviewer.md
-test-fn-count: 7
+test-fn-count: 6
 ```
 
-**7 test fn 名** (A):
+**6 test fn 名** (A):
 
 - `review_skills_pipeline_yml_is_deleted`
 - `review_skills_belt_toml_is_deleted`
-- `review_skills_legacy_consolidated_agent_is_deleted`
-- `review_skills_new_observation_agents_exist`
+- `consolidated_reviewer_agents_exist`
+- `per_observation_agent_files_are_deleted`
 - `review_skills_parent_skill_md_references_parallel_dispatch`
-- `legacy_per_observation_review_agent_files_are_removed`
-- `per_observation_agents_use_output_path_arg_pattern`
+- `consolidated_agents_use_output_path_arg_pattern`
 
 **locked shape dimensions** (B):
 
-- per-observation agents (`security-reviewer.md`, `test-reviewer.md`, `ai-antipattern-reviewer.md`, `cross-cutting-reviewer.md`, `cross-cutting-spec-reviewer.md`, `feasibility-reviewer.md`, `ui-design-reviewer.md`) reference `output_path` in their Output Format section and do not hardcode `.belt/runs/` literals
+- 2026-07-05 sonnet-lean 統合 (7→3) 後の shape: consolidated agents (`spec-reviewer.md`, `code-reviewer.md`, `quality-reviewer.md`) が存在し、旧 per-observation agent 7 file・review skills の pipeline.yml / belt.toml が non-existence、SKILL.md が Task dispatch + `findings-` を記述
+- consolidated agents は Output Format section で `output_path` を参照し、`.belt/runs/` リテラルを hardcode しない
 
 ---
 
@@ -125,9 +126,8 @@ test-fn-count: 7
 ```yaml
 locks-file: crates/belt-core/tests/shared_filter_parity.rs
 parity-groups:
-  - code-review-agents: 4 agents の ## Filtering 先頭 3 bullet byte-identical
-  - spec-review-agents: 3 agents の ## Filtering 先頭 2 bullet byte-identical
-test-fn-count: 2
+  - code-review-agents: code-reviewer / quality-reviewer の ## Filtering 先頭 3 bullet byte-identical (spec-reviewer は diff-scope agent でないため対象外)
+test-fn-count: 1
 ```
 
 ---
