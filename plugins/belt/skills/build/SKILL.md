@@ -1,81 +1,72 @@
 ---
 name: build
 description: >-
-  Runs the shared build stage: TDD implementation, multi-perspective code
-  review, optional browser-based verification, and integration. Use standalone
-  with a hand-written or pre-existing plan, or composed as the downstream
-  stage of /belt:feature-dev and /belt:bug-fix. --e2e runs the verify
-  sub-stage; --codex enables adversarial review.
+  Runs the shared build stage: TDD implementation from the plan document's
+  task list, two-agent code review, optional browser verification (--e2e),
+  and integration. Use standalone with an existing design.md/fix-plan.md,
+  or composed as the downstream stage of /belt:feature-dev and
+  /belt:bug-fix.
 user-invocable: true
 argument-hint: "[--e2e] [--codex]"
 ---
 
 # build
 
-Belt pipeline for the shared build stage. Pipeline structure, args, phase
-order, and invocation mapping are defined in `pipeline.yml` and surfaced
-dynamically by `belt-agent next` / `belt-agent status`. This SKILL.md covers
-the entry check, supplement loading contract, phase-specific runtime notes,
-and red flags.
+Belt pipeline for the build stage. Structure, gates, and done criteria
+live in `pipeline.yml`; this file defines how to execute each phase.
 
-## Entry Check (standalone runs)
+## Entry check
 
-Before `belt-agent init`, confirm an implementation plan exists:
-`docs/features/<topic>/plan.md` (feature runs), `docs/features/<topic>/fix-plan.md`
-(bug runs), or a user-provided plan document. If none exists, pause and ask
-the user — execute has nothing to implement. The build stage intentionally
-declares no upstream `consumes`; locating the plan is this skill's job.
+A plan document must exist: `docs/features/<topic>/design.md` with an
+Implementation Tasks section (feature runs) or
+`docs/features/<topic>/fix-plan.md` (bug runs). If neither exists, stop
+and ask the user. If `docs/features/<topic>/evidence.md` does not exist
+(bug runs), create it now with the header `# Evidence: <topic>`.
 
-## Supplement Loading
+## Phase: execute
 
-Before invoking a phase's skill, read the referenced supplement to inject
-phase-specific overrides. Phases not listed (`execute` / `code-review`) have
-no supplement; invoke their declared skill directly.
+This phase has no `invoke` — execute these steps directly:
 
-| Phase | Supplement | Purpose |
-|---|---|---|
-| integrate | `./references/worktrunk-supplement.md` | A/B choice logic (wt merge / gh pr create), pre-merge checks, PR-body template |
+1. Read the plan document's task list (Implementation Tasks in
+   design.md, or the task list in fix-plan.md).
+2. For each unchecked task, dispatch ONE `belt-agent:feature-implementer`
+   subagent with a self-contained prompt containing: the task text, the
+   exact file paths, the test(s) to write first, the relevant design
+   constraints copied into the prompt (never "see the design doc"), and
+   the project's test command.
+3. After each subagent returns: run the project test suite yourself,
+   check the task's checkbox in the plan document, and commit.
+4. Tasks whose target files do not overlap MAY run in parallel;
+   overlapping tasks run serially.
+5. Append the execute entry to evidence.md (test + lint commands and
+   observed results).
 
-## Stage Delegation
+## Phase: code-review
 
-When `args.e2e` is true, `next` returns the verify sub-stage's leaf phases as
-`verify/monkey-test` and `verify/dogfood`. Before executing them, read
-`plugins/belt/skills/verify/SKILL.md` — its entry check and supplements apply.
+Invoke `/belt:code-review` (pass `--codex` if the codex arg is true) and
+complete its batched triage. Append the code-review entry to
+evidence.md.
 
-## Phase-specific Runtime Notes
+## Phase: e2e (when the e2e arg is true)
 
-- **execute**: orchestrator must reconstruct plan tasks into self-contained
-  implementation specs before dispatching `belt-agent:feature-implementer`
-  subagents. Do not forward broad research or plan excerpts verbatim.
-- **integrate**: prompt user for mode (A: `wt merge` / B: `gh pr create`)
-  before executing `/worktrunk`.
+Invoke `/belt:verify`. Append the e2e entry to evidence.md.
 
-## Narrative Notes
+## Phase: integrate
 
-`execute` and `code-review` produce a narrative note so context can be
-restored after `/clear`. Note paths are declared in `pipeline.yml` as
-`belt://current/notes/phase-<id>.md` URIs; resolve the physical path via
-`belt-agent status` (read `phases[].produces[].resolved_path`) or
-`belt-agent locate belt://current/notes/phase-<id>.md`.
+Ask the user once: A) `wt merge` or B) `gh pr create`. Invoke
+`/worktrunk` with the chosen mode. Confirm evidence.md has one entry per
+completed phase, then append the integrate entry.
 
-Each note contains four sections (`## Decisions` / `## Concerns` /
-`## Directives` / `## Observations`) and minimal frontmatter (`phase`,
-`run_id`).
+## Red flags
 
-Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugins/belt-agent/references/narrative-convention.md)
-
-## Red Flags
-
-- **Never start execute without the Entry Check**: implementing without a plan is the anti-pattern this stage exists to prevent.
-- **Never filter or omit review findings**: triage of `/belt:code-review` output is the user's responsibility.
-- **Never bypass the integrate A/B choice**: merge-vs-PR is always user-decided.
-- **Never modify the consumed global skills**: overrides go through `references/*-supplement.md`.
-- **Never leave the narrative note's four sections blank**: use `(none)` placeholders, keep headings.
+- Never start execute without the Entry check.
+- Never forward the whole design doc to implementer subagents — copy the
+  relevant constraints into each prompt.
+- Never skip the per-task test run after a subagent returns.
+- Never decide merge-vs-PR yourself — always the user's choice.
+- Never let subagents write evidence.md — orchestrator only.
 
 ## References
 
-- `./references/worktrunk-supplement.md` — integrate phase A/B choice logic
-- `./references/evidence-catalog.md` — evidence items for execute / code-review criteria
-- `plugins/belt/skills/verify/SKILL.md` — verify sub-stage contract (when `--e2e`)
-- `plugins/belt/skills/design/references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
-- `plugins/belt-agent/references/narrative-convention.md` — narrative note schema
+- `plugins/belt/skills/design/references/path-convention.md` — naming rules (SSOT)
+- `plugins/belt-agent/references/authoring-principles.md` — evidence entry format

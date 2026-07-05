@@ -1,66 +1,54 @@
 ---
 name: verify
 description: >-
-  Runs the browser-based verification stage: scripted scenario replay
-  (monkey-test) followed by exploratory testing (dogfood). Use standalone to
-  verify a change against existing scenarios, or composed as the e2e leg of
-  /belt:build. Requires agent-browser.
+  Browser-based verification in one pass: replays
+  docs/features/<topic>/scenarios.yml via agent-browser, then runs a short
+  exploratory pass around the change scope. Writes e2e-report.md. Use
+  standalone, or invoked by the e2e phase of /belt:build. Requires
+  agent-browser.
 user-invocable: true
 ---
 
 # verify
 
-Belt pipeline for the browser-based verification stage. Pipeline structure,
-phase order, and invocation mapping are defined in `pipeline.yml` and surfaced
-dynamically by `belt-agent next` / `belt-agent status`. This SKILL.md covers
-the entry check, supplement loading contract, and red flags.
+Single-pass browser verification. No pipeline.yml — this skill runs its
+three steps directly.
 
-## Entry Check (standalone runs)
+## Entry check
 
-Before `belt-agent init`, locate the scenarios source:
+Locate the scenario file: `docs/features/<topic>/scenarios.yml` (feature
+runs) or `docs/features/<topic>/rca-scenarios.yml` (bug runs). On glob
+collision take the most recently modified. If none exists, stop and ask
+the user — there is nothing to replay.
 
-- `docs/features/<topic>/scenarios.yml` (feature runs), or
-- `docs/features/<topic>/rca-scenarios.yml` (bug runs).
+## Step 1 — Scenario replay
 
-On glob collision, prefer the most recently modified. If neither exists,
-pause and ask the user — monkey-test has nothing to replay. When this stage
-runs composed under `/belt:build` (phase ids `verify/monkey-test` /
-`verify/dogfood`), the same resolution applies at the monkey-test phase.
+Load the agent-browser skill. For each scenario (Given/When/Then), drive
+the browser through the steps and record PASS or FAIL with the observed
+behavior. Never silently retry a FAIL — record it first; re-run only
+after a fix.
 
-## Supplement Loading
+## Step 2 — Exploratory pass
 
-Before invoking a phase's skill, read the referenced supplement to inject
-phase-specific overrides.
+Around the changed screens/flows (file list from
+`git diff main...HEAD`), probe beyond the scripted paths: invalid input,
+empty states, rapid repeat actions, back/reload navigation. Cap the
+exploration at 15 minutes. Record anything anomalous.
 
-| Phase | Supplement | Purpose |
-|---|---|---|
-| monkey-test | `./references/monkey-test-supplement.md` | scenarios source resolution, context injection, reproduction-scenario rule (bug runs), output paths |
-| dogfood | `./references/dogfood-supplement.md` | output override, diff-scoped exploration, Root Cause re-verification (bug runs), CLI-only degradation |
+## Step 3 — Report
 
-## Narrative Notes
+Write `docs/features/<topic>/e2e-report.md`:
 
-Both phases produce a narrative note so context can be restored after
-`/clear`. Note paths are declared in `pipeline.yml` as
-`belt://current/notes/phase-<id>.md` URIs; resolve the physical path via
-`belt-agent status` (read `phases[].produces[].resolved_path`) or
-`belt-agent locate belt://current/notes/phase-<id>.md`.
+    # E2E report: <topic>
+    ## Scenario results   — table: scenario id | PASS/FAIL | note
+    ## Exploratory notes  — bullet list of probes and observations
+    ## Verdict            — PASS (all green) / FAIL (list) / SKIPPED
 
-Each note contains four sections (`## Decisions` / `## Concerns` /
-`## Directives` / `## Observations`) and minimal frontmatter (`phase`,
-`run_id`).
+If no browser-reachable UI exists (CLI/backend-only repo), write the
+report with Verdict: SKIPPED and the reason — never fabricate browser
+runs.
 
-Full convention: [`plugins/belt-agent/references/narrative-convention.md`](plugins/belt-agent/references/narrative-convention.md)
+## Red flags
 
-## Red Flags
-
-- **Never skip supplement loading**: output paths and scope overrides live there.
-- **Never write files outside `docs/features/<topic>/`.**
-- **Never auto-retry FAIL scenarios silently** — report them.
-- **Never leave the narrative note's four sections blank**: use `(none)` placeholders, keep headings.
-
-## References
-
-- `./references/monkey-test-supplement.md` — monkey-test phase overrides
-- `./references/dogfood-supplement.md` — dogfood phase overrides
-- `plugins/belt/skills/design/references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
-- `plugins/belt-agent/references/narrative-convention.md` — narrative note schema
+- Never mark a scenario PASS without driving it in the browser.
+- Never write files outside `docs/features/<topic>/`.

@@ -57,12 +57,7 @@ branch `feature/2026-04-14-user-authentication`.
 | `rca-report.md` | rca | /systematic-debugging (+ rca-supplement) | bug runs |
 | `rca-scenarios.yml` | rca | /systematic-debugging (+ rca-supplement) | bug runs, when `args.e2e` |
 | `fix-plan.md` | fix-plan | /writing-plans (+ fix-plan-supplement) | bug runs |
-| `monkey-test-report.md` | monkey-test | /belt:monkey-test | when `args.e2e` |
-| `monkey-test-results.json` | monkey-test | /belt:monkey-test | when `args.e2e` |
-| `monkey-test-screenshots/*` | monkey-test | /belt:monkey-test | when `args.e2e` |
-| `dogfood-report/report.md` | dogfood | /dogfood (+ dogfood-supplement) | when `args.e2e` |
-| `dogfood-report/screenshots/*` | dogfood | /dogfood | when `args.e2e` |
-| `dogfood-report/videos/*` | dogfood | /dogfood | when `args.e2e` |
+| `e2e-report.md` | e2e | /belt:verify | when `args.e2e` |
 
 The execute and code-review phases write to git history and
 `belt://current/review/findings.json` (resolve via `belt-agent status` or
