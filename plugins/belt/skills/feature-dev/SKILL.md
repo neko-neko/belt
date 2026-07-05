@@ -1,48 +1,40 @@
 ---
 name: feature-dev
 description: >-
-  Runs a quality-gated feature-development pipeline spanning design, test
-  strategy, spec review, implementation, and regression verification. Use when
-  building a new feature that needs a structured design-to-integration flow.
-  --e2e enables browser-based verification; --codex enables adversarial review.
+  Quality-gated feature pipeline from ticket to integration: goal-sheet
+  intake, single design document with spec review, context-reset
+  checkpoint, TDD implementation, two-agent code review, optional browser
+  verification, and integration — with an evidence.md trail. Accepts a
+  Linear id, URL, or free-text task. --e2e enables browser verification;
+  --codex enables adversarial review.
 user-invocable: true
-argument-hint: "[--e2e] [--codex]"
+argument-hint: "<linear-id | url | free-text> [--e2e] [--codex]"
 ---
 
 # feature-dev
 
-Composed belt pipeline: the design stage, a context-reset checkpoint, and the
-shared build stage. `pipeline.yml` declares three `invoke.pipeline`
-references; `belt-agent init` expands them inline, so `next` returns
-namespaced leaf phases (`design/design`, `build/execute`,
-`build/verify/monkey-test`, ...) in a single run — status, resume, and
-narrative notes work exactly as in a flat pipeline.
+Composed pipeline: design stage → checkpoint → build stage. `belt-agent
+init` expands the three `invoke.pipeline` references into namespaced
+leaves (`design/intake` ... `build/integrate`) in a single run.
 
-## Stage Skills
+Keep the user's original task input (ticket id, URL, or free text): the
+`design/intake` phase passes it verbatim to `/belt:goal`.
 
-When `next` returns a phase, load the owning stage's SKILL.md before
-executing it — the supplement loading contracts, entry checks, and red flags
-live there:
+## Stage skills
 
-| Phase id prefix | Stage skill |
-|---|---|
-| `design/` | `plugins/belt/skills/design/SKILL.md` |
-| `pre-execute-handover/` | (none — follow the phase description: `/belt:handover`, `/clear`, `/belt:resume`) |
-| `build/verify/` | `plugins/belt/skills/verify/SKILL.md` |
-| `build/` (other) | `plugins/belt/skills/build/SKILL.md` |
+When `next` returns a phase, read the owning stage's SKILL.md before
+executing it:
 
-Smaller runs are available directly: `/belt:design` for design-only work,
-`/belt:build` when a plan already exists, `/belt:verify` for browser
-verification alone.
+- `design/*` → `plugins/belt/skills/design/SKILL.md`
+- `pre-execute-handover/*` → run `/belt:handover`, then `/clear`, then
+  `/belt:resume` in the new session
+- `build/*` → `plugins/belt/skills/build/SKILL.md`
 
-## Red Flags
+Smaller runs: `/belt:design` (design only), `/belt:build` (plan already
+exists), `/belt:goal` (intake only), `/belt:verify` (browser check only).
 
-- **Never execute a stage phase without loading its stage SKILL.md**: supplement contracts are defined per stage, not here.
-- **Never bypass the pre-execute-handover checkpoint**: the context reset before execute is the pipeline's core ergonomics.
+## Red flags
 
-## References
-
-- `plugins/belt/skills/design/SKILL.md` — design stage contract
-- `plugins/belt/skills/build/SKILL.md` — build stage contract
-- `plugins/belt/skills/verify/SKILL.md` — verify stage contract (when `--e2e`)
-- `plugins/belt/skills/design/references/path-convention.md` — `docs/features/<YYYY-MM-DD-topic>/` naming rules (SSOT)
+- Never execute a stage phase without its stage SKILL.md loaded.
+- Never bypass the pre-execute-handover checkpoint — the context reset
+  before execute is the pipeline's core ergonomics.

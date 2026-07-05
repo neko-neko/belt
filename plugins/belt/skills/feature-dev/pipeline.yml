@@ -6,7 +6,7 @@ args:
   e2e:
     type: bool
     default: false
-    description: "Enable E2E verification (monkey-test, dogfood)"
+    description: "Enable E2E verification (browser-based, via /belt:verify)"
   codex:
     type: bool
     default: false

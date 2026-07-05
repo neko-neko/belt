@@ -268,22 +268,19 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agent` | Foundation: Belt Protocol driver skill + 5 analysis agents (phase-auditor, feature-implementer, code-explorer, code-architect, impact-analyzer) + shared references |
-| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:code-review` (4 observation reviewers), `/belt:spec-review` (3 observation reviewers), `/belt:monkey-test`, `/belt:test-scenarios`, `/belt:handover`, `/belt:resume`. Requires `belt-agent` |
+| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:goal`, `/belt:design`, `/belt:build`, `/belt:verify`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`. Requires `belt-agent` |
 
 ### External skill dependencies
 
-The belt skills invoke skills from other plugins. `/belt:monkey-test` requires
+The belt skills invoke skills from other plugins. `/belt:verify` requires
 the `agent-browser` CLI. Install these before the belt plugins that use them:
 
 | Dependency | Source | Required by |
 |---|---|---|
-| `/brainstorming` | [obra/superpowers](https://github.com/obra/superpowers) | `/belt:feature-dev` `design` phase |
-| `/writing-plans` | obra/superpowers | `/belt:feature-dev` `plan` phase, `/belt:bug-fix` `fix-plan` phase |
-| `/subagent-driven-development` | obra/superpowers | `/belt:feature-dev` `execute` phase, `/belt:bug-fix` `execute` phase |
+| `/writing-plans` | [obra/superpowers](https://github.com/obra/superpowers) | `/belt:bug-fix` `fix-plan` phase |
 | `/systematic-debugging` | obra/superpowers | `/belt:bug-fix` `rca` phase |
 | `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | `/belt:feature-dev` `integrate` phase, `/belt:bug-fix` `integrate` phase |
-| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:monkey-test` always, `/belt:feature-dev` `monkey-test` phase, `/belt:bug-fix` `monkey-test` phase (when `--e2e`) |
-| `/dogfood` | vercel-labs/agent-browser | `/belt:feature-dev` `dogfood` phase, `/belt:bug-fix` `dogfood` phase (when `--e2e`) |
+| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:verify` always, `/belt:feature-dev` / `/belt:bug-fix` `e2e` phase (when `--e2e`) |
 
 ### Install
 
@@ -313,9 +310,17 @@ belt repo root.
 After install:
 
 ```
-# Start a pipeline
-/belt:feature-dev
+# Start a pipeline (feature-dev accepts a Linear id, URL, or free-text task)
+/belt:feature-dev CLA-42 --e2e
 /belt:bug-fix
+
+# Run a single stage standalone
+/belt:goal
+/belt:design
+/belt:build
+/belt:verify
+
+# Run a review standalone
 /belt:code-review
 /belt:spec-review
 

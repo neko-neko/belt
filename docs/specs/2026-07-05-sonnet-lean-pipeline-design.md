@@ -66,7 +66,7 @@ feature-dev/pipeline.yml (合成、現行踏襲):
                      (--e2e 時 scenarios.yml も)、spec-reviewer 1 体で検証
   - [3] checkpoint — ../handover/checkpoint.yml (無変更)
   - build stage (../build/pipeline.yml)
-      [4] execute      — TDD 実装 (/subagent-driven-development、無変更)
+      [4] execute      — TDD 実装 (belt-agent:feature-implementer を build SKILL.md から直接ディスパッチ)
       [5] code-review  — code-reviewer + quality-reviewer の 2 体並列
       [6] e2e          — when e2e。invoke /belt:verify(monkey-test + dogfood 統合の 1 パス実行に書き直し)
       [7] integrate    — /worktrunk (無変更)

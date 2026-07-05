@@ -9,7 +9,7 @@ description: >-
 # Path Convention for belt Stage Artifacts
 
 All belt run artifact files — feature runs and bug runs alike — live under
-`docs/features/<YYYY-MM-DD-topic>/`. Every supplement references this
+`docs/features/<YYYY-MM-DD-topic>/`. Every stage skill references this
 document for naming rules. The former bug-fix convention
 (`docs/plans/YYYY-MM-DD-<topic>-*` flat files) is retired.
 
@@ -51,7 +51,7 @@ branch `feature/2026-04-14-user-authentication`.
 | File | Producing phase | Producer | When |
 |------|-----------------|----------|------|
 | `goal-sheet.md` | intake | /belt:goal | feature runs |
-| `evidence.md` | intake | /belt:goal (later phases append) | feature runs |
+| `evidence.md` | intake | /belt:goal (later phases append); the build Entry check creates it for bug runs | feature runs; bug runs (from build) |
 | `design.md` | design | /belt:design (Phase: design) | feature runs |
 | `scenarios.yml` | design | /belt:design (Phase: design) | feature runs, when `args.e2e` |
 | `rca-report.md` | rca | /systematic-debugging (+ rca-supplement) | bug runs |
