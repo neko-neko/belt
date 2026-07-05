@@ -65,24 +65,15 @@ phases:
     consumes:
       - fix_plan_doc
     produces:
-      - name: findings-feasibility
-        path: "belt://current/review/findings-feasibility.json"
-        description: "Feasibility observation findings"
-      - name: findings-cross-cutting-spec
-        path: "belt://current/review/findings-cross-cutting-spec.json"
-        description: "Cross-cutting spec observation findings"
-      - name: findings-ui-design
-        path: "belt://current/review/findings-ui-design.json"
-        description: "UI design observation findings"
+      - name: findings-spec
+        path: "belt://current/review/findings-spec.json"
+        description: "Consolidated spec review findings"
       - name: findings-codex
         path: "belt://current/review/findings-codex.json"
         description: "Codex adversarial spec review findings"
         when: "args.codex"
-      - name: findings
-        path: "belt://current/review/findings.json"
-        description: "Merged spec-review findings"
     gate:
-      - file_exists: "belt://current/review/findings.json"
+      - file_exists: "belt://current/review/findings-spec.json"
     validate: ./criteria/fix-plan-review.md
     confirm: true
     max_retries: 3

@@ -12,7 +12,6 @@ pipeline: plugins/belt/skills/feature-dev/pipeline.yml
 test-fn-count: 8
 cross-coupling:
   - crates/belt-core/tests/bug_fix_refresh.rs
-  - crates/belt-core/tests/pipeline_split_refresh.rs
   - crates/belt-core/tests/review_skills_refresh.rs
   - crates/belt-core/tests/shared_filter_parity.rs
 ```
@@ -40,7 +39,6 @@ cross-coupling:
 
 **Cross-coupling** (C):
 
-- `pipeline_split_refresh.rs` — stage 内部 shape (phase 順序 / narrative / criteria) は stage 側で lock
 - `bug_fix_refresh.rs` — bug-fix 合成 shape (同 tuple pattern で parallel)
 - `review_skills_refresh.rs` / `shared_filter_parity.rs` — 従来どおり
 
@@ -54,7 +52,6 @@ pipeline: plugins/belt/skills/bug-fix/pipeline.yml
 test-fn-count: 9
 cross-coupling:
   - crates/belt-core/tests/feature_dev_refresh.rs
-  - crates/belt-core/tests/pipeline_split_refresh.rs
 ```
 
 **9 test fn 名** (A):
@@ -81,7 +78,6 @@ cross-coupling:
 
 **Cross-coupling** (C):
 
-- `pipeline_split_refresh.rs` — stage 内部 shape (diagnose の docs/features path 含む) は stage 側で lock
 - `feature_dev_refresh.rs` — feature-dev 合成 shape (同 tuple pattern で parallel)
 
 ---
@@ -117,7 +113,7 @@ test-fn-count: 6
 **locked shape dimensions** (B):
 
 - 2026-07-05 sonnet-lean 統合 (7→3) 後の shape: consolidated agents (`spec-reviewer.md`, `code-reviewer.md`, `quality-reviewer.md`) が存在し、旧 per-observation agent 7 file・review skills の pipeline.yml / belt.toml が non-existence、SKILL.md が Task dispatch + `findings-` を記述
-- consolidated agents は Output Format section で `output_path` を参照し、`.belt/runs/` リテラルを hardcode しない
+- consolidated agents は `output_path` を参照し（lock は file 全体への `contains("output_path")` assertion）、`.belt/runs/` リテラルを hardcode しない
 
 ---
 

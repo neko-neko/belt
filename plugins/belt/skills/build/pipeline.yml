@@ -68,7 +68,7 @@ phases:
     gate:
       - file_exists: "docs/features/*/e2e-report.md"
     validate:
-      - "Every scenario in scenarios.yml was replayed with PASS/FAIL recorded in e2e-report.md"
+      - "Every scenario in scenarios.yml was replayed with PASS/FAIL recorded in e2e-report.md, or e2e-report.md's Verdict is SKIPPED with a recorded reason"
       - "Every FAIL was fixed and re-run, or explicitly accepted by the user"
       - "evidence.md has an e2e entry"
     confirm: true

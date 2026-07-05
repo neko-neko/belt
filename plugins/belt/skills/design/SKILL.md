@@ -37,8 +37,9 @@ This phase has no `invoke` — execute these steps directly:
      target files and its test
    If the e2e arg is true, also write `scenarios.yml` (Given/When/Then,
    one scenario per acceptance criterion).
-4. Invoke `/belt:spec-review` (pass `--codex` if the codex arg is true)
-   and complete its batched triage.
+4. Invoke `/belt:spec-review` with the design.md path as the target
+   (pass `--codex` if the codex arg is true) and complete its batched
+   triage.
 5. Append the design entry to evidence.md (format:
    `plugins/belt-agent/references/authoring-principles.md`).
 

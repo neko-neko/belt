@@ -330,8 +330,8 @@ After install:
 ```
 
 See each skill's `SKILL.md` (under `plugins/belt/skills/<skill>/`) for phase
-details and arg reference. Skill tool invocations inside criteria and
-supplements are always written fully-qualified (`/belt:code-review`,
+details and arg reference. Skill tool invocations inside skills, agents,
+and pipeline files are always written fully-qualified (`/belt:code-review`,
 `belt-agent:phase-auditor`) — shorthand (`/code-review`) is not used.
 
 ## License

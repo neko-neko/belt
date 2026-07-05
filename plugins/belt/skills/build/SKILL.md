@@ -20,8 +20,8 @@ live in `pipeline.yml`; this file defines how to execute each phase.
 A plan document must exist: `docs/features/<topic>/design.md` with an
 Implementation Tasks section (feature runs) or
 `docs/features/<topic>/fix-plan.md` (bug runs). If neither exists, stop
-and ask the user. If `docs/features/<topic>/evidence.md` does not exist
-(bug runs), create it now with the header `# Evidence: <topic>`.
+and ask the user. If `docs/features/<topic>/evidence.md` does not exist,
+create it now with the header `# Evidence: <topic>`.
 
 ## Phase: execute
 

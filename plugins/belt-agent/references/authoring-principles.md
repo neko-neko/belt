@@ -25,7 +25,9 @@ A subagent prompt must contain: the resolved physical paths it reads and
 writes, the exact output schema, and the completion condition. Subagents
 never call belt-agent, never resolve URIs, and never read sibling agents'
 outputs. Repeating a 3-line format across skills is cheaper than a
-reference hop — prefer inlining over linking.
+reference hop — prefer inlining over linking. When one skill invokes
+another, pass the target document's path explicitly — never rely on
+glob-fallback discovery.
 
 ## 4. Batch dialogue
 
@@ -48,5 +50,8 @@ Every phase appends one entry to `docs/features/<topic>/evidence.md`
     - Command: <command(s) actually run, or "(dialogue)" / "(authoring)">
     - Observed: <exit code / counts / PASS-FAIL summary>
     - Artifacts: <relative links to files this phase produced>
+
+Use the bare leaf name (e.g. `intake`, `execute`) as `<phase-id>`, not
+the namespaced run id (`design/intake`).
 
 Only the orchestrator writes evidence.md — never subagents.

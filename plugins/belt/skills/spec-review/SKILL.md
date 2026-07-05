@@ -15,7 +15,8 @@ and Edit access.
 ## Target
 
 The spec document: use the user-supplied path if given, otherwise the
-most recently modified `*-design.md` or `goal-sheet.md` under `docs/`.
+most recently modified `design.md`, `*-design.md`, or `goal-sheet.md`
+under `docs/`.
 
 ## Dispatch
 
