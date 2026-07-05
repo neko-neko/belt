@@ -23,9 +23,9 @@ cross-coupling:
 - `stages_delegate_with_e2e_and_codex_passthrough`
 - `checkpoint_delegates_with_no_args`
 - `top_level_args_are_e2e_and_codex_only`
-- `feature_dev_expands_to_ten_namespaced_leaves`
-- `expanded_regate_targets_are_namespaced`
-- `expanded_verify_leaves_inherit_e2e_when`
+- `feature_dev_expands_to_seven_namespaced_leaves`
+- `no_leaf_declares_regate`
+- `e2e_leaf_carries_when_and_others_do_not`
 - `feature_dev_pipeline_has_no_run_id_template`
 
 **pipeline.yml shape dimensions locked** (B):
@@ -33,9 +33,9 @@ cross-coupling:
 - `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` / default false
 - 3 top-level phase の順序 (`design → pre-execute-handover → build`)、全て `Invoker::Pipeline`
 - design/build の `with` が exactly `{e2e: "args.e2e", codex: "args.codex"}` (bare full-string form)、checkpoint は `with` 空
-- 展開 leaf ids が exactly 10 件 (`design/design → ... → build/integrate`、File Structure 節の展開形)
-- stage 内 regate の namespace 展開 (`design/spec-review → [design/test-scenarios]`、`build/code-review → [build/execute]`)
-- verify leaves (`build/verify/monkey-test` / `build/verify/dogfood`) が `when: args.e2e` を継承、`build/execute` は when なし
+- 展開 leaf ids が exactly 7 件 (`design/intake → design/design → pre-execute-handover/checkpoint → build/execute → build/code-review → build/e2e → build/integrate`)
+- regate は全 leaf で空 (2026-07-05 sonnet-lean で regate 全廃)
+- `build/e2e` のみ `when: args.e2e` を保持、`build/execute` / `build/code-review` / `build/integrate` は when なし
 - `.belt/runs/` リテラル + `{run_id}` template の non-existence
 
 **Cross-coupling** (C):
@@ -64,9 +64,9 @@ cross-coupling:
 - `checkpoint_delegates_with_no_args`
 - `args_are_e2e_and_codex_only`
 - `no_legacy_args`
-- `bug_fix_expands_to_nine_namespaced_leaves`
-- `expanded_regate_targets_are_namespaced`
-- `expanded_verify_leaves_inherit_e2e_when`
+- `bug_fix_expands_to_eight_namespaced_leaves`
+- `no_leaf_declares_regate`
+- `e2e_leaf_carries_when_and_others_do_not`
 - `bug_fix_pipeline_has_no_run_id_template`
 
 **pipeline.yml shape dimensions locked** (B):
@@ -74,9 +74,9 @@ cross-coupling:
 - `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` / default false、legacy args (`iterations` / `swarm` / `ui` / `smoke`) の non-existence
 - 3 top-level phase の順序 (`diagnose → pre-execute-handover → build`)、全て `Invoker::Pipeline`
 - diagnose/build の `with` が exactly `{e2e: "args.e2e", codex: "args.codex"}`、checkpoint は `with` 空
-- 展開 leaf ids が exactly 9 件 (`diagnose/rca → ... → build/integrate`)
-- regate は `build/code-review → [build/execute]` のみ、他 leaf は空
-- verify leaves が `when: args.e2e` を継承
+- 展開 leaf ids が exactly 8 件 (`diagnose/rca → diagnose/fix-plan → diagnose/fix-plan-review → pre-execute-handover/checkpoint → build/execute → build/code-review → build/e2e → build/integrate`)
+- regate は全 leaf で空 (2026-07-05 sonnet-lean で regate 全廃)
+- `build/e2e` のみ `when: args.e2e` を保持、`build/execute` / `build/code-review` / `build/integrate` は when なし
 - `.belt/runs/` リテラル + `{run_id}` template の non-existence
 
 **Cross-coupling** (C):

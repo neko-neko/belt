@@ -1,7 +1,7 @@
-//! Integration tests for the composed feature-dev pipeline (2026-07-02
-//! pipeline split): design(sub) + pre-execute-handover(sub) + build(sub).
+//! Integration tests for the composed feature-dev pipeline (2026-07-05
+//! sonnet-lean rewrite): design(sub) + pre-execute-handover(sub) + build(sub).
 //!
-//! Shape contract (spec docs/specs/2026-07-02-pipeline-split-design.md):
+//! Shape contract (spec docs/specs/2026-07-05-sonnet-lean-pipeline-design.md):
 //! - args = { e2e: bool, codex: bool } only
 //! - 3 top-level phases, all Invoker::Pipeline delegations:
 //!   design -> ../design/pipeline.yml,
@@ -9,12 +9,9 @@
 //!   build -> ../build/pipeline.yml
 //! - design/build receive with = { e2e: "args.e2e", codex: "args.codex" }
 //!   (bare full-string form — the only form the expander substitutes)
-//! - expansion flattens to exactly 10 namespaced leaves
-//! - stage-internal regate expands namespaced (never crosses a stage file)
-//! - verify leaves inherit when: "args.e2e" from build's verify phase
-//!
-//! Stage-internal shape (phase order, narrative notes, criteria files) is
-//! locked per stage in `pipeline_split_refresh.rs`.
+//! - expansion flattens to exactly 7 namespaced leaves
+//! - no leaf declares regate (sonnet-lean removed regate)
+//! - build/e2e is the only leaf carrying when: "args.e2e"
 
 #![allow(
     clippy::expect_used,
@@ -39,15 +36,12 @@ fn feature_dev_pipeline_path() -> PathBuf {
 }
 
 const EXPECTED_LEAVES: &[&str] = &[
+    "design/intake",
     "design/design",
-    "design/test-scenarios",
-    "design/spec-review",
-    "design/plan",
     "pre-execute-handover/checkpoint",
     "build/execute",
     "build/code-review",
-    "build/verify/monkey-test",
-    "build/verify/dogfood",
+    "build/e2e",
     "build/integrate",
 ];
 
@@ -158,7 +152,7 @@ fn top_level_args_are_e2e_and_codex_only() -> Result<(), BeltError> {
 }
 
 #[test]
-fn feature_dev_expands_to_ten_namespaced_leaves() {
+fn feature_dev_expands_to_seven_namespaced_leaves() {
     let expanded =
         expand_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must expand");
     let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
@@ -166,49 +160,39 @@ fn feature_dev_expands_to_ten_namespaced_leaves() {
 }
 
 #[test]
-fn expanded_regate_targets_are_namespaced() {
+fn no_leaf_declares_regate() {
     let expanded =
         expand_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must expand");
-    let spec_review = expanded
-        .iter()
-        .find(|p| p.id == "design/spec-review")
-        .expect("design/spec-review leaf must exist");
-    assert_eq!(
-        spec_review.regate,
-        vec!["design/test-scenarios".to_string()],
-        "stage-internal regate must expand into the stage namespace"
-    );
-    let code_review = expanded
-        .iter()
-        .find(|p| p.id == "build/code-review")
-        .expect("build/code-review leaf must exist");
-    assert_eq!(
-        code_review.regate,
-        vec!["build/execute".to_string()],
-        "stage-internal regate must expand into the stage namespace"
-    );
+    for leaf in &expanded {
+        assert!(
+            leaf.regate.is_empty(),
+            "leaf '{}' must have empty regate (sonnet-lean removed regate), got {:?}",
+            leaf.id,
+            leaf.regate
+        );
+    }
 }
 
 #[test]
-fn expanded_verify_leaves_inherit_e2e_when() {
+fn e2e_leaf_carries_when_and_others_do_not() {
     let expanded =
         expand_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must expand");
-    for id in ["build/verify/monkey-test", "build/verify/dogfood"] {
+    let e2e = expanded
+        .iter()
+        .find(|p| p.id == "build/e2e")
+        .expect("build/e2e leaf must exist");
+    assert_eq!(
+        e2e.when.as_deref(),
+        Some("args.e2e"),
+        "build/e2e must carry when: args.e2e"
+    );
+    for id in ["build/execute", "build/code-review", "build/integrate"] {
         let leaf = expanded
             .iter()
             .find(|p| p.id == id)
             .unwrap_or_else(|| panic!("leaf '{id}' must exist"));
-        assert_eq!(
-            leaf.when.as_deref(),
-            Some("args.e2e"),
-            "leaf '{id}' must inherit when: args.e2e from build's verify phase"
-        );
+        assert_eq!(leaf.when, None, "leaf '{id}' must not carry a when");
     }
-    let execute = expanded
-        .iter()
-        .find(|p| p.id == "build/execute")
-        .expect("build/execute leaf must exist");
-    assert_eq!(execute.when, None, "build/execute must not inherit a when");
 }
 
 #[test]

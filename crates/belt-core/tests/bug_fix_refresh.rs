@@ -1,20 +1,17 @@
-//! Integration tests for the composed bug-fix pipeline (2026-07-02 pipeline
-//! split): diagnose(sub) + pre-execute-handover(sub) + build(sub).
+//! Integration tests for the composed bug-fix pipeline (2026-07-05
+//! sonnet-lean rewrite): diagnose(sub) + pre-execute-handover(sub) +
+//! build(sub).
 //!
-//! Shape contract (spec docs/specs/2026-07-02-pipeline-split-design.md):
+//! Shape contract (spec docs/specs/2026-07-05-sonnet-lean-pipeline-design.md):
 //! - args = { e2e: bool, codex: bool } only (legacy args stay removed)
 //! - 3 top-level phases, all Invoker::Pipeline delegations:
 //!   diagnose -> ../diagnose/pipeline.yml,
 //!   pre-execute-handover -> ../handover/checkpoint.yml,
 //!   build -> ../build/pipeline.yml
 //! - diagnose/build receive with = { e2e: "args.e2e", codex: "args.codex" }
-//! - expansion flattens to exactly 9 namespaced leaves
-//! - stage-internal regate expands namespaced; verify leaves inherit
-//!   when: "args.e2e"
-//!
-//! Stage-internal shape (phase order, docs/features artifact paths,
-//! narrative notes, criteria files) is locked per stage in
-//! `pipeline_split_refresh.rs`.
+//! - expansion flattens to exactly 8 namespaced leaves
+//! - no leaf declares regate (sonnet-lean removed regate)
+//! - build/e2e is the only leaf carrying when: "args.e2e"
 
 #![allow(
     clippy::expect_used,
@@ -45,8 +42,7 @@ const EXPECTED_LEAVES: &[&str] = &[
     "pre-execute-handover/checkpoint",
     "build/execute",
     "build/code-review",
-    "build/verify/monkey-test",
-    "build/verify/dogfood",
+    "build/e2e",
     "build/integrate",
 ];
 
@@ -160,50 +156,43 @@ fn no_legacy_args() {
 }
 
 #[test]
-fn bug_fix_expands_to_nine_namespaced_leaves() {
+fn bug_fix_expands_to_eight_namespaced_leaves() {
     let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
     let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();
     assert_eq!(ids, EXPECTED_LEAVES, "expanded leaf ids + order must match");
 }
 
 #[test]
-fn expanded_regate_targets_are_namespaced() {
+fn no_leaf_declares_regate() {
     let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
-    let code_review = expanded
-        .iter()
-        .find(|p| p.id == "build/code-review")
-        .expect("build/code-review leaf must exist");
-    assert_eq!(
-        code_review.regate,
-        vec!["build/execute".to_string()],
-        "stage-internal regate must expand into the stage namespace"
-    );
-    // diagnose declares no regate; every other leaf must have none.
     for leaf in &expanded {
-        if leaf.id != "build/code-review" {
-            assert!(
-                leaf.regate.is_empty(),
-                "leaf '{}' must have empty regate, got {:?}",
-                leaf.id,
-                leaf.regate
-            );
-        }
+        assert!(
+            leaf.regate.is_empty(),
+            "leaf '{}' must have empty regate (sonnet-lean removed regate), got {:?}",
+            leaf.id,
+            leaf.regate
+        );
     }
 }
 
 #[test]
-fn expanded_verify_leaves_inherit_e2e_when() {
+fn e2e_leaf_carries_when_and_others_do_not() {
     let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
-    for id in ["build/verify/monkey-test", "build/verify/dogfood"] {
+    let e2e = expanded
+        .iter()
+        .find(|p| p.id == "build/e2e")
+        .expect("build/e2e leaf must exist");
+    assert_eq!(
+        e2e.when.as_deref(),
+        Some("args.e2e"),
+        "build/e2e must carry when: args.e2e"
+    );
+    for id in ["build/execute", "build/code-review", "build/integrate"] {
         let leaf = expanded
             .iter()
             .find(|p| p.id == id)
             .unwrap_or_else(|| panic!("leaf '{id}' must exist"));
-        assert_eq!(
-            leaf.when.as_deref(),
-            Some("args.e2e"),
-            "leaf '{id}' must inherit when: args.e2e from build's verify phase"
-        );
+        assert_eq!(leaf.when, None, "leaf '{id}' must not carry a when");
     }
 }
 

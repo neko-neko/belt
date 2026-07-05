@@ -1,12 +1,12 @@
 name: build
 version: 1
-description: "Shared build stage (execute -> code-review -> verify -> integrate)"
+description: "Shared build stage (execute -> code-review -> e2e -> integrate)"
 
 args:
   e2e:
     type: bool
     default: false
-    description: "Run the browser-based verify stage (monkey-test, dogfood)"
+    description: "Run the browser-based e2e phase via /belt:verify"
   codex:
     type: bool
     default: false
@@ -14,67 +14,72 @@ args:
 
 phases:
   - id: execute
-    description: "Execute the implementation plan via TDD subagents"
-    invoke:
-      skill: /subagent-driven-development
+    description: "Implement the plan document's task list via TDD subagents (see build SKILL.md, Phase: execute)"
     produces:
-      - name: execute_notes
-        path: "belt://current/notes/phase-execute.md"
-        description: "Phase narrative"
+      - name: evidence
+        path: "docs/features/*/evidence.md"
+        description: "Per-phase evidence log"
     gate:
-      - file_exists: "belt://current/notes/phase-execute.md"
-    validate: ./criteria/execute.md
+      - file_exists: "docs/features/*/evidence.md"
+    validate:
+      - "Every checkbox in the plan document's task list (design.md Implementation Tasks, or fix-plan.md for bug runs) is checked"
+      - "Project test suite passes; command and result recorded in evidence.md's execute entry"
+      - "Project linter passes; command and result recorded in evidence.md's execute entry"
     confirm: true
     max_retries: 3
 
   - id: code-review
-    description: "Multi-perspective code review"
+    description: "Two-agent parallel code review with batched triage"
     invoke:
       skill: /belt:code-review
       args:
         codex: "args.codex"
-    consumes:
-      - execute_notes
     produces:
-      - name: findings-security
-        path: "belt://current/review/findings-security.json"
-        description: "Security observation findings"
-      - name: findings-test
-        path: "belt://current/review/findings-test.json"
-        description: "Test observation findings"
-      - name: findings-ai-antipattern
-        path: "belt://current/review/findings-ai-antipattern.json"
-        description: "AI antipattern observation findings"
-      - name: findings-cross-cutting
-        path: "belt://current/review/findings-cross-cutting.json"
-        description: "Cross-cutting observation findings"
+      - name: findings-code
+        path: "belt://current/review/findings-code.json"
+        description: "Security + impact findings"
+      - name: findings-quality
+        path: "belt://current/review/findings-quality.json"
+        description: "Test + AI-antipattern findings"
       - name: findings-codex
         path: "belt://current/review/findings-codex.json"
-        description: "Codex adversarial review findings"
+        description: "Codex adversarial findings"
         when: "args.codex"
       - name: findings
         path: "belt://current/review/findings.json"
-        description: "Merged findings (post-dedup)"
-      - name: code_review_notes
-        path: "belt://current/notes/phase-code-review.md"
-        description: "Phase narrative"
+        description: "Merged findings"
     gate:
-      - file_exists: "belt://current/notes/phase-code-review.md"
       - file_exists: "belt://current/review/findings.json"
-    validate: ./criteria/code-review.md
-    regate: [execute]
+    validate:
+      - "Every critical/high finding in findings.json is fixed or explicitly rejected by the user"
+      - "Linter and test suite pass after fixes; recorded in evidence.md's code-review entry"
     confirm: true
     max_retries: 3
 
-  - id: verify
+  - id: e2e
     when: "args.e2e"
+    description: "Browser-based verification: scenario replay + exploratory pass via /belt:verify"
     invoke:
-      pipeline: ../verify/pipeline.yml
+      skill: /belt:verify
+    produces:
+      - name: e2e_report
+        path: "docs/features/*/e2e-report.md"
+        description: "Scenario results, exploratory notes, verdict"
+    gate:
+      - file_exists: "docs/features/*/e2e-report.md"
+    validate:
+      - "Every scenario in scenarios.yml was replayed with PASS/FAIL recorded in e2e-report.md"
+      - "Every FAIL was fixed and re-run, or explicitly accepted by the user"
+      - "evidence.md has an e2e entry"
+    confirm: true
+    max_retries: 3
 
   - id: integrate
     description: "Integrate changes (user chooses: wt merge or gh pr create)"
     invoke:
       skill: /worktrunk
-    validate: ./criteria/integrate.md
+    validate:
+      - "User explicitly chose the integration mode (wt merge or gh pr create)"
+      - "evidence.md has one entry per completed phase, ending with integrate"
     confirm: true
     max_retries: 3
