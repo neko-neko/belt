@@ -3,7 +3,8 @@ name: code-review
 description: >-
   Two-agent parallel code review (belt:code-reviewer + belt:quality-reviewer)
   with deterministic merge. --codex adds an adversarial pass via
-  /codex:rescue. Findings are triaged in one batched selection.
+  /codex:rescue. In a belt run, critical/high findings are fixed
+  autonomously; standalone runs triage findings in one batched selection.
 argument-hint: "[--codex]"
 ---
 

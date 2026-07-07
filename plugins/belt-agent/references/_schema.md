@@ -8,7 +8,7 @@ description: >-
 
 # Done-Criteria Schema
 
-This document defines the format for done-criteria files used by the audit-gate pattern.
+This document defines the format for done-criteria files (originally introduced by the now-retired audit-gate pattern).
 Each done-criteria file is consumed by the orchestrator when it evaluates a phase's validate: file reference (the audit-gate pattern is retired).
 
 ## File Format

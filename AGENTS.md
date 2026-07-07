@@ -235,11 +235,12 @@ belt は Claude Code plugin として **2 plugin 構成**で配布する:
 
 | Plugin | 責務 | 呼び出し namespace |
 |---|---|---|
-| `belt` | user-invocable skills + それに紐づく reviewer agents | `/belt:<skill>`, `belt:<reviewer>` |
-| `belt-agent` | Belt Protocol driver skill + 汎用 analysis agents + shared references | `belt-agent:protocol`, `belt-agent:<agent>` |
+| `belt` | user-invocable skills + それに紐づく agents (3 reviewer + qa-verifier) | `/belt:<skill>`, `belt:<agent>` |
+| `belt-agent` | Belt Protocol driver skill + 汎用 analysis agents (explorer + implementer) + shared references | `belt-agent:protocol`, `belt-agent:<agent>` |
 
+- agents は計 6 体: `belt:spec-reviewer` / `belt:code-reviewer` / `belt:quality-reviewer` + `belt:qa-verifier`(belt 側)、`belt-agent:explorer` + `belt-agent:implementer`(belt-agent 側)
 - `belt` は `belt-agent` を依存として要求する (Claude Code plugin manifest に hard dependency field が無いため、README / CHANGELOG で明示)
-- Skill tool invoke および agent reference は常に fully-qualified (`/belt:code-review`, `belt-agent:phase-auditor`) で記述する。Shorthand (`/code-review`) は使用禁止
+- Skill tool invoke および agent reference は常に fully-qualified (`/belt:code-review`, `belt-agent:explorer`) で記述する。Shorthand (`/code-review`) は使用禁止
 - SKILL.md / agents / pipeline.yml の記述は `plugins/belt-agent/references/authoring-principles.md`(Sonnet-lean 規範)に従う。criteria ファイル・supplement 連鎖の新設は禁止
 - CLI binary `belt-agent` と plugin `belt-agent` が同名だが、前者は executable、後者は Claude Code config。context で区別する
 

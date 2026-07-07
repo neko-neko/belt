@@ -267,20 +267,28 @@ production tooling for quality-gated AI-driven development.
 
 | Plugin | Purpose |
 |---|---|
-| `belt-agent` | Foundation: Belt Protocol driver skill + 5 analysis agents (phase-auditor, feature-implementer, code-explorer, code-architect, impact-analyzer) + shared references |
-| `belt` | User-invocable pipelines and reviewer agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:goal`, `/belt:design`, `/belt:build`, `/belt:verify`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`. Requires `belt-agent` |
+| `belt-agent` | Foundation: Belt Protocol driver skill + 2 analysis agents (`explorer`, `implementer`) + shared references |
+| `belt` | User-invocable skills and their agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:requirements`, `/belt:docs`, `/belt:goal`, `/belt:design`, `/belt:plan`, `/belt:build`, `/belt:qa`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`, plus the `qa-verifier` agent. Requires `belt-agent` |
+
+`/belt:feature-dev` composes the stages design → plan → checkpoint →
+build → qa → integrate; `/belt:bug-fix` composes diagnose → checkpoint →
+build → qa → integrate. Six agents back the pipelines:
+`belt-agent:explorer` and `belt-agent:implementer` (codebase analysis /
+TDD execution) plus `belt:spec-reviewer`, `belt:code-reviewer`,
+`belt:quality-reviewer`, and `belt:qa-verifier` (review / QA
+verification).
 
 ### External skill dependencies
 
-The belt skills invoke skills from other plugins. `/belt:verify` requires
+The belt skills invoke skills from other plugins. `/belt:qa` requires
 the `agent-browser` CLI. Install these before the belt plugins that use them:
 
 | Dependency | Source | Required by |
 |---|---|---|
-| `/writing-plans` | [obra/superpowers](https://github.com/obra/superpowers) | `/belt:bug-fix` `fix-plan` phase |
-| `/systematic-debugging` | obra/superpowers | `/belt:bug-fix` `rca` phase |
+| `/writing-plans` | [obra/superpowers](https://github.com/obra/superpowers) | `/belt:diagnose` `fix-plan` phase (via `/belt:bug-fix`) |
+| `/systematic-debugging` | obra/superpowers | `/belt:diagnose` `rca` phase (via `/belt:bug-fix`) |
 | `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | `/belt:feature-dev` `integrate` phase, `/belt:bug-fix` `integrate` phase |
-| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:verify` always, `/belt:feature-dev` / `/belt:bug-fix` `e2e` phase (when `--e2e`) |
+| `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:qa` — always, as the `qa` stage of `/belt:feature-dev` / `/belt:bug-fix` and standalone (browser scenarios) |
 
 ### Install
 
@@ -311,14 +319,19 @@ After install:
 
 ```
 # Start a pipeline (feature-dev accepts a Linear id, URL, or free-text task)
-/belt:feature-dev CLA-42 --e2e
+/belt:feature-dev CLA-42
 /belt:bug-fix
 
 # Run a single stage standalone
 /belt:goal
 /belt:design
+/belt:plan
 /belt:build
-/belt:verify
+/belt:qa
+
+# Write requirements or documentation
+/belt:requirements
+/belt:docs
 
 # Run a review standalone
 /belt:code-review
@@ -329,10 +342,22 @@ After install:
 /belt:resume
 ```
 
+### QA evidence
+
+Every pipeline run ends with a mandatory QA stage: the independent
+`belt:qa-verifier` agent replays `docs/features/<topic>/scenarios.yml`
+and captures human-readable evidence — browser screenshots and CLI
+transcripts — under the belt run directory (never committed), summarized
+in a committed `qa-report.md`. The `[qa] evidence` key in `belt.toml`
+selects where evidence is published: `pr` (orphan `qa-evidence` branch,
+linked from a PR comment at integrate), `linear` (attached to the Linear
+issue), `local` (kept in the run directory), or `auto` (default —
+PR if one is created, else Linear, else local).
+
 See each skill's `SKILL.md` (under `plugins/belt/skills/<skill>/`) for phase
 details and arg reference. Skill tool invocations inside skills, agents,
 and pipeline files are always written fully-qualified (`/belt:code-review`,
-`belt-agent:phase-auditor`) — shorthand (`/code-review`) is not used.
+`belt-agent:explorer`) — shorthand (`/code-review`) is not used.
 
 ## License
 

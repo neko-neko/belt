@@ -68,8 +68,9 @@ The execute and code-review phases write to git history and
 `belt-agent locate belt://current/review/findings.json`), not under
 `docs/features/`.
 
-The integrate phase consumes from `docs/features/<topic>/` but does not
-write there.
+The integrate phase appends the final entry to evidence.md and records
+the published QA evidence destination there; it writes nothing else
+under `docs/features/<topic>/`.
 
 ## Glob Resolution
 

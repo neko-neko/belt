@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- `/belt:plan` stage skill — implementation planning (plan.md + scenarios.yml) split out of design (D1)
+- `/belt:qa` stage skill — mandatory QA with human-readable evidence: browser screenshots / cli transcripts captured by the new independent `belt:qa-verifier` agent (D2, D3)
+- `/belt:requirements` — interview-driven requirements definition writing docs/requirements/
+- `/belt:docs` — general-purpose documentation writing under docs/
+- `belt-agent:explorer` — unified codebase explorer (focus: flow | patterns | impact)
+- `[qa] evidence` belt.toml key — evidence destination: pr | linear | local | auto (D9)
+
+### Changed
+
+- **BREAKING**: `--e2e` removed from feature-dev / bug-fix / design / diagnose / build — QA is always on (D2)
+- feature-dev is now design → plan → checkpoint → build → qa → integrate; bug-fix is diagnose → checkpoint → build → qa → integrate; integrate moved out of build (D5)
+- Human confirms reduced to design approval, plan approval, checkpoint, integrate (feature) / diagnosis approval, checkpoint, integrate (bug) (D4)
+- `/belt:code-review` triage is autonomous in pipeline mode (critical/high auto-fixed or deferred with reason)
+- `/belt:spec-review` accepts a target path and an output artifact name / directory
+- `belt-agent:feature-implementer` renamed to `belt-agent:implementer`
+- rca-scenarios.yml is always authored (was `--e2e` gated)
+
+### Removed
+
+- **BREAKING**: `/belt:verify` (replaced by `/belt:qa`)
+- **BREAKING**: agents `belt-agent:code-explorer`, `belt-agent:code-architect`, `belt-agent:impact-analyzer`, `belt-agent:phase-auditor` (consolidated into `belt-agent:explorer` / retired), and `references/audit-protocol.md`
+
 ## [0.2.0] - 2026-04-17
 
 ### Changed (BREAKING)

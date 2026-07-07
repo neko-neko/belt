@@ -1,6 +1,6 @@
 {
   "name": "belt-agent",
-  "description": "Foundation: Belt Protocol skill (driver for belt-agent CLI) + 2 pipeline agents (explorer, implementer) + shared references",
-  "version": "0.3.0",
+  "description": "Foundation: Belt Protocol skill (driver for belt-agent CLI) + 2 analysis agents (explorer, implementer) + shared references",
+  "version": "0.4.0",
   "author": { "name": "neko-neko" }
 }
