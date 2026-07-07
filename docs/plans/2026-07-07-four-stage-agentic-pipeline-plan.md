@@ -1927,8 +1927,8 @@ This phase has no `invoke` — execute these steps directly:
 
 - Never ask the user design questions one at a time — batch remaining
   open points in one AskUserQuestion call.
-- Never write an Implementation Tasks section in design.md — task
-  breakdown belongs to /belt:plan.
+- Never write a Tasks section in design.md — task breakdown belongs
+  to /belt:plan.
 - Never hand-edit files under `docs/features/<topic>/` after a phase
   completes (breaks the phase-start mtime filter).
 
