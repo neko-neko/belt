@@ -1,23 +1,24 @@
 name: feature-dev
 version: 1
-description: "Quality-gated development pipeline (composed: design -> checkpoint -> build)"
+description: "Quality-gated development pipeline (composed: design -> plan -> checkpoint -> build -> qa -> integrate)"
 
 args:
-  e2e:
-    type: bool
-    default: false
-    description: "Enable E2E verification (browser-based, via /belt:verify)"
   codex:
     type: bool
     default: false
-    description: "Enable Codex parallel review in spec-review and code-review"
+    description: "Enable Codex parallel review in spec review, plan review, and code-review"
 
 phases:
   - id: design
     invoke:
       pipeline: ../design/pipeline.yml
       with:
-        e2e: "args.e2e"
+        codex: "args.codex"
+
+  - id: plan
+    invoke:
+      pipeline: ../plan/pipeline.yml
+      with:
         codex: "args.codex"
 
   - id: pre-execute-handover
@@ -28,5 +29,20 @@ phases:
     invoke:
       pipeline: ../build/pipeline.yml
       with:
-        e2e: "args.e2e"
         codex: "args.codex"
+
+  - id: qa
+    invoke:
+      pipeline: ../qa/pipeline.yml
+
+  - id: integrate
+    description: "Integrate changes (user chooses: wt merge or gh pr create); publish QA evidence (see orchestrator SKILL.md)"
+    invoke:
+      skill: /worktrunk
+    validate:
+      - "User explicitly chose the integration mode (wt merge or gh pr create)"
+      - "Deferred findings, accepted FAILs, QA fix commits, and exploratory advisories were presented to the user"
+      - "QA evidence was published to the destination (PR comment / Linear), or the local-only fallback was explicitly reported"
+      - "evidence.md has one entry per completed phase, ending with integrate"
+    confirm: true
+    max_retries: 3

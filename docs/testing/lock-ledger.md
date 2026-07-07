@@ -9,37 +9,40 @@ belt-core/tests/ 配下の shape lock tests の台帳。各 entry は `locks-fil
 ```yaml
 locks-file: crates/belt-core/tests/feature_dev_refresh.rs
 pipeline: plugins/belt/skills/feature-dev/pipeline.yml
-test-fn-count: 8
+test-fn-count: 9
 cross-coupling:
   - crates/belt-core/tests/bug_fix_refresh.rs
   - crates/belt-core/tests/review_skills_refresh.rs
   - crates/belt-core/tests/shared_filter_parity.rs
 ```
 
-**8 test fn 名** (A):
+**9 test fn 名** (A):
 
-- `feature_dev_composes_three_stages`
-- `stages_delegate_with_e2e_and_codex_passthrough`
-- `checkpoint_delegates_with_no_args`
-- `top_level_args_are_e2e_and_codex_only`
-- `feature_dev_expands_to_seven_namespaced_leaves`
-- `no_leaf_declares_regate`
-- `e2e_leaf_carries_when_and_others_do_not`
+- `feature_dev_composes_six_stages`
+- `stages_delegate_with_codex_passthrough`
+- `checkpoint_and_qa_delegate_with_no_args`
+- `top_level_args_are_codex_only`
+- `feature_dev_expands_to_eight_namespaced_leaves`
+- `no_leaf_declares_regate_or_when`
+- `confirm_leaves_match_the_four_touchpoints`
+- `integrate_leaf_identical_across_orchestrators`
 - `feature_dev_pipeline_has_no_run_id_template`
 
 **pipeline.yml shape dimensions locked** (B):
 
-- `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` / default false
-- 3 top-level phase の順序 (`design → pre-execute-handover → build`)、全て `Invoker::Pipeline`
-- design/build の `with` が exactly `{e2e: "args.e2e", codex: "args.codex"}` (bare full-string form)、checkpoint は `with` 空
-- 展開 leaf ids が exactly 7 件 (`design/intake → design/design → pre-execute-handover/checkpoint → build/execute → build/code-review → build/e2e → build/integrate`)
-- regate は全 leaf で空 (2026-07-05 sonnet-lean で regate 全廃)
-- `build/e2e` のみ `when: args.e2e` を保持、`build/execute` / `build/code-review` / `build/integrate` は when なし
+- `args` set が exactly `{codex}` + `ArgType::Bool` / default false (2026-07-07 four-stage rewrite で e2e 廃止 — QA mandatory, D2)
+- 6 top-level phase の順序 (`design → plan → pre-execute-handover → build → qa → integrate`)
+- design/plan/build は `Invoker::Pipeline` + `with` exactly `{codex: "args.codex"}` (bare full-string form)、pre-execute-handover / qa は `with` 空
+- integrate は inline leaf (`Invoker::Skill /worktrunk`)
+- 展開 leaf ids が exactly 8 件 (`design/intake → design/design → plan/plan → pre-execute-handover/checkpoint → build/execute → build/code-review → qa/qa → integrate`)
+- regate は全 leaf で空、phase-level `when` も全 leaf で non-existence (e2e opt-in 全廃)
+- confirm leaves は exactly 4 件 (`design/design` / `plan/plan` / `pre-execute-handover/checkpoint` / `integrate`) (D4)
+- integrate leaf は bug-fix と serde_json::Value 同値 (D14 inline duplication + identity lock)
 - `.belt/runs/` リテラル + `{run_id}` template の non-existence
 
 **Cross-coupling** (C):
 
-- `bug_fix_refresh.rs` — bug-fix 合成 shape (同 tuple pattern で parallel)
+- `bug_fix_refresh.rs` — bug-fix 合成 shape (同 tuple pattern で parallel)、integrate leaf 同値 lock の相手側
 - `review_skills_refresh.rs` / `shared_filter_parity.rs` — 従来どおり
 
 ---
@@ -56,29 +59,31 @@ cross-coupling:
 
 **9 test fn 名** (A):
 
-- `bug_fix_composes_three_stages`
-- `stages_delegate_with_e2e_and_codex_passthrough`
-- `checkpoint_delegates_with_no_args`
-- `args_are_e2e_and_codex_only`
+- `bug_fix_composes_five_stages`
+- `stages_delegate_with_codex_passthrough`
+- `checkpoint_and_qa_delegate_with_no_args`
+- `args_are_codex_only`
 - `no_legacy_args`
 - `bug_fix_expands_to_eight_namespaced_leaves`
-- `no_leaf_declares_regate`
-- `e2e_leaf_carries_when_and_others_do_not`
+- `no_leaf_declares_regate_or_when`
+- `confirm_leaves_match_the_three_touchpoints`
 - `bug_fix_pipeline_has_no_run_id_template`
 
 **pipeline.yml shape dimensions locked** (B):
 
-- `args` set が exactly `{codex, e2e}` + 全 arg が `ArgType::Bool` / default false、legacy args (`iterations` / `swarm` / `ui` / `smoke`) の non-existence
-- 3 top-level phase の順序 (`diagnose → pre-execute-handover → build`)、全て `Invoker::Pipeline`
-- diagnose/build の `with` が exactly `{e2e: "args.e2e", codex: "args.codex"}`、checkpoint は `with` 空
-- 展開 leaf ids が exactly 8 件 (`diagnose/rca → diagnose/fix-plan → diagnose/fix-plan-review → pre-execute-handover/checkpoint → build/execute → build/code-review → build/e2e → build/integrate`)
-- regate は全 leaf で空 (2026-07-05 sonnet-lean で regate 全廃)
-- `build/e2e` のみ `when: args.e2e` を保持、`build/execute` / `build/code-review` / `build/integrate` は when なし
+- `args` set が exactly `{codex}` + `ArgType::Bool` / default false、legacy args (`iterations` / `swarm` / `ui` / `smoke` / `e2e`) の non-existence (2026-07-07 four-stage rewrite で e2e も legacy 化)
+- 5 top-level phase の順序 (`diagnose → pre-execute-handover → build → qa → integrate`)
+- diagnose/build は `Invoker::Pipeline` + `with` exactly `{codex: "args.codex"}` (bare full-string form)、pre-execute-handover / qa は `with` 空
+- integrate は inline leaf (`Invoker::Skill /worktrunk`)
+- 展開 leaf ids が exactly 8 件 (`diagnose/rca → diagnose/fix-plan → diagnose/fix-plan-review → pre-execute-handover/checkpoint → build/execute → build/code-review → qa/qa → integrate`)
+- regate は全 leaf で空、phase-level `when` も全 leaf で non-existence (e2e opt-in 全廃)
+- confirm leaves は exactly 3 件 (`diagnose/fix-plan-review` / `pre-execute-handover/checkpoint` / `integrate`) (D4: 診断承認は 1 点)
+- integrate leaf の feature-dev との同値は `feature_dev_refresh.rs::integrate_leaf_identical_across_orchestrators` が lock
 - `.belt/runs/` リテラル + `{run_id}` template の non-existence
 
 **Cross-coupling** (C):
 
-- `feature_dev_refresh.rs` — feature-dev 合成 shape (同 tuple pattern で parallel)
+- `feature_dev_refresh.rs` — feature-dev 合成 shape (同 tuple pattern で parallel)、integrate leaf 同値 lock を保持
 
 ---
 

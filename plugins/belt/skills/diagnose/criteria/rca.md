@@ -97,19 +97,15 @@ audit: lite
 - **depends_on_artifacts**: [docs/features/*/rca-report.md]
 - **forward_check**: Fix Plan must include tasks for paired paths if asymmetry risk is identified
 
-### RCA-09: Reproduction scenarios file exists when --e2e
-- **severity**: blocker
-- **verify_type**: automated
-- **verification**:
-  1. Read `args.e2e` from `belt-agent status` JSON output
-  2. If `args.e2e=false`, PASS (vacuously satisfied — scenarios not required for non-e2e runs)
-  3. If `args.e2e=true`:
-     a. Search for scenarios file using `Glob("docs/features/*/rca-scenarios.yml")`
-     b. Verify the file contains at least one scenario in Given/When/Then format
-- **pass_condition**: `args.e2e=false`, OR (file exists with ≥1 Given/When/Then scenario)
-- **fail_diagnosis_hint**: If `--e2e=true` and file is missing, the RCA executor did not load `rca-supplement.md`. Confirm supplement injection in the diagnose SKILL.md rca invocation
-- **depends_on_artifacts**: [docs/features/*/rca-scenarios.yml]  # only relevant when args.e2e=true
-- **forward_check**: monkey-test phase consumes `rca_scenarios` when `args.e2e=true`
+### RCA-09: Reproduction scenarios file exists
+
+- **check**:
+  1. Search for the scenarios file using `Glob("docs/features/*/rca-scenarios.yml")`
+  2. Verify it contains at least one Given/When/Then scenario and every scenario has `kind: browser` or `kind: cli`
+- **pass_condition**: file exists with ≥1 scenario, each carrying a kind
+- **fail_diagnosis_hint**: If the file is missing, the RCA executor did not load `rca-supplement.md`. Confirm supplement injection in the diagnose SKILL.md rca invocation
+- **depends_on_artifacts**: [docs/features/*/rca-scenarios.yml]
+- **forward_check**: the qa phase replays `rca_scenarios` via belt:qa-verifier
 
 ### RCA-10: Narrative note captures root-cause investigation
 - **severity**: blocker

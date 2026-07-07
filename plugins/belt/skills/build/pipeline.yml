@@ -1,12 +1,8 @@
 name: build
 version: 1
-description: "Shared build stage (execute -> code-review -> e2e -> integrate)"
+description: "Shared build stage (execute -> code-review)"
 
 args:
-  e2e:
-    type: bool
-    default: false
-    description: "Run the browser-based e2e phase via /belt:verify"
   codex:
     type: bool
     default: false
@@ -22,14 +18,13 @@ phases:
     gate:
       - file_exists: "docs/features/*/evidence.md"
     validate:
-      - "Every checkbox in the plan document's task list (design.md Implementation Tasks, or fix-plan.md for bug runs) is checked"
+      - "Every checkbox in the plan document's task list (plan.md Tasks, or fix-plan.md for bug runs) is checked"
       - "Project test suite passes; command and result recorded in evidence.md's execute entry"
       - "Project linter passes; command and result recorded in evidence.md's execute entry"
-    confirm: true
     max_retries: 3
 
   - id: code-review
-    description: "Two-agent parallel code review with batched triage"
+    description: "Two-agent parallel code review with autonomous triage (critical/high auto-fixed or deferred with reason)"
     invoke:
       skill: /belt:code-review
       args:
@@ -51,35 +46,6 @@ phases:
     gate:
       - file_exists: "belt://current/review/findings.json"
     validate:
-      - "Every critical/high finding in findings.json is fixed or explicitly rejected by the user"
+      - "Every critical/high finding in findings.json is fixed, or recorded as deferred with a reason in evidence.md's code-review entry"
       - "Linter and test suite pass after fixes; recorded in evidence.md's code-review entry"
-    confirm: true
-    max_retries: 3
-
-  - id: e2e
-    when: "args.e2e"
-    description: "Browser-based verification: scenario replay + exploratory pass via /belt:verify"
-    invoke:
-      skill: /belt:verify
-    produces:
-      - name: e2e_report
-        path: "docs/features/*/e2e-report.md"
-        description: "Scenario results, exploratory notes, verdict"
-    gate:
-      - file_exists: "docs/features/*/e2e-report.md"
-    validate:
-      - "Every scenario in scenarios.yml was replayed with PASS/FAIL recorded in e2e-report.md, or e2e-report.md's Verdict is SKIPPED with a recorded reason"
-      - "Every FAIL was fixed and re-run, or explicitly accepted by the user"
-      - "evidence.md has an e2e entry"
-    confirm: true
-    max_retries: 3
-
-  - id: integrate
-    description: "Integrate changes (user chooses: wt merge or gh pr create)"
-    invoke:
-      skill: /worktrunk
-    validate:
-      - "User explicitly chose the integration mode (wt merge or gh pr create)"
-      - "evidence.md has one entry per completed phase, ending with integrate"
-    confirm: true
     max_retries: 3

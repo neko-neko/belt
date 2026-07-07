@@ -1735,16 +1735,7 @@ fn feature_dev_migrated_pipeline_boots() {
 
     // init
     let init_out = std::process::Command::new(env!("CARGO_BIN_EXE_belt-agent"))
-        .args([
-            "init",
-            pipeline.to_str().unwrap(),
-            "--arg",
-            "smoke=false",
-            "--arg",
-            "e2e=false",
-            "--arg",
-            "doc=false",
-        ])
+        .args(["init", pipeline.to_str().unwrap(), "--arg", "codex=false"])
         .current_dir(scratch.path())
         .output()
         .expect("belt-agent init");
@@ -1774,13 +1765,13 @@ fn feature_dev_migrated_pipeline_boots() {
         serde_json::from_slice(&next_out.stdout).expect("next stdout is JSON");
     assert_eq!(
         next_json["phase"]["id"].as_str(),
-        Some("design/design"),
-        "first phase should be the expanded leaf 'design/design'"
+        Some("design/intake"),
+        "first phase should be the expanded leaf 'design/intake'"
     );
     // The phase should carry the new invoke shape.
     let invoke = &next_json["phase"]["invoke"];
     assert!(invoke.is_object(), "invoke must be present");
-    assert_eq!(invoke["skill"].as_str(), Some("/brainstorming"));
+    assert_eq!(invoke["skill"].as_str(), Some("/belt:goal"));
 }
 
 #[test]

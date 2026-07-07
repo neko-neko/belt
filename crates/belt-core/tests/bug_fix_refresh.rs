@@ -1,17 +1,19 @@
-//! Integration tests for the composed bug-fix pipeline (2026-07-05
-//! sonnet-lean rewrite): diagnose(sub) + pre-execute-handover(sub) +
-//! build(sub).
+//! Integration tests for the composed bug-fix pipeline (2026-07-07
+//! four-stage rewrite): diagnose(sub) + pre-execute-handover(sub) +
+//! build(sub) + qa(sub) + integrate(leaf).
 //!
-//! Shape contract (spec docs/specs/2026-07-05-sonnet-lean-pipeline-design.md):
-//! - args = { e2e: bool, codex: bool } only (legacy args stay removed)
-//! - 3 top-level phases, all Invoker::Pipeline delegations:
-//!   diagnose -> ../diagnose/pipeline.yml,
-//!   pre-execute-handover -> ../handover/checkpoint.yml,
-//!   build -> ../build/pipeline.yml
-//! - diagnose/build receive with = { e2e: "args.e2e", codex: "args.codex" }
+//! Shape contract (spec docs/specs/2026-07-07-four-stage-agentic-pipeline-design.md):
+//! - args = { codex: bool } only (e2e removed — QA is mandatory, D2)
+//! - 5 top-level phases: diagnose/build delegate with { codex },
+//!   pre-execute-handover and qa delegate with empty `with`,
+//!   integrate is an inline leaf (Invoker::Skill /worktrunk)
 //! - expansion flattens to exactly 8 namespaced leaves
-//! - no leaf declares regate (sonnet-lean removed regate)
-//! - build/e2e is the only leaf carrying when: "args.e2e"
+//! - no leaf declares regate; no leaf carries a phase-level when
+//! - confirm leaves are exactly diagnose/fix-plan-review,
+//!   pre-execute-handover/checkpoint, integrate (D4: one diagnosis
+//!   approval point)
+//! - integrate identity with feature-dev is locked in
+//!   feature_dev_refresh.rs::integrate_leaf_identical_across_orchestrators
 
 #![allow(
     clippy::expect_used,
@@ -42,24 +44,36 @@ const EXPECTED_LEAVES: &[&str] = &[
     "pre-execute-handover/checkpoint",
     "build/execute",
     "build/code-review",
-    "build/e2e",
-    "build/integrate",
+    "qa/qa",
+    "integrate",
+];
+
+const CONFIRM_LEAVES: &[&str] = &[
+    "diagnose/fix-plan-review",
+    "pre-execute-handover/checkpoint",
+    "integrate",
 ];
 
 #[test]
-fn bug_fix_composes_three_stages() -> Result<(), BeltError> {
+fn bug_fix_composes_five_stages() -> Result<(), BeltError> {
     let pipeline = parse_pipeline(&bug_fix_pipeline_path())?;
     let got: Vec<&str> = pipeline.phases.iter().map(|p| p.id.as_str()).collect();
     assert_eq!(
         got,
-        vec!["diagnose", "pre-execute-handover", "build"],
-        "top-level composition must be diagnose -> checkpoint -> build"
+        vec![
+            "diagnose",
+            "pre-execute-handover",
+            "build",
+            "qa",
+            "integrate"
+        ],
+        "top-level composition must be diagnose -> checkpoint -> build -> qa -> integrate"
     );
     Ok(())
 }
 
 #[test]
-fn stages_delegate_with_e2e_and_codex_passthrough() {
+fn stages_delegate_with_codex_passthrough() {
     let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
     for (phase_id, expected_sub) in [
         ("diagnose", "../diagnose/pipeline.yml"),
@@ -78,17 +92,11 @@ fn stages_delegate_with_e2e_and_codex_passthrough() {
             panic!("phase '{phase_id}' must use Invoker::Pipeline");
         };
         assert_eq!(sub_path, expected_sub, "phase '{phase_id}' sub path");
-        let mut keys: Vec<&str> = with.keys().map(String::as_str).collect();
-        keys.sort_unstable();
+        let keys: Vec<&str> = with.keys().map(String::as_str).collect();
         assert_eq!(
             keys,
-            vec!["codex", "e2e"],
-            "phase '{phase_id}' must pass exactly {{codex, e2e}}"
-        );
-        assert_eq!(
-            with.get("e2e").and_then(|v| v.as_str()),
-            Some("args.e2e"),
-            "phase '{phase_id}' e2e must be the bare full-string form"
+            vec!["codex"],
+            "phase '{phase_id}' must pass exactly {{codex}}"
         );
         assert_eq!(
             with.get("codex").and_then(|v| v.as_str()),
@@ -99,37 +107,38 @@ fn stages_delegate_with_e2e_and_codex_passthrough() {
 }
 
 #[test]
-fn checkpoint_delegates_with_no_args() {
+fn checkpoint_and_qa_delegate_with_no_args() {
     let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
-    let phase = pipeline
-        .phases
-        .iter()
-        .find(|p| p.id == "pre-execute-handover")
-        .expect("pre-execute-handover phase must exist");
-    match phase.invoke.as_ref() {
-        Some(Invoker::Pipeline {
-            pipeline: sub_path,
-            with,
-        }) => {
-            assert_eq!(
-                sub_path, "../handover/checkpoint.yml",
-                "pre-execute-handover must delegate to ../handover/checkpoint.yml"
-            );
-            assert!(
-                with.is_empty(),
-                "pre-execute-handover delegation must not pass any `with` args"
-            );
+    for (phase_id, expected_sub) in [
+        ("pre-execute-handover", "../handover/checkpoint.yml"),
+        ("qa", "../qa/pipeline.yml"),
+    ] {
+        let phase = pipeline
+            .phases
+            .iter()
+            .find(|p| p.id == phase_id)
+            .unwrap_or_else(|| panic!("phase '{phase_id}' must exist"));
+        match phase.invoke.as_ref() {
+            Some(Invoker::Pipeline {
+                pipeline: sub_path,
+                with,
+            }) => {
+                assert_eq!(sub_path, expected_sub, "phase '{phase_id}' sub path");
+                assert!(
+                    with.is_empty(),
+                    "phase '{phase_id}' delegation must not pass any `with` args"
+                );
+            }
+            other => panic!("phase '{phase_id}' must use Invoker::Pipeline, got {other:?}"),
         }
-        other => panic!("pre-execute-handover must use Invoker::Pipeline, got {other:?}"),
     }
 }
 
 #[test]
-fn args_are_e2e_and_codex_only() {
+fn args_are_codex_only() {
     let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
-    let mut keys: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
-    keys.sort_unstable();
-    assert_eq!(keys, vec!["codex", "e2e"]);
+    let keys: Vec<&str> = pipeline.args.keys().map(String::as_str).collect();
+    assert_eq!(keys, vec!["codex"]);
 
     for (name, def) in &pipeline.args {
         assert!(
@@ -147,7 +156,7 @@ fn args_are_e2e_and_codex_only() {
 #[test]
 fn no_legacy_args() {
     let pipeline = parse_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must parse");
-    for legacy in ["iterations", "swarm", "ui", "smoke"] {
+    for legacy in ["iterations", "swarm", "ui", "smoke", "e2e"] {
         assert!(
             !pipeline.args.contains_key(legacy),
             "legacy arg '{legacy}' must be removed"
@@ -163,37 +172,35 @@ fn bug_fix_expands_to_eight_namespaced_leaves() {
 }
 
 #[test]
-fn no_leaf_declares_regate() {
+fn no_leaf_declares_regate_or_when() {
     let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
     for leaf in &expanded {
         assert!(
             leaf.regate.is_empty(),
-            "leaf '{}' must have empty regate (sonnet-lean removed regate), got {:?}",
+            "leaf '{}' must have empty regate, got {:?}",
             leaf.id,
             leaf.regate
+        );
+        assert_eq!(
+            leaf.when, None,
+            "leaf '{}' must not carry a phase-level when (e2e opt-in removed)",
+            leaf.id
         );
     }
 }
 
 #[test]
-fn e2e_leaf_carries_when_and_others_do_not() {
+fn confirm_leaves_match_the_three_touchpoints() {
     let expanded = expand_pipeline(&bug_fix_pipeline_path()).expect("bug-fix pipeline must expand");
-    let e2e = expanded
+    let confirmed: Vec<&str> = expanded
         .iter()
-        .find(|p| p.id == "build/e2e")
-        .expect("build/e2e leaf must exist");
+        .filter(|p| p.confirm)
+        .map(|p| p.id.as_str())
+        .collect();
     assert_eq!(
-        e2e.when.as_deref(),
-        Some("args.e2e"),
-        "build/e2e must carry when: args.e2e"
+        confirmed, CONFIRM_LEAVES,
+        "confirm leaves must be exactly the three human touchpoints (D4)"
     );
-    for id in ["build/execute", "build/code-review", "build/integrate"] {
-        let leaf = expanded
-            .iter()
-            .find(|p| p.id == id)
-            .unwrap_or_else(|| panic!("leaf '{id}' must exist"));
-        assert_eq!(leaf.when, None, "leaf '{id}' must not carry a when");
-    }
 }
 
 #[test]

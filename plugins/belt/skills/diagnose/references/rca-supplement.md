@@ -45,15 +45,15 @@ Write a failing test that captures the bug mechanism (RCA-05 blocker). The test 
 - Currently FAIL when run (before fix)
 - Transition to PASS only after `execute` phase applies the fix
 
-## `--e2e` additional output
+## Reproduction scenarios output
 
-When `args.e2e=true`, additionally produce:
+Always produce, alongside the RCA report:
 
-```
-docs/features/<YYYY-MM-DD-topic>/rca-scenarios.yml
-```
+    docs/features/<YYYY-MM-DD-topic>/rca-scenarios.yml
 
-Content: Given/When/Then YAML with at least one scenario. The first scenario MUST correspond to the RCA Reproduction Test (see `plugins/belt/skills/verify/references/monkey-test-supplement.md`).
+Content: Given/When/Then YAML with at least one scenario, each carrying
+`kind: browser` or `kind: cli` (schema: `plugins/belt/skills/plan/SKILL.md`).
+The first scenario MUST correspond to the RCA Reproduction Test.
 
 Example format:
 

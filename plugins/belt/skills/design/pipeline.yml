@@ -3,10 +3,6 @@ version: 1
 description: "Feature design stage (intake -> design)"
 
 args:
-  e2e:
-    type: bool
-    default: false
-    description: "Author agent-browser scenarios (scenarios.yml) alongside the design"
   codex:
     type: bool
     default: false
@@ -31,21 +27,16 @@ phases:
       - "goal-sheet.md has all 5 sections (Goal / In-scope / Out-of-scope / Acceptance criteria / Open risks), none empty"
       - "Every acceptance criterion is verifiable by a command, test, or observable behavior"
       - "evidence.md has an intake entry (Command / Observed / Artifacts)"
-    confirm: true
     max_retries: 3
 
   - id: design
-    description: "Write design.md (architecture + test strategy + implementation tasks), then spec-review it (see design SKILL.md, Phase: design)"
+    description: "Write design.md (architecture + key decisions), then spec-review it (see design SKILL.md, Phase: design)"
     consumes:
       - goal_sheet
     produces:
       - name: design_doc
         path: "docs/features/*/design.md"
-        description: "Architecture, test strategy, and checkbox implementation tasks"
-      - name: scenarios
-        path: "docs/features/*/scenarios.yml"
-        description: "Agent-browser replay scenarios (Given/When/Then YAML)"
-        when: "args.e2e"
+        description: "Architecture and key decisions (rejected alternatives one line each)"
       - name: findings-spec
         path: "belt://current/review/findings-spec.json"
         description: "Consolidated spec review findings"
@@ -53,10 +44,8 @@ phases:
       - file_exists: "docs/features/*/design.md"
       - file_exists: "belt://current/review/findings-spec.json"
     validate:
-      - "design.md contains Architecture, Test Strategy, and Implementation Tasks sections"
-      - "Implementation Tasks is a checkbox list where every task names its target files"
-      - "Every acceptance criterion in goal-sheet.md maps to at least one item in Test Strategy"
-      - "If the e2e arg is true: scenarios.yml exists and covers every acceptance criterion"
+      - "design.md contains Architecture and Key Decisions sections and no task list (tasks live in plan.md)"
+      - "Every in-scope item in goal-sheet.md is addressed by the Architecture section"
       - "Every critical/high finding in findings-spec.json is fixed or explicitly rejected by the user"
       - "evidence.md has a design entry"
     confirm: true

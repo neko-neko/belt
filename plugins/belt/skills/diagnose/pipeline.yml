@@ -3,10 +3,6 @@ version: 1
 description: "Bug diagnosis stage (rca -> fix-plan -> fix-plan-review)"
 
 args:
-  e2e:
-    type: bool
-    default: false
-    description: "Author reproduction scenarios (rca-scenarios.yml) for monkey-test replay"
   codex:
     type: bool
     default: false
@@ -23,16 +19,15 @@ phases:
         description: "Root cause analysis report (Symptom / Investigation Record / Root Cause / Reproduction Test / Fix Strategy)"
       - name: rca_scenarios
         path: "docs/features/*/rca-scenarios.yml"
-        description: "Reproduction scenarios in Given/When/Then YAML for monkey-test replay"
-        when: "args.e2e"
+        description: "Reproduction scenarios in Given/When/Then YAML (kind: browser|cli) for QA replay"
       - name: rca_notes
         path: "belt://current/notes/phase-rca.md"
         description: "Phase narrative: decisions, concerns, directives, observations"
     gate:
       - file_exists: "docs/features/*/rca-report.md"
+      - file_exists: "docs/features/*/rca-scenarios.yml"
       - file_exists: "belt://current/notes/phase-rca.md"
     validate: ./criteria/rca.md
-    confirm: true
     max_retries: 3
 
   - id: fix-plan
@@ -53,11 +48,10 @@ phases:
       - file_exists: "docs/features/*/fix-plan.md"
       - file_exists: "belt://current/notes/phase-fix-plan.md"
     validate: ./criteria/fix-plan.md
-    confirm: true
     max_retries: 3
 
   - id: fix-plan-review
-    description: "Plan review via spec-review"
+    description: "Plan review via spec-review (presents the RCA summary and the fix plan together for the single diagnosis approval)"
     invoke:
       skill: /belt:spec-review
       args:
