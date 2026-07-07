@@ -23,7 +23,8 @@ most recently modified `design.md`, `plan.md`, `*-design.md`,
 
 1. Caller supplied an output artifact name (e.g. `findings-plan`) →
    run `belt-agent status` and read that artifact's `resolved_path`.
-2. No artifact name but a belt run is active → use the `findings-spec`
+2. No artifact name but a belt run is active (status succeeds and at
+   least one phase is not COMPLETED or SKIPPED) → use the `findings-spec`
    artifact's `resolved_path`.
 3. No belt run active → use the caller-supplied output directory; if
    none was supplied, use `<target document's directory>/review/`.

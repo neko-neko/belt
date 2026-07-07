@@ -27,7 +27,8 @@ qa-report.md (Verdict: SKIPPED + timestamp + reason).
 
 Resolve the evidence directory:
 
-- Active belt run (`belt-agent status` succeeds) → read `run_id` from
+- Active belt run (`belt-agent status` succeeds and at least one phase
+  is not COMPLETED or SKIPPED) → read `run_id` from
   status and use the run directory's `qa/` subdirectory (the run
   directory is never committed; `.belt/` is gitignored).
 - No active run → `.belt/qa-adhoc/<UTC YYYYMMDD-HHMMSS>/`.
@@ -50,13 +51,14 @@ Resolve the evidence directory:
    criteria. Code fixed during QA is NOT re-reviewed by
    /belt:code-review (D12) — the fix commits are reported at integrate.
 3. Record every QA fix commit hash in evidence.md's qa entry.
-4. Publish: if the `[qa] evidence` config resolves to `linear` (or
-   `auto` with a known Linear issue id), attach the evidence files to
-   the Linear issue now. Use the linear cli's native file upload; if it
-   does not support uploads, post an issue comment with the evidence
-   branch URLs instead (see integrate publishing in the orchestrator
-   SKILL.md). The `pr` destination is published by integrate, after the
-   PR exists.
+4. Publish: if the `[qa] evidence` config is exactly `linear`, attach
+   the evidence files to the Linear issue now. Under `auto`, publishing
+   is resolved at integrate (PR if one is created; else Linear if an
+   issue id is known; else local with a warning). Use the linear cli's
+   native file upload; if it does not support uploads, post an issue
+   comment with the evidence branch URLs instead (see integrate
+   publishing in the orchestrator SKILL.md). The `pr` destination is
+   published by integrate, after the PR exists.
 5. Append the qa entry to evidence.md.
 
 ## Config: [qa] evidence (belt.toml)

@@ -49,9 +49,11 @@ Pass the file list + line counts to each agent.
 
 ## Triage
 
-Determine the mode first: run `belt-agent status`.
+Determine the mode first: run `belt-agent status`. The run is ACTIVE
+when status succeeds and at least one phase is not COMPLETED or
+SKIPPED.
 
-- **Pipeline mode (status succeeds):** autonomous triage. For each
+- **Pipeline mode (active run):** autonomous triage. For each
   critical/high finding, in severity order: apply the suggested fix
   with Edit, run the project linter and test suite, and commit. If the
   fix would change the approved design/plan scope, or the second fix
@@ -59,7 +61,7 @@ Determine the mode first: run `belt-agent status`.
   deferred (id, severity, reason) — the orchestrator writes deferred
   findings into evidence.md's code-review entry and integrate reports
   them to the user. Medium/low findings are recorded, not fixed.
-- **Standalone mode (status fails):** batched user triage. Present ALL
+- **Standalone mode (no active run):** batched user triage. Present ALL
   merged findings as one numbered list (severity order, one line +
   suggestion each). Ask once which numbers to fix. No per-finding
   dialogue across turns. Apply the selected fixes serially with Edit.

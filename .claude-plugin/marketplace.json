@@ -8,13 +8,13 @@
   "plugins": [
     {
       "name": "belt-agent",
-      "description": "Foundation: Belt Protocol skill (driver for belt-agent CLI) + 5 analysis agents (phase-auditor, feature-implementer, code-explorer, code-architect, impact-analyzer) + shared references",
+      "description": "Foundation: Belt Protocol skill (driver for belt-agent CLI) + 2 analysis agents (explorer, implementer) + shared references",
       "source": "./plugins/belt-agent",
       "category": "development"
     },
     {
       "name": "belt",
-      "description": "User-invocable skills and their reviewer agents: /belt:feature-dev, /belt:bug-fix, /belt:goal, /belt:design, /belt:build, /belt:verify, /belt:code-review (2 reviewers), /belt:spec-review (1 reviewer), /belt:handover, /belt:resume. Requires belt-agent plugin",
+      "description": "User-invocable skills and their agents: /belt:feature-dev, /belt:bug-fix, /belt:diagnose, /belt:requirements, /belt:docs, /belt:goal, /belt:design, /belt:plan, /belt:build, /belt:qa, /belt:code-review (2 reviewers), /belt:spec-review (1 reviewer), /belt:handover, /belt:resume, plus the qa-verifier agent. Requires belt-agent plugin",
       "source": "./plugins/belt",
       "category": "development"
     }

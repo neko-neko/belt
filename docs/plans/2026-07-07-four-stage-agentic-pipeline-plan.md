@@ -272,7 +272,8 @@ qa-report.md (Verdict: SKIPPED + timestamp + reason).
 
 Resolve the evidence directory:
 
-- Active belt run (`belt-agent status` succeeds) → read `run_id` from
+- Active belt run (`belt-agent status` succeeds and at least one phase
+  is not COMPLETED or SKIPPED) → read `run_id` from
   status and use the run directory's `qa/` subdirectory (the run
   directory is never committed; `.belt/` is gitignored).
 - No active run → `.belt/qa-adhoc/<UTC YYYYMMDD-HHMMSS>/`.
@@ -295,13 +296,14 @@ Resolve the evidence directory:
    criteria. Code fixed during QA is NOT re-reviewed by
    /belt:code-review (D12) — the fix commits are reported at integrate.
 3. Record every QA fix commit hash in evidence.md's qa entry.
-4. Publish: if the `[qa] evidence` config resolves to `linear` (or
-   `auto` with a known Linear issue id), attach the evidence files to
-   the Linear issue now. Use the linear cli's native file upload; if it
-   does not support uploads, post an issue comment with the evidence
-   branch URLs instead (see integrate publishing in the orchestrator
-   SKILL.md). The `pr` destination is published by integrate, after the
-   PR exists.
+4. Publish: if the `[qa] evidence` config is exactly `linear`, attach
+   the evidence files to the Linear issue now. Under `auto`, publishing
+   is resolved at integrate (PR if one is created; else Linear if an
+   issue id is known; else local with a warning). Use the linear cli's
+   native file upload; if it does not support uploads, post an issue
+   comment with the evidence branch URLs instead (see integrate
+   publishing in the orchestrator SKILL.md). The `pr` destination is
+   published by integrate, after the PR exists.
 5. Append the qa entry to evidence.md.
 
 ## Config: [qa] evidence (belt.toml)
@@ -581,6 +583,10 @@ Write the report to the path from your prompt:
     ## Exploratory notes  — bullets: probe, observation, evidence path, advisory|FAIL
     ## Verdict            — PASS / FAIL (list failing ids) / SKIPPED (user approval: timestamp + reason)
 
+On a partial re-dispatch (your prompt names specific scenario ids),
+update those scenarios' rows and evidence in the existing report and
+leave all other rows untouched — never write a subset-only report.
+
 ## Guardrails
 
 - Never edit code, tests, or documents other than the report file.
@@ -646,7 +652,8 @@ most recently modified `design.md`, `plan.md`, `*-design.md`,
 
 1. Caller supplied an output artifact name (e.g. `findings-plan`) →
    run `belt-agent status` and read that artifact's `resolved_path`.
-2. No artifact name but a belt run is active → use the `findings-spec`
+2. No artifact name but a belt run is active (status succeeds and at
+   least one phase is not COMPLETED or SKIPPED) → use the `findings-spec`
    artifact's `resolved_path`.
 3. No belt run active → use the caller-supplied output directory; if
    none was supplied, use `<target document's directory>/review/`.
@@ -692,9 +699,11 @@ Apply accepted suggestions to the spec with Edit. Then:
 ```markdown
 ## Triage
 
-Determine the mode first: run `belt-agent status`.
+Determine the mode first: run `belt-agent status`. The run is ACTIVE
+when status succeeds and at least one phase is not COMPLETED or
+SKIPPED.
 
-- **Pipeline mode (status succeeds):** autonomous triage. For each
+- **Pipeline mode (active run):** autonomous triage. For each
   critical/high finding, in severity order: apply the suggested fix
   with Edit, run the project linter and test suite, and commit. If the
   fix would change the approved design/plan scope, or the second fix
@@ -702,7 +711,7 @@ Determine the mode first: run `belt-agent status`.
   deferred (id, severity, reason) — the orchestrator writes deferred
   findings into evidence.md's code-review entry and integrate reports
   them to the user. Medium/low findings are recorded, not fixed.
-- **Standalone mode (status fails):** batched user triage. Present ALL
+- **Standalone mode (no active run):** batched user triage. Present ALL
   merged findings as one numbered list (severity order, one line +
   suggestion each). Ask once which numbers to fix. No per-finding
   dialogue across turns. Apply the selected fixes serially with Edit.
@@ -1786,7 +1795,7 @@ The first scenario MUST correspond to the RCA Reproduction Test.
 3. `plugins/belt/skills/diagnose/references/fix-plan-supplement.md:63` の行を以下で置換:
 
 ```markdown
-- Reference `rca-scenarios.yml` so the qa phase can extend the scenarios list with fix-specific Given/When/Then entries
+- Extend `rca-scenarios.yml` with fix-specific Given/When/Then entries (`id:` + `kind: browser|cli`) as part of the fix plan; the qa phase replays the extended list
 ```
 
 - [ ] **Step 9: belt-agent boots test を修正(main 上の既存 FAIL の fold-in)**
@@ -2068,8 +2077,9 @@ config (see `plugins/belt/skills/qa/SKILL.md`):
   branch under `<run-id>/`, then post one PR comment containing the
   qa-report scenario table with evidence links (public repos: inline
   image embeds via raw URLs; private repos: blob URL links).
-- No PR and Linear attachment not done in qa: report the local evidence
-  path to the user with an explicit warning.
+- No PR: attach the evidence to the Linear issue when an id is known
+  (same upload and fallback rules as the qa phase); otherwise report
+  the local evidence path to the user with an explicit warning.
 
 Record the published destination URL in evidence.md's integrate entry.
 

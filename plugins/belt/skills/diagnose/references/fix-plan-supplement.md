@@ -60,4 +60,4 @@ Reject subjective terms ("appropriately", "sufficiently", "correct").
 ## RCA artifacts reference
 
 - Include a reference line to the consumed RCA Report at the top of the fix plan (e.g., "Based on: `docs/features/<YYYY-MM-DD-topic>/rca-report.md`")
-- Reference `rca-scenarios.yml` so the qa phase can extend the scenarios list with fix-specific Given/When/Then entries
+- Extend `rca-scenarios.yml` with fix-specific Given/When/Then entries (`id:` + `kind: browser|cli`) as part of the fix plan; the qa phase replays the extended list

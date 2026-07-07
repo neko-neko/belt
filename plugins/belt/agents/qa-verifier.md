@@ -56,6 +56,10 @@ Write the report to the path from your prompt:
     ## Exploratory notes  — bullets: probe, observation, evidence path, advisory|FAIL
     ## Verdict            — PASS / FAIL (list failing ids) / SKIPPED (user approval: timestamp + reason)
 
+On a partial re-dispatch (your prompt names specific scenario ids),
+update those scenarios' rows and evidence in the existing report and
+leave all other rows untouched — never write a subset-only report.
+
 ## Guardrails
 
 - Never edit code, tests, or documents other than the report file.

@@ -53,8 +53,9 @@ config (see `plugins/belt/skills/qa/SKILL.md`):
   branch under `<run-id>/`, then post one PR comment containing the
   qa-report scenario table with evidence links (public repos: inline
   image embeds via raw URLs; private repos: blob URL links).
-- No PR and Linear attachment not done in qa: report the local evidence
-  path to the user with an explicit warning.
+- No PR: attach the evidence to the Linear issue when an id is known
+  (same upload and fallback rules as the qa phase); otherwise report
+  the local evidence path to the user with an explicit warning.
 
 Record the published destination URL in evidence.md's integrate entry.
 

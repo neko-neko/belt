@@ -59,11 +59,13 @@ Example format:
 
 ```yaml
 scenarios:
-  - name: "Reproduce login 500 error"
+  - id: reproduce-login-500-error
+    kind: browser
     given: "The user has an expired session cookie"
     when: "The user navigates to /dashboard"
     then: "The server returns 302 redirect to /login (not 500)"
-  - name: "Regression: valid session still works"
+  - id: regression-valid-session-still-works
+    kind: browser
     given: "The user has a fresh session cookie"
     when: "The user navigates to /dashboard"
     then: "The dashboard page renders successfully"

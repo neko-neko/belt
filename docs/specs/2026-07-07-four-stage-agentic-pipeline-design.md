@@ -142,8 +142,8 @@ docs/features 手編集禁止 (mtime filter) のため、finding を「設計承
   FAIL は validate によりユーザー判断へ (「明示的に受容」のみ通過)。
 - QA 中の修正に code-review は再実行しない (D12)。修正 commit 一覧を evidence.md の qa
   エントリに必ず記録し、integrate confirm の報告に含める。
-- Linear id が既知かつ `qa.evidence` が `linear` または `auto` の場合、qa phase 末尾で
-  Linear issue に証跡を添付する (ネイティブ添付 API、private でもインライン表示)。
+- Linear id が既知かつ `qa.evidence` が `linear` の場合、qa phase 末尾で Linear issue に
+  証跡を添付する (ネイティブ添付 API、private でもインライン表示)。`auto` は integrate で解決する。
 - confirm なし。gate: `file_exists: docs/features/*/qa-report.md`。
 
 validate (抜粋):
@@ -225,7 +225,7 @@ evidence = "auto"   # "pr" | "linear" | "local" | "auto"
 
 - `auto` の解決順:
   1. integrate で PR 作成 → **PR コメント**に結果テーブル + 証跡を添付
-  2. Linear id 既知 → **Linear issue にネイティブ添付** (qa phase 末尾で実行)
+  2. Linear id 既知 → **Linear issue にネイティブ添付** (auto では integrate 時に実行。`linear` 明示時のみ qa phase 末尾)
   3. どちらも不成立 → ローカル保持を明示的に警告 (整合: integrate validate)
 - PR への画像は orphan branch `qa-evidence` (run ごとサブディレクトリ、append-only、
   prune 可能) に push し raw URL を埋め込む。public repo はインライン表示、private repo
