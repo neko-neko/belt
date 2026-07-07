@@ -2,8 +2,8 @@
 name: path-convention
 description: >-
   Single source of truth for the docs/features/<YYYY-MM-DD-topic>/ directory
-  naming and file layout used by all belt stage pipelines (design / diagnose /
-  build / verify) and their composed entry points (feature-dev / bug-fix).
+  naming and file layout used by all belt stage pipelines (design / plan /
+  diagnose / build / qa) and their composed entry points (feature-dev / bug-fix).
 ---
 
 # Path Convention for belt Stage Artifacts
@@ -53,11 +53,15 @@ branch `feature/2026-04-14-user-authentication`.
 | `goal-sheet.md` | intake | /belt:goal | feature runs |
 | `evidence.md` | intake | /belt:goal (later phases append); the build Entry check creates it for bug runs | feature runs; bug runs (from build) |
 | `design.md` | design | /belt:design (Phase: design) | feature runs |
-| `scenarios.yml` | design | /belt:design (Phase: design) | feature runs, when `args.e2e` |
+| `plan.md` | plan | /belt:plan (Phase: plan) | feature runs |
+| `scenarios.yml` | plan | /belt:plan (Phase: plan) | feature runs, always |
 | `rca-report.md` | rca | /systematic-debugging | bug runs |
-| `rca-scenarios.yml` | rca | /systematic-debugging | bug runs, when `args.e2e` |
+| `rca-scenarios.yml` | rca | /systematic-debugging | bug runs, always |
 | `fix-plan.md` | fix-plan | /writing-plans | bug runs |
-| `e2e-report.md` | e2e | /belt:verify | when `args.e2e` |
+| `qa-report.md` | qa | /belt:qa (belt:qa-verifier) | always |
+
+QA evidence binaries (screenshots, transcripts) live under the run
+directory (never committed); only `qa-report.md` is committed.
 
 The execute and code-review phases write to git history and
 `belt://current/review/findings.json` (resolve via `belt-agent status` or

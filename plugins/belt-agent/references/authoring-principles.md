@@ -55,3 +55,12 @@ Use the bare leaf name (e.g. `intake`, `execute`) as `<phase-id>`, not
 the namespaced run id (`design/intake`).
 
 Only the orchestrator writes evidence.md — never subagents.
+
+## QA evidence
+
+QA evidence binaries (screenshots, transcripts) live under the run
+directory's `qa/` subdirectory — never under `docs/` and never
+committed. `docs/features/<topic>/qa-report.md` (text) is the committed
+index; it references evidence by run-relative path. Publishing to
+PR/Linear is governed by the `[qa] evidence` key in belt.toml
+(interpretation rules: `plugins/belt/skills/qa/SKILL.md`).

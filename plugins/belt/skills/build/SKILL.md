@@ -1,13 +1,14 @@
 ---
 name: build
 description: >-
-  Runs the shared build stage: TDD implementation from the plan document's
-  task list, two-agent code review, optional browser verification (--e2e),
-  and integration. Use standalone with an existing design.md/fix-plan.md,
-  or composed as the downstream stage of /belt:feature-dev and
-  /belt:bug-fix.
+  Runs the shared build stage: TDD implementation from the plan
+  document's task list and two-agent code review with autonomous triage.
+  Use standalone with an existing plan.md/fix-plan.md, or composed as
+  the build stage of /belt:feature-dev and /belt:bug-fix. QA runs as its
+  own stage (/belt:qa) after build; integration happens at the
+  orchestrator's integrate phase.
 user-invocable: true
-argument-hint: "[--e2e] [--codex]"
+argument-hint: "[--codex]"
 ---
 
 # build
@@ -17,19 +18,19 @@ live in `pipeline.yml`; this file defines how to execute each phase.
 
 ## Entry check
 
-A plan document must exist: `docs/features/<topic>/design.md` with an
-Implementation Tasks section (feature runs) or
-`docs/features/<topic>/fix-plan.md` (bug runs). If neither exists, stop
-and ask the user. If `docs/features/<topic>/evidence.md` does not exist,
-create it now with the header `# Evidence: <topic>`.
+A plan document must exist: `docs/features/<topic>/plan.md` with a
+Tasks section (feature runs) or `docs/features/<topic>/fix-plan.md`
+(bug runs). If neither exists, stop and ask the user. If
+`docs/features/<topic>/evidence.md` does not exist, create it now with
+the header `# Evidence: <topic>`.
 
 ## Phase: execute
 
 This phase has no `invoke` — execute these steps directly:
 
-1. Read the plan document's task list (Implementation Tasks in
-   design.md, or the task list in fix-plan.md).
-2. For each unchecked task, dispatch ONE `belt-agent:feature-implementer`
+1. Read the plan document's task list (Tasks in plan.md, or the task
+   list in fix-plan.md).
+2. For each unchecked task, dispatch ONE `belt-agent:implementer`
    subagent with a self-contained prompt containing: the task text, the
    exact file paths, the test(s) to write first, the relevant design
    constraints copied into the prompt (never "see the design doc"), and
@@ -43,27 +44,17 @@ This phase has no `invoke` — execute these steps directly:
 
 ## Phase: code-review
 
-Invoke `/belt:code-review` (pass `--codex` if the codex arg is true) and
-complete its batched triage. Append the code-review entry to
-evidence.md.
-
-## Phase: e2e (when the e2e arg is true)
-
-Invoke `/belt:verify`. Append the e2e entry to evidence.md.
-
-## Phase: integrate
-
-Ask the user once: A) `wt merge` or B) `gh pr create`. Invoke
-`/worktrunk` with the chosen mode. Confirm evidence.md has one entry per
-completed phase, then append the integrate entry.
+Invoke `/belt:code-review` (pass `--codex` if the codex arg is true).
+In pipeline mode its triage is autonomous: critical/high findings are
+fixed and committed, or recorded as deferred with a reason. Append the
+code-review entry to evidence.md including the deferred list.
 
 ## Red flags
 
 - Never start execute without the Entry check.
-- Never forward the whole design doc to implementer subagents — copy the
-  relevant constraints into each prompt.
+- Never forward the whole plan document to implementer subagents — copy
+  the relevant constraints into each prompt.
 - Never skip the per-task test run after a subagent returns.
-- Never decide merge-vs-PR yourself — always the user's choice.
 - Never let subagents write evidence.md — orchestrator only.
 
 ## References

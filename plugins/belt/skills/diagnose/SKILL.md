@@ -2,12 +2,12 @@
 name: diagnose
 description: >-
   Runs the bug diagnosis stage: root-cause analysis with a failing
-  reproduction test, fix planning, and adversarial plan review. Use standalone
-  for diagnosis-only work, or composed as the upstream stage of
-  /belt:bug-fix. --e2e also authors reproduction scenarios; --codex enables
+  reproduction test and reproduction scenarios, fix planning, and
+  adversarial plan review. Use standalone for diagnosis-only work, or
+  composed as the upstream stage of /belt:bug-fix. --codex enables
   adversarial plan review.
 user-invocable: true
-argument-hint: "[--e2e] [--codex]"
+argument-hint: "[--codex]"
 ---
 
 # diagnose
@@ -29,7 +29,7 @@ declared skill directly.
 
 | Phase | Supplement | Purpose |
 |---|---|---|
-| rca | `./references/rca-supplement.md` | RCA Report 5 sections, Symmetry Check, Reproduction Test FAIL, parallel exploration order, `rca-scenarios.yml` produce (when `--e2e`) |
+| rca | `./references/rca-supplement.md` | RCA Report 5 sections, Symmetry Check, Reproduction Test FAIL, parallel exploration order, `rca-scenarios.yml` produce (always) |
 | fix-plan | `./references/fix-plan-supplement.md` | RCA Fix Strategy -> task traceability, Given/When/Then test cases, verifiable completion conditions, task granularity |
 
 ## Phase-specific Runtime Notes
