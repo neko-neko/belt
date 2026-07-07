@@ -1,0 +1,35 @@
+name: plan
+version: 1
+description: "Implementation planning stage (plan)"
+
+args:
+  codex:
+    type: bool
+    default: false
+    description: "Enable Codex parallel review in the plan review"
+
+phases:
+  - id: plan
+    description: "Write plan.md (test strategy + tasks) and scenarios.yml from goal-sheet.md + design.md, then review the plan (see plan SKILL.md)"
+    produces:
+      - name: plan_doc
+        path: "docs/features/*/plan.md"
+        description: "Test strategy and checkbox implementation tasks"
+      - name: scenarios
+        path: "docs/features/*/scenarios.yml"
+        description: "QA replay scenarios (Given/When/Then, kind: browser|cli, setup block)"
+      - name: findings-plan
+        path: "belt://current/review/findings-plan.json"
+        description: "Consolidated plan review findings"
+    gate:
+      - file_exists: "docs/features/*/plan.md"
+      - file_exists: "docs/features/*/scenarios.yml"
+      - file_exists: "belt://current/review/findings-plan.json"
+    validate:
+      - "plan.md contains Test Strategy and Tasks sections; Tasks is a checkbox list where every task names its target files and its test"
+      - "Every acceptance criterion in goal-sheet.md maps to at least one Test Strategy row and at least one scenario"
+      - "Every scenario has kind: browser or kind: cli; setup: is declared when any scenario is kind: browser"
+      - "Every critical/high finding in findings-plan.json is fixed or explicitly rejected by the user"
+      - "evidence.md has a plan entry"
+    confirm: true
+    max_retries: 3
