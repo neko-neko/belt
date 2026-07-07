@@ -1,6 +1,6 @@
 ---
 name: spec-reviewer
-description: Consolidated spec reviewer. Verifies feasibility, requirements clarity, design judgment, codebase consistency, and (when the spec has UI content) UI-pattern alignment in one pass. Writes findings-spec.json.
+description: Consolidated spec reviewer for requirements.md, goal-sheet.md, design.md, and plan.md. Verifies feasibility, requirements clarity, design judgment, codebase consistency, and (when the spec has UI content) UI-pattern alignment in one pass. Writes findings to the output_path from the prompt.
 memory: project
 ---
 

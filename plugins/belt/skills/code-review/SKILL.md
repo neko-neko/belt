@@ -27,10 +27,11 @@ Pass the file list + line counts to each agent.
    when `--codex`). If no belt run is active, use
    `docs/features/<topic>/review/` as the output directory.
 2. Send ONE message with parallel Task calls:
-   - `Task(subagent_type: belt:code-reviewer, prompt: <diff + design doc
-     path if one exists + output_path>)`
-   - `Task(subagent_type: belt:quality-reviewer, prompt: <diff + design
-     doc path if one exists + output_path>)`
+   - `Task(subagent_type: belt:code-reviewer, prompt: <diff + design.md
+     and plan.md (or fix-plan.md) paths if they exist + output_path>)`
+   - `Task(subagent_type: belt:quality-reviewer, prompt: <diff +
+     design.md and plan.md (or fix-plan.md) paths if they exist +
+     output_path>)`
    With `--codex`, add `/codex:rescue` to the same batch with the diff,
    the findings JSON schema, and its own output_path.
 3. Announce what was dispatched.
@@ -45,23 +46,34 @@ Pass the file list + line counts to each agent.
    truncation as a final low finding), write to the `findings` artifact
    path as `{"findings":[...]}`.
 
-## Triage (batched)
+## Triage
 
-Present ALL merged findings as one numbered list (severity order, one
-line + suggestion each). Ask once which numbers to fix. No per-finding
-dialogue across turns.
+Determine the mode first: run `belt-agent status`.
 
-## Fix apply + verify
+- **Pipeline mode (status succeeds):** autonomous triage. For each
+  critical/high finding, in severity order: apply the suggested fix
+  with Edit, run the project linter and test suite, and commit. If the
+  fix would change the approved design/plan scope, or the second fix
+  attempt still fails lint/tests, revert it and record the finding as
+  deferred (id, severity, reason) — the orchestrator writes deferred
+  findings into evidence.md's code-review entry and integrate reports
+  them to the user. Medium/low findings are recorded, not fixed.
+- **Standalone mode (status fails):** batched user triage. Present ALL
+  merged findings as one numbered list (severity order, one line +
+  suggestion each). Ask once which numbers to fix. No per-finding
+  dialogue across turns. Apply the selected fixes serially with Edit.
 
-1. Apply selected suggestions serially with Edit.
-2. Run the project linter and test suite (Cargo.toml → `cargo clippy --
+## Verify
+
+1. Run the project linter and test suite (Cargo.toml → `cargo clippy --
    -D warnings` + `cargo test`; package.json → `npm run lint` + `npm
    test`; pyproject.toml → `ruff check .` + `pytest`; go.mod → `go vet
    ./...` + `go test ./...`; Makefile → `make lint` + `make test`).
-3. Report failures honestly — never suppress.
+2. Report failures honestly — never suppress.
 
 ## Red flags
 
-- Never modify code before user selection.
-- Never filter findings before presenting them.
+- Never fix a finding in standalone mode before user selection.
+- Never filter findings before presenting or recording them.
 - Never let an agent read another agent's findings-*.json.
+- Never leave a deferred finding unrecorded — no silent drops.

@@ -9,8 +9,8 @@ AI-antipatterns in one pass over the diff.
 
 ## Scope
 
-Review ONLY the files and lines in the provided diff. If a design
-document path is provided, cross-reference it for scope creep and
+Review ONLY the files and lines in the provided diff. If design/plan
+document paths are provided, cross-reference it for scope creep and
 assumption errors. Read-only.
 
 ## Filtering

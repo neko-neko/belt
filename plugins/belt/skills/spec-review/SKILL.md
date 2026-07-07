@@ -1,10 +1,11 @@
 ---
 name: spec-review
 description: >-
-  Spec review via the consolidated belt:spec-reviewer agent. Findings are
-  triaged in one batched selection. --codex adds an adversarial pass via
-  /codex:rescue in the same parallel batch.
-argument-hint: "[--codex]"
+  Spec review via the consolidated belt:spec-reviewer agent. Reviews any
+  spec-family document (requirements.md, goal-sheet.md, design.md,
+  plan.md). Findings are triaged in one batched selection. --codex adds
+  an adversarial pass via /codex:rescue in the same parallel batch.
+argument-hint: "[<target-path>] [--codex]"
 ---
 
 # Spec Review
@@ -14,21 +15,27 @@ and Edit access.
 
 ## Target
 
-The spec document: use the user-supplied path if given, otherwise the
-most recently modified `design.md`, `*-design.md`, or `goal-sheet.md`
-under `docs/`.
+The spec document: use the caller-supplied path if given, otherwise the
+most recently modified `design.md`, `plan.md`, `*-design.md`,
+`goal-sheet.md`, or `requirements.md` under `docs/`.
+
+## Output resolution
+
+1. Caller supplied an output artifact name (e.g. `findings-plan`) →
+   run `belt-agent status` and read that artifact's `resolved_path`.
+2. No artifact name but a belt run is active → use the `findings-spec`
+   artifact's `resolved_path`.
+3. No belt run active → use the caller-supplied output directory; if
+   none was supplied, use `<target document's directory>/review/`.
+   The findings file is `findings-spec.json` in that directory.
 
 ## Dispatch
 
-1. Run `belt-agent status` and read `resolved_path` for artifacts
-   `findings-spec` (and `findings-codex` when `--codex`). If no belt run
-   is active (status fails), use `docs/features/<topic>/review/` as the
-   output directory instead.
-2. Dispatch `Task(subagent_type: belt:spec-reviewer, prompt: <spec path
+1. Dispatch `Task(subagent_type: belt:spec-reviewer, prompt: <spec path
    + output_path>)`. With `--codex`, invoke `/codex:rescue` in the same
    message with the spec path, the findings JSON schema from the
    spec-reviewer agent, and its own output_path.
-3. Announce what was dispatched.
+2. Announce what was dispatched.
 
 ## Triage (batched)
 
