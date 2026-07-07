@@ -47,6 +47,12 @@ depends-on:
 | D6 | agent ゼロベース再編 8→6 | explorer (3→1 統合) + implementer + spec/code/quality-reviewer + qa-verifier (新設)。phase-auditor 廃止 |
 | D7 | 定型業務 skill 2 本 | /belt:requirements (インタビュー型要件定義) + /belt:docs (汎用ドキュメント執筆)。いずれも pipeline.yml なし |
 | D8 | belt-core 本体は無変更 | 既存 engine 機能 (invoke / with / confirm / gate / validate) のみで実現。Rust 変更は lock tests に限定 |
+| D9 | 証跡バイナリは repo 非コミット | `.belt/runs/<run-id>/qa/` に生成。公開先は auto チェーン (PR コメント → Linear 添付 → ローカル保持+警告)。`belt.toml` の `qa.evidence = "pr" \| "linear" \| "local" \| "auto"` で固定可。qa-report.md (テキスト) のみ docs/features にコミット |
+| D10 | PR 画像は evidence branch 方式 | orphan branch `qa-evidence` (run ごとサブディレクトリ、prune 可) に push。public repo はインライン埋め込み、private はリンクに degradation。Linear はネイティブ添付 API (private でもインライン) |
+| D11 | 実行環境は scenarios.yml `setup:` | 起動コマンド / URL / 後始末を plan ステージで確定し計画承認の対象にする。qa-verifier は宣言どおり実行するだけ |
+| D12 | QA 中の修正は再レビューなし | qa-verifier の再検証のみ。修正 commit 一覧を evidence.md に記録し integrate で報告 |
+| D13 | 探索異常は advisory | 全観測を証跡付き記録・integrate で報告。受入基準に抵触する異常のみ FAIL に昇格 |
+| D14 | integrate leaf はインライン重複 | feature-dev / bug-fix 双方に直接定義。lock test が両者の同一性を assert (共有 sub-pipeline 化しない) |
 
 ## 全体トポロジー
 
@@ -101,6 +107,7 @@ validate (抜粋):
 - plan.md に Test Strategy / Tasks の 2 セクションがあり、全タスクが対象ファイルを名指す
 - goal-sheet.md の全受入基準が Test Strategy と scenarios.yml の双方に対応を持つ
 - 全 scenario が `kind: browser | cli` を持つ
+- `kind: browser` の scenario が 1 つでもあれば `setup:` (起動コマンド / URL) が宣言されている
 - findings-plan.json の critical/high が解消済み (自動修正またはユーザー却下記録)
 
 plan レビューが design.md の欠陥を指摘した場合: cross-stage regate 不可 + phase 完了後の
@@ -120,29 +127,46 @@ docs/features 手編集禁止 (mtime filter) のため、finding を「設計承
 ### qa (新設: 1 phase、/belt:verify を置換)
 
 - qa-verifier サブエージェント (実装者から独立) を dispatch:
-  1. scenario 再生 — `docs/features/<topic>/scenarios.yml` (bug run は rca-scenarios.yml) を
+  1. 環境準備 — scenarios.yml の `setup:` (起動コマンド / URL / 後始末) を宣言どおり実行。
+     起動失敗は scenario FAIL と区別して報告する。
+  2. scenario 再生 — `docs/features/<topic>/scenarios.yml` (bug run は rca-scenarios.yml) を
      再生。`kind: browser` は agent-browser でステップごとにスクショ撮影、`kind: cli` は
-     実コマンドを実行し stdout/stderr 全文を transcript に保存。
-  2. 探索パス — 変更スコープ周辺の境界値・異常系・再読み込み等をプローブ (上限 15 分)。
-     異常は証跡付きで記録。
-  3. qa-report.md 執筆 (形式は後述)。
+     実コマンドを実行し stdout/stderr 全文を transcript に保存。証跡は
+     `.belt/runs/<run-id>/qa/` に書く (repo 非コミット、D9)。
+  3. 探索パス — 変更スコープ周辺の境界値・異常系・再読み込み等をプローブ (上限 15 分)。
+     全観測を証跡付きで記録。**advisory 扱い**とし、受入基準に抵触するものだけ FAIL に
+     昇格する (D13)。
+  4. qa-report.md 執筆 (形式は後述)。
 - FAIL ループ: qa-verifier は**コードを修正しない** (独立性契約)。FAIL は main session が
   implementer に修正を dispatch → qa-verifier が該当 scenario を再検証。2 巡で解消しない
   FAIL は validate によりユーザー判断へ (「明示的に受容」のみ通過)。
+- QA 中の修正に code-review は再実行しない (D12)。修正 commit 一覧を evidence.md の qa
+  エントリに必ず記録し、integrate confirm の報告に含める。
+- Linear id が既知かつ `qa.evidence` が `linear` または `auto` の場合、qa phase 末尾で
+  Linear issue に証跡を添付する (ネイティブ添付 API、private でもインライン表示)。
 - confirm なし。gate: `file_exists: docs/features/*/qa-report.md`。
 
 validate (抜粋):
-- scenarios.yml の全 scenario が qa-report.md に PASS/FAIL 行を持ち、**実在する証跡ファイル**
-  への相対リンクを持つ
-- `kind: browser` の行は 1 枚以上のスクショ、`kind: cli` の行は transcript にリンクしている
+- scenarios.yml の全 scenario が qa-report.md に PASS/FAIL 行を持ち、run dir に**実在する
+  証跡ファイル**を参照している
+- `kind: browser` の行は 1 枚以上のスクショ、`kind: cli` の行は transcript を参照している
+- setup が宣言どおり実行された (起動失敗を FAIL と混同していない)
 - 全 FAIL が修正 + qa-verifier 再検証済み、またはユーザーが明示的に受容
+- QA 中に修正 commit がある場合、evidence.md の qa エントリに一覧が記録されている
 - Verdict: SKIPPED はユーザー承認の記録 (日時・理由) が qa-report.md にある場合のみ
 - evidence.md に qa エントリがある
 
 ### integrate (orchestrator 直下 leaf)
 
-現行 build/integrate と同一 (`invoke.skill: /worktrunk`、confirm あり) に加え、validate に
-「deferred finding と受容済み FAIL の一覧をユーザーに提示した」を追加。
+現行 build/integrate と同一 (`invoke.skill: /worktrunk`、confirm あり) に加え:
+
+- **証跡公開** — `gh pr create` ルートでは PR コメントに QA 結果テーブル + 証跡を添付
+  (D10 の evidence branch 方式)。公開先 URL を evidence.md の integrate エントリに記録。
+  wt merge ルートで Linear 添付も済んでいない場合はローカル保持を明示的に警告する。
+- validate 追加: 「deferred finding・受容済み FAIL・探索 advisory の一覧をユーザーに
+  提示した」「QA 証跡が公開先に添付された、またはローカル保持の警告を報告した」。
+- feature-dev / bug-fix にインライン重複定義し、lock test が両者の同一性を assert する
+  (D14)。
 
 ### diagnose (最小改修)
 
@@ -159,39 +183,64 @@ validate (抜粋):
 
 ## QA 証跡仕様
 
+### 生成 (repo 非コミット、D9)
+
 ```
-docs/features/<YYYY-MM-DD-topic>/
-├── scenarios.yml            # plan ステージ執筆 (kind: browser | cli)
-├── qa/                      # 人間が読む一次証跡
-│   ├── <scenario-id>/
-│   │   ├── 01-<step>.png    # browser: ステップごとのスクショ (連番)
-│   │   └── transcript.txt   # cli: 実行コマンド + stdout/stderr 全文
-│   └── exploratory/
-│       └── <probe>-NN.png|txt
-└── qa-report.md
+.belt/runs/<run-id>/qa/          # 一次証跡。repo にはコミットしない
+├── <scenario-id>/
+│   ├── 01-<step>.png            # browser: ステップごとのスクショ (連番、判定に必要な
+│   │                            #   ステップのみ、目安 scenario あたり ≤5 枚)
+│   └── transcript.txt           # cli: 実行コマンド + stdout/stderr 全文
+└── exploratory/
+    └── <probe>-NN.png|txt
 ```
 
-qa-report.md:
+`docs/features/<topic>/qa-report.md` (テキスト、repo にコミット):
 
 ```markdown
 # QA report: <topic>
+## Run                    — belt run id (証跡の run dir を特定するキー)
 ## Scenario results
 | scenario | kind | result | evidence |
 |----------|------|--------|----------|
-| login-ok | browser | PASS | [01](qa/login-ok/01-form.png) [02](qa/login-ok/02-home.png) |
-| init-cli | cli     | PASS | [transcript](qa/init-cli/transcript.txt) |
-## Screenshots            — browser 証跡を ![](qa/...) でインライン埋め込み
-## Exploratory notes      — プローブと観測の bullet list (証跡リンク付き)
+| login-ok | browser | PASS | qa/login-ok/01-form.png, 02-home.png |
+| init-cli | cli     | PASS | qa/init-cli/transcript.txt |
+## Exploratory notes      — プローブと観測の bullet list (advisory / FAIL 昇格を明記)
 ## Verdict                — PASS / FAIL (一覧) / SKIPPED (ユーザー承認記録必須)
 ```
 
-- レポート単体で人間のレビューが完結すること (スクショ埋め込み + transcript 抜粋引用)。
-- 証跡リンク切れ・証跡なし PASS は validate で reject — 「撮ったつもり」の捏造を構造で防ぐ。
+- evidence 列は run dir 相対の証跡ファイル名。実在しないファイル参照・証跡なし PASS は
+  validate で reject — 「撮ったつもり」の捏造を構造で防ぐ。
+- 人間がインライン画像でレビューする一次資料は次項の公開先 (PR コメント / Linear)。
+  qa-report.md は repo 内に残る索引 + 判定記録。
+
+### 公開 (auto チェーン + config override、D9/D10)
+
+`belt.toml`:
+
+```toml
+[qa]
+evidence = "auto"   # "pr" | "linear" | "local" | "auto"
+```
+
+- `auto` の解決順:
+  1. integrate で PR 作成 → **PR コメント**に結果テーブル + 証跡を添付
+  2. Linear id 既知 → **Linear issue にネイティブ添付** (qa phase 末尾で実行)
+  3. どちらも不成立 → ローカル保持を明示的に警告 (整合: integrate validate)
+- PR への画像は orphan branch `qa-evidence` (run ごとサブディレクトリ、append-only、
+  prune 可能) に push し raw URL を埋め込む。public repo はインライン表示、private repo
+  は GitHub camo の制約でインライン不可のため blob URL リンクに degradation する。
+- Linear はネイティブ添付 API で Linear 自身がホストするため private でもインライン表示。
+- config キーの解釈規則は qa SKILL.md に置く (SKILL.md 責務: config key 解釈)。
 
 ### scenarios.yml schema 拡張 (additive)
 
-既存の Given/When/Then に scenario 単位の `kind: browser | cli` を追加する。
-`kind: cli` の When は実行する実コマンド、Then は期待する出力・exit code・生成物を書く。
+1. scenario 単位の `kind: browser | cli` を追加。`kind: cli` の When は実行する実コマンド、
+   Then は期待する出力・exit code・生成物を書く。
+2. top-level `setup:` を追加 (D11) — `start` (起動コマンド、省略可) / `url` / `teardown`。
+   plan ステージで確定し計画承認の対象。qa-verifier は宣言どおり実行するだけで、推測で
+   起動コマンドを叩かない。
+
 docs/testing/cli-behavior/ 配下の CLI scenario 群 (別 schema 系統) には触れない。
 
 ## サブエージェント再編 (8 → 6)
@@ -257,6 +306,8 @@ docs/testing/cli-behavior/ 配下の CLI scenario 群 (別 schema 系統) には
   integrate leaf)、args = `codex` のみ、展開 8 leaves、`when` leaf なし、regate なし、
   confirm は design/design・plan/plan・checkpoint・integrate の 4 leaf のみ。
 - `bug_fix_refresh.rs` — 同様に diagnose + checkpoint + build + qa + integrate の 5 top-level。
+- integrate leaf は feature-dev / bug-fix の両 pipeline.yml で**同一定義**であることを assert
+  (D14 のインライン重複 drift 対策)。
 - `review_skills_refresh.rs` — agent bundle 更新: belt = 3 reviewer + qa-verifier、
   belt-agent = explorer + implementer、削除 5 ファイル + audit-protocol.md の不在 lock。
 - skill / agent 削除は同一 commit で tuple + docstring + orphan 参照を更新 (既存パターン)。
@@ -279,5 +330,8 @@ docs/testing/cli-behavior/ 配下の CLI scenario 群 (別 schema 系統) には
 2. `belt lint` を全 pipeline.yml (feature-dev / bug-fix / design / plan / build / qa /
    diagnose / checkpoint) に実行し PASS。
 3. `belt-agent init` → `status` で feature-dev / bug-fix の展開 leaf 数・confirm 配置を実測。
-4. Dogfood — belt repo 自身の小タスクで `/belt:feature-dev` を 1 周し、qa/ 証跡
-   (CLI transcript) と qa-report.md が生成されることを確認。
+4. Dogfood — belt repo 自身の小タスクで `/belt:feature-dev` を 1 周し、run dir 配下の
+   CLI transcript 証跡と qa-report.md の生成、公開先 fallback (local 警告) の動作を確認。
+5. Linear 添付は linear cli / GraphQL API の upload 可否を plan 段階で実測し、不可なら
+   コメント + evidence branch URL に degradation する実装へ切り替える (spec 上の想定は
+   ネイティブ添付)。
