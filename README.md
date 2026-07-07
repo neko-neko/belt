@@ -268,7 +268,7 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agent` | Foundation: Belt Protocol driver skill + 2 analysis agents (`explorer`, `implementer`) + shared references |
-| `belt` | User-invocable skills and their agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:requirements`, `/belt:docs`, `/belt:goal`, `/belt:design`, `/belt:plan`, `/belt:build`, `/belt:qa`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`, plus the `qa-verifier` agent. Requires `belt-agent` |
+| `belt` | User-invocable skills and their agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:diagnose`, `/belt:requirements`, `/belt:docs`, `/belt:goal`, `/belt:design`, `/belt:plan`, `/belt:build`, `/belt:qa`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`, plus the `qa-verifier` agent. Requires `belt-agent` |
 
 `/belt:feature-dev` composes the stages design → plan → checkpoint →
 build → qa → integrate; `/belt:bug-fix` composes diagnose → checkpoint →

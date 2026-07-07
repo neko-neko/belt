@@ -1,6 +1,6 @@
 {
   "name": "belt",
-  "description": "User-invocable skills and their agents: /belt:feature-dev, /belt:bug-fix, /belt:requirements, /belt:docs, /belt:goal, /belt:design, /belt:plan, /belt:build, /belt:qa, /belt:code-review (2 reviewers), /belt:spec-review (1 reviewer), /belt:handover, /belt:resume, plus the qa-verifier agent. Requires belt-agent plugin",
+  "description": "User-invocable skills and their agents: /belt:feature-dev, /belt:bug-fix, /belt:diagnose, /belt:requirements, /belt:docs, /belt:goal, /belt:design, /belt:plan, /belt:build, /belt:qa, /belt:code-review (2 reviewers), /belt:spec-review (1 reviewer), /belt:handover, /belt:resume, plus the qa-verifier agent. Requires belt-agent plugin",
   "version": "0.4.0",
   "author": { "name": "neko-neko" }
 }
