@@ -1758,8 +1758,9 @@ phases:
 
 ```markdown
 ### RCA-09: Reproduction scenarios file exists
-
-- **check**:
+- **severity**: blocker
+- **verify_type**: inspection
+- **verification**:
   1. Search for the scenarios file using `Glob("docs/features/*/rca-scenarios.yml")`
   2. Verify it contains at least one Given/When/Then scenario and every scenario has `kind: browser` or `kind: cli`
 - **pass_condition**: file exists with ≥1 scenario, each carrying a kind
