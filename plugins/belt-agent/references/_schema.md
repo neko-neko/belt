@@ -1,15 +1,15 @@
 ---
 name: _schema
 description: >-
-  Done-criteria schema for files consumed by the phase-auditor
-  subagent during audit phases. Defines frontmatter fields,
+  Done-criteria schema for files consumed by the orchestrator
+  when evaluating validate: file criteria. Defines frontmatter fields,
   criterion structure, and severity semantics.
 ---
 
 # Done-Criteria Schema
 
 This document defines the format for done-criteria files used by the audit-gate pattern.
-Each done-criteria file is consumed by the `phase-auditor` subagent during audit phases.
+Each done-criteria file is consumed by the orchestrator when it evaluates a phase's validate: file reference (the audit-gate pattern is retired).
 
 ## File Format
 
@@ -42,7 +42,7 @@ audit: required                # Audit mode
 
 ## Observation Collection
 
-The phase-auditor MUST include `observations[]` in its verdict output.
+The orchestrator MUST include `observations[]` in its verdict output.
 Record quality/warning-level findings even for criteria that PASS.
 ```
 
@@ -54,7 +54,7 @@ Record quality/warning-level findings even for criteria that PASS.
 | `verify_type` | Yes | `automated` or `inspection` | `automated`: verifiable by command execution. `inspection`: requires LLM judgment |
 | `verification` | Yes | text | Step-by-step verification procedure. For `automated`, include concrete commands |
 | `pass_condition` | Yes | text | Quantitative pass condition (counts, existence, patterns) |
-| `fail_diagnosis_hint` | Yes | text | Guidance for auditor to determine root cause and fix strategy on FAIL |
+| `fail_diagnosis_hint` | Yes | text | Guidance for the orchestrator to determine root cause and fix strategy on FAIL |
 | `depends_on_artifacts` | No | list | Artifact paths this criterion depends on |
 | `forward_check` | No | text | Note to prevent redundant verification in downstream audit phases |
 
@@ -68,7 +68,7 @@ Record quality/warning-level findings even for criteria that PASS.
 
 ## Verdict Rules
 
-The phase-auditor applies these rules to produce a verdict:
+The orchestrator applies these rules to produce a verdict:
 
 - **PASS**: All `blocker` criteria pass. Quality warnings are reported but do not block
 - **FAIL**: At least one `blocker` criterion fails

@@ -32,9 +32,9 @@ An additional section `## Excluded Hypotheses` (or equivalent within Investigati
 
 Orchestrator dispatches exploration subagents in parallel, then synthesizes:
 
-1. `belt-agent:code-explorer` — entry-point tracing and data flow
-2. `belt-agent:code-architect` — architecture patterns and implicit contracts
-3. `belt-agent:impact-analyzer` — reverse dependencies and shared state
+1. `belt-agent:explorer` (focus: flow) — entry-point tracing and data flow
+2. `belt-agent:explorer` (focus: patterns) — architecture patterns and implicit contracts
+3. `belt-agent:explorer` (focus: impact) — reverse dependencies and shared state
 
 **After** subagent results return, the orchestrator reconstructs the root cause **itself** (do NOT forward broad research verbatim into Reproduction Test / Fix Strategy). See diagnose SKILL.md Red Flag "Never delegate root cause synthesis to subagents."
 

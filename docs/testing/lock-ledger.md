@@ -103,10 +103,19 @@ per-observation-agents-deleted:
   - feasibility-reviewer.md
   - ui-design-reviewer.md
   - cross-cutting-spec-reviewer.md
-test-fn-count: 6
+pipeline-agent-bundle:
+  - belt-agent: explorer.md / implementer.md
+  - belt: qa-verifier.md (+ consolidated reviewers)
+retired-belt-agent-agents-deleted:
+  - code-explorer.md
+  - code-architect.md
+  - impact-analyzer.md
+  - feature-implementer.md
+  - phase-auditor.md
+test-fn-count: 10
 ```
 
-**6 test fn 名** (A):
+**10 test fn 名** (A):
 
 - `review_skills_pipeline_yml_is_deleted`
 - `review_skills_belt_toml_is_deleted`
@@ -114,11 +123,17 @@ test-fn-count: 6
 - `per_observation_agent_files_are_deleted`
 - `review_skills_parent_skill_md_references_parallel_dispatch`
 - `consolidated_agents_use_output_path_arg_pattern`
+- `pipeline_agent_bundle_exists`
+- `retired_belt_agent_agents_are_deleted`
+- `verify_skill_is_replaced_by_qa`
+- `qa_verifier_uses_evidence_dir_arg_pattern`
 
 **locked shape dimensions** (B):
 
 - 2026-07-05 sonnet-lean 統合 (7→3) 後の shape: consolidated agents (`spec-reviewer.md`, `code-reviewer.md`, `quality-reviewer.md`) が存在し、旧 per-observation agent 7 file・review skills の pipeline.yml / belt.toml が non-existence、SKILL.md が Task dispatch + `findings-` を記述
 - consolidated agents は `output_path` を参照し（lock は file 全体への `contains("output_path")` assertion）、`.belt/runs/` リテラルを hardcode しない
+- 2026-07-07 four-stage rewrite の agent bundle lock: belt = {code-reviewer, quality-reviewer, spec-reviewer, qa-verifier}、belt-agent = {explorer, implementer} が存在し、旧 belt-agent agent 5 file (`code-explorer.md` / `code-architect.md` / `impact-analyzer.md` / `feature-implementer.md` / `phase-auditor.md`) と `audit-protocol.md` が non-existence
+- `plugins/belt/skills/verify/` は non-existence、代替の `plugins/belt/skills/qa/SKILL.md` が存在。`qa-verifier.md` は `evidence_dir` を参照し `.belt/runs/` リテラルを hardcode しない
 
 ---
 

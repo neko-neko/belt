@@ -27,7 +27,7 @@ audit: lite
   3. Impact Scope: at least one affected file or module listed
   4. Symmetry Check: determination of whether the change target has a "pair" (if none, rationale required)
 - **pass_condition**: All 4 subsections meet their criteria. Zero heading-only or generic-content-only subsections
-- **fail_diagnosis_hint**: Identify which subsection is deficient. Cross-reference with belt-agent:code-explorer / belt-agent:code-architect / belt-agent:impact-analyzer output to fill gaps
+- **fail_diagnosis_hint**: Identify which subsection is deficient. Cross-reference with belt-agent:explorer (focus: flow / patterns / impact) output to fill gaps
 - **depends_on_artifacts**: [docs/features/*/rca-report.md]
 
 ### RCA-03: Impact Scope file paths exist in the codebase
@@ -71,7 +71,7 @@ audit: lite
   3. Check for at least one line number (`:` + digits or "line" + digits)
   4. Check for at least one mechanism explanation (why the code at that location causes the problem)
 - **pass_condition**: File path, line number, and mechanism explanation all present
-- **fail_diagnosis_hint**: If missing, use belt-agent:code-explorer output to identify the exact fault location. Write the mechanism as "input X passes through Y and produces state Z because of [specific code behavior]"
+- **fail_diagnosis_hint**: If missing, use belt-agent:explorer (focus: flow) output to identify the exact fault location. Write the mechanism as "input X passes through Y and produces state Z because of [specific code behavior]"
 - **depends_on_artifacts**: [docs/features/*/rca-report.md]
 
 ### RCA-07: RCA Report is committed to git
@@ -93,7 +93,7 @@ audit: lite
   3. Symmetry comparison of filter/scope conditions
   4. Asymmetry risk assessment and impact scope
 - **pass_condition**: All 4 dimensions documented. If "no pair" is determined, the rationale is specific (not generic)
-- **fail_diagnosis_hint**: If Symmetry Check is empty or incomplete, reference belt-agent:impact-analyzer output to identify paired paths. For "no pair" determinations, verify against Reverse Dependencies and Shared State analysis
+- **fail_diagnosis_hint**: If Symmetry Check is empty or incomplete, reference belt-agent:explorer (focus: impact) output to identify paired paths. For "no pair" determinations, verify against Reverse Dependencies and Shared State analysis
 - **depends_on_artifacts**: [docs/features/*/rca-report.md]
 - **forward_check**: Fix Plan must include tasks for paired paths if asymmetry risk is identified
 
@@ -124,6 +124,6 @@ audit: lite
 
 ## Observation Collection
 
-The belt-agent:phase-auditor MUST include `observations[]` in its verdict output.
+The orchestrator MUST include `observations[]` in its verdict output.
 Record quality/warning-level findings even for criteria that PASS.
 Observations accumulate in the pipeline's audit trail.

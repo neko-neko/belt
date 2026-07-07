@@ -95,7 +95,7 @@ Phases may use either:
 When a validate entry is a file reference, the orchestrator MUST read the
 file before `step --confirm`. The file contains the actual criteria; the
 scalar in pipeline.yml is just the pointer. See
-`plugins/belt-agent/references/audit-protocol.md` for the expected
+`plugins/belt-agent/references/_schema.md` for the expected
 criteria file format.
 
 ## Decision Rules

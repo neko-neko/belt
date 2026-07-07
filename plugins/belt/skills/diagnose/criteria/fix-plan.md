@@ -87,6 +87,6 @@ audit: lite
 
 ## Observation Collection
 
-The belt-agent:phase-auditor MUST include `observations[]` in its verdict output.
+The orchestrator MUST include `observations[]` in its verdict output.
 Record quality/warning-level findings even for criteria that PASS.
 Observations accumulate in the pipeline's audit trail.
