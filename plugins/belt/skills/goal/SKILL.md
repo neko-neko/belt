@@ -18,6 +18,10 @@ Turn raw input into a reviewed goal sheet with at most 2 question rounds.
 
 Apply the first matching rule to the argument text:
 
+- Points to an existing local `requirements.md` (a path containing
+  `docs/requirements/`) → read it; the goal sheet condenses its Goals /
+  Acceptance criteria / Out-of-scope, and its Open decisions become
+  Open risks.
 - Matches `^[A-Z]+-[0-9]+$` → run `linear issue view <id>` and collect
   title, description, comments, and linked URLs.
 - Starts with `http` and contains `slack.com` → fetch the thread via the
