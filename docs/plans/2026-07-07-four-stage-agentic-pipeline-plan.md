@@ -651,6 +651,9 @@ most recently modified `design.md`, `plan.md`, `*-design.md`,
 3. No belt run active → use the caller-supplied output directory; if
    none was supplied, use `<target document's directory>/review/`.
    The findings file is `findings-spec.json` in that directory.
+4. With `--codex`: in a belt run, read the `findings-codex` artifact's
+   `resolved_path` the same way; otherwise use `findings-codex.json` in
+   the same output directory.
 
 ## Dispatch
 
