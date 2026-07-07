@@ -1,0 +1,20 @@
+name: qa
+version: 1
+description: "QA verification stage (scenario replay + exploratory pass with human-readable evidence)"
+
+phases:
+  - id: qa
+    description: "Dispatch belt:qa-verifier to replay scenarios with evidence capture, run the exploratory pass, and write qa-report.md (see qa SKILL.md)"
+    produces:
+      - name: qa_report
+        path: "docs/features/*/qa-report.md"
+        description: "Scenario results with evidence references, exploratory notes, verdict"
+    gate:
+      - file_exists: "docs/features/*/qa-report.md"
+    validate:
+      - "Every scenario in scenarios.yml (or rca-scenarios.yml for bug runs) has a PASS/FAIL row in qa-report.md referencing evidence files that exist in the run's qa evidence directory"
+      - "Every kind: browser row references at least one screenshot; every kind: cli row references a transcript"
+      - "Every FAIL was fixed and re-verified by belt:qa-verifier, or explicitly accepted by the user; QA fix commits are listed in evidence.md's qa entry"
+      - "Verdict: SKIPPED only with a recorded user approval (timestamp + reason) in qa-report.md"
+      - "evidence.md has a qa entry"
+    max_retries: 3
