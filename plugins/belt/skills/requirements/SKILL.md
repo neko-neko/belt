@@ -3,7 +3,8 @@ name: requirements
 description: >-
   Interview-driven requirements definition. Resolves a Linear ticket,
   URL, or free-text request, investigates the codebase, asks only
-  human-decidable questions in one batch, and writes
+  human-decidable questions in dependency-ordered rounds until the
+  frontier is empty, and writes
   docs/requirements/<YYYY-MM-DD-topic>/requirements.md reviewed by
   belt:spec-reviewer. The result feeds /belt:feature-dev as input.
 user-invocable: true
@@ -12,8 +13,9 @@ argument-hint: "<linear-id | url | free-text>"
 
 # requirements
 
-Turn raw input into a reviewed requirements document with at most 2
-question rounds. No pipeline.yml — dialogue-centric skills do not run
+Turn raw input into a reviewed requirements document via a frontier
+interview — by default, question rounds continue until nothing is left
+silently assumed. No pipeline.yml — dialogue-centric skills do not run
 under belt.
 
 ## Step 1 — Resolve input
@@ -37,12 +39,25 @@ input. For unfamiliar areas spanning 10+ files, dispatch
 `belt-agent:explorer` subagents in parallel (focus: flow or patterns).
 A question answerable here MUST NOT be asked to the user.
 
-## Step 3 — Batched questions
+## Step 3 — Frontier interview
 
 Ask the remaining human-decidable points (business goals, scope
-boundaries, priorities, non-functional targets) via AskUserQuestion —
-up to 4 questions per round, max 2 rounds. Unresolved points default to
-the recommended option and are recorded under Open decisions.
+boundaries, priorities, non-functional targets) via the frontier
+interview per authoring-principles.md §4: map the decisions as a design
+tree, each round ask the frontier — the questions whose prerequisites
+are settled — in ONE AskUserQuestion call (up to 4, recommended option
+first), and defer any question that depends on an answer still open
+this round. Points the user explicitly defers are recorded under Open
+decisions.
+
+## Config: [requirements] rounds (belt.toml)
+
+    [requirements]
+    rounds = 0    # default; 0 = until the frontier is empty
+
+- Absent belt.toml or key → 0 (no cap; nothing left silently assumed).
+- `rounds = N` (N ≥ 1) — cap at N rounds; unresolved points default to
+  the recommended option and are recorded under Open decisions.
 
 ## Step 4 — Write the document
 
@@ -73,6 +88,8 @@ development from it.
 ## Red flags
 
 - Never ask a question the codebase can answer.
-- Never run more than 2 question rounds.
+- Never end the interview while frontier questions remain, unless a
+  non-zero `[requirements] rounds` cap was hit.
+- Never ask a question in the same round as a question it depends on.
 - Never write requirements as implementation instructions — state
   outcomes, not designs.

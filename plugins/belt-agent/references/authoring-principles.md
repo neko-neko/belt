@@ -29,12 +29,32 @@ reference hop — prefer inlining over linking. When one skill invokes
 another, pass the target document's path explicitly — never rely on
 glob-fallback discovery.
 
-## 4. Batch dialogue
+## 4. Batch dialogue (frontier interview)
 
-User questions go through AskUserQuestion in batches (up to 4 questions
-per round, max 2 rounds). Never ask one question at a time across
-multiple turns. Questions answerable by reading the codebase are not
-asked at all.
+Map open decisions as a design tree: each decision branches into the
+decisions that depend on it. The frontier is every decision whose
+prerequisites are already settled. Each round, ask the frontier in ONE
+AskUserQuestion call (up to 4 questions, recommended option first). A
+question whose answer depends on another question still open in this
+round belongs to a later round. If the frontier exceeds 4, ask the 4
+with the most dependent decisions; the rest stay in the frontier.
+
+Facts are never questions: anything answerable by reading the codebase
+or running a command is looked up (dispatch a subagent for areas
+spanning 10+ files), not asked. While a lookup runs, hold back only the
+questions downstream of it — ask the rest of the frontier now. A
+decision the user explicitly defers counts as settled and is recorded
+in the document's open-decisions section.
+
+The round limit is 2 unless the skill declares a `rounds` key in its
+`## Config` section; `rounds = 0` means no cap — rounds continue until
+the frontier is empty. On hitting a non-zero limit, settle remaining
+decisions with the recommended option and record them in the document's
+open-decisions section. Never ask one question at a time across
+multiple turns.
+
+(Frontier interview model adapted from mattpocock/skills
+`batch-grill-me`, MIT.)
 
 ## 5. Lines over tables
 

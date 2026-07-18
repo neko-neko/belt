@@ -27,8 +27,9 @@ No pipeline.yml — dialogue-centric skills do not run under belt.
 
 Determine the target path and document type (architecture overview /
 usage guide / reference) from the existing taxonomy. If either is still
-ambiguous after the survey, ask once via AskUserQuestion (one batch, up
-to 4 questions) — placement, type, audience, depth.
+ambiguous after the survey, ask via the frontier interview
+(authoring-principles §4, typically one round) — placement, type,
+audience, depth.
 
 ## Step 3 — Write
 

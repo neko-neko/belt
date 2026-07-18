@@ -45,8 +45,9 @@ This phase has no `invoke` — execute these steps directly:
 
 ## Red flags
 
-- Never ask the user design questions one at a time — batch remaining
-  open points in one AskUserQuestion call.
+- Never ask the user design questions one at a time — batch each
+  round's frontier in one AskUserQuestion call (authoring-principles
+  §4).
 - Never write a Tasks section in design.md — task breakdown belongs
   to /belt:plan.
 - Never hand-edit files under `docs/features/<topic>/` after a phase

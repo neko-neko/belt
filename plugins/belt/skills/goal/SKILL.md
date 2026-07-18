@@ -4,15 +4,17 @@ description: >-
   Batched-question intake that turns a Linear ticket, URL, or free-text task
   into a goal sheet (goal / scope / acceptance criteria). Lightweight
   replacement for grilling/brainstorming dialogues: investigates the codebase
-  first, then asks only human-decidable questions in one batch. Use standalone
-  before any feature work, or as the intake phase of /belt:feature-dev.
+  first, then asks only human-decidable questions in dependency-ordered
+  rounds (frontier interview). Use standalone before any feature work, or as
+  the intake phase of /belt:feature-dev.
 user-invocable: true
 argument-hint: "<linear-id | url | free-text>"
 ---
 
 # goal
 
-Turn raw input into a reviewed goal sheet with at most 2 question rounds.
+Turn raw input into a reviewed goal sheet with config-bounded question
+rounds (default 2).
 
 ## Step 1 — Resolve input
 
@@ -39,14 +41,26 @@ the resolved input. Establish: which files the change will touch, what
 existing patterns apply, and which open questions the code already
 answers. A question answerable here MUST NOT be asked to the user.
 
-## Step 3 — Batched questions
+## Step 3 — Frontier interview
 
 Collect the remaining human-decidable points (scope boundaries, UX
-choices, priority trade-offs, acceptance thresholds). Present up to 4 of
-them in ONE AskUserQuestion call, each with a recommended option first.
-Run a second round only if a first-round answer created a new decision
-point. Never exceed 2 rounds; resolve anything left with the recommended
-option and record it under Open risks.
+choices, priority trade-offs, acceptance thresholds) and run the
+frontier interview per authoring-principles.md §4: map the decisions as
+a design tree, each round ask the frontier — the questions whose
+prerequisites are settled — in ONE AskUserQuestion call (up to 4,
+recommended option first), and defer any question that depends on an
+answer still open this round. On hitting the round limit, resolve
+anything left with the recommended option and record it under Open
+risks.
+
+## Config: [goal] rounds (belt.toml)
+
+    [goal]
+    rounds = 2    # 0 = keep asking until the frontier is empty
+
+- Absent belt.toml or key → 2.
+- `rounds = 0` — no cap; rounds continue until every decision is
+  settled or explicitly deferred by the user to Open risks.
 
 ## Step 4 — Write the goal sheet
 
@@ -74,6 +88,8 @@ the intake entry per the Evidence format in
 ## Red flags
 
 - Never ask a question the codebase can answer.
-- Never run more than 2 question rounds.
+- Never exceed a non-zero configured `[goal] rounds` cap (0 = no cap;
+  default 2).
+- Never ask a question in the same round as a question it depends on.
 - Never leave a goal-sheet section empty — write "(none)" only in
   Open risks; every other section must have real content.
