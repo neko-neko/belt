@@ -22,7 +22,7 @@ cross-coupling:
 - `stages_delegate_with_codex_passthrough`
 - `checkpoint_and_qa_delegate_with_no_args`
 - `top_level_args_are_codex_only`
-- `feature_dev_expands_to_eight_namespaced_leaves`
+- `feature_dev_expands_to_ten_namespaced_leaves`
 - `no_leaf_declares_regate_or_when`
 - `confirm_leaves_match_the_four_touchpoints`
 - `integrate_leaf_identical_across_orchestrators`
@@ -34,9 +34,9 @@ cross-coupling:
 - 6 top-level phase の順序 (`design → plan → pre-execute-handover → build → qa → integrate`)
 - design/plan/build は `Invoker::Pipeline` + `with` exactly `{codex: "args.codex"}` (bare full-string form)、pre-execute-handover / qa は `with` 空
 - integrate は inline leaf (`Invoker::Skill /worktrunk`)
-- 展開 leaf ids が exactly 8 件 (`design/intake → design/design → plan/plan → pre-execute-handover/checkpoint → build/execute → build/code-review → qa/qa → integrate`)
+- 展開 leaf ids が exactly 10 件 (`design/intake → design/design → design/design-review → plan/plan → plan/plan-review → pre-execute-handover/checkpoint → build/execute → build/code-review → qa/qa → integrate`)
 - regate は全 leaf で空、phase-level `when` も全 leaf で non-existence (e2e opt-in 全廃)
-- confirm leaves は exactly 4 件 (`design/design` / `plan/plan` / `pre-execute-handover/checkpoint` / `integrate`) (D4)
+- confirm leaves は exactly 4 件 (`design/design-review` / `plan/plan-review` / `pre-execute-handover/checkpoint` / `integrate`) (D4)
 - integrate leaf は bug-fix と serde_json::Value 同値 (D14 inline duplication + identity lock)
 - `.belt/runs/` リテラル + `{run_id}` template の non-existence
 

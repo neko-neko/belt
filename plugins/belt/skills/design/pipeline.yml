@@ -1,6 +1,6 @@
 name: design
 version: 1
-description: "Feature design stage (intake -> design)"
+description: "Feature design stage (intake -> design -> design-review)"
 
 args:
   codex:
@@ -30,23 +30,41 @@ phases:
     max_retries: 3
 
   - id: design
-    description: "Write design.md (architecture + key decisions), then spec-review it (see design SKILL.md, Phase: design)"
+    description: "Write design.md (architecture + key decisions) from the goal sheet (see design SKILL.md, Phase: design)"
     consumes:
       - goal_sheet
     produces:
       - name: design_doc
         path: "docs/features/*/design.md"
         description: "Architecture and key decisions (rejected alternatives one line each)"
-      - name: findings-spec
-        path: "belt://current/review/findings-spec.json"
-        description: "Consolidated spec review findings"
     gate:
       - file_exists: "docs/features/*/design.md"
-      - file_exists: "belt://current/review/findings-spec.json"
     validate:
       - "design.md contains Architecture and Key Decisions sections and no task list (tasks live in plan.md)"
       - "Every in-scope item in goal-sheet.md is addressed by the Architecture section"
-      - "Every critical/high finding in findings-spec.json is fixed or explicitly rejected by the user"
       - "evidence.md has a design entry"
+    max_retries: 3
+
+  - id: design-review
+    description: "Spec review of design.md with batched triage"
+    invoke:
+      skill: /belt:spec-review
+      args:
+        codex: "args.codex"
+    consumes:
+      - design_doc
+    produces:
+      - name: findings-spec
+        path: "belt://current/review/findings-spec.json"
+        description: "Consolidated spec review findings"
+      - name: findings-codex
+        path: "belt://current/review/findings-codex.json"
+        description: "Codex adversarial spec review findings"
+        when: "args.codex"
+    gate:
+      - file_exists: "belt://current/review/findings-spec.json"
+    validate:
+      - "Every critical/high finding in findings-spec.json is fixed or explicitly rejected by the user"
+      - "evidence.md has a design-review entry"
     confirm: true
     max_retries: 3

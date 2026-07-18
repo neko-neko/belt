@@ -12,7 +12,7 @@ phases:
   - id: rca
     description: "Investigate root cause via parallel exploration"
     invoke:
-      skill: /systematic-debugging
+      skill: /diagnosing-bugs
     produces:
       - name: rca_report
         path: "docs/features/*/rca-report.md"

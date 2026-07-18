@@ -1,6 +1,6 @@
-# RCA Supplement (rca phase override for `/systematic-debugging`)
+# RCA Supplement (rca phase override for `/diagnosing-bugs`)
 
-**Invoked by:** diagnose `SKILL.md`, rca phase (INVOKE 1 = Read this file; INVOKE 2 = `/systematic-debugging`).
+**Invoked by:** diagnose `SKILL.md`, rca phase (INVOKE 1 = Read this file; INVOKE 2 = `/diagnosing-bugs`).
 
 ## Output path override
 

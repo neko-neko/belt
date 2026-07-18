@@ -13,12 +13,16 @@ argument-hint: "<linear-id | url | free-text>"
 
 # requirements
 
-Turn raw input into a reviewed requirements document via a frontier
-interview — by default, question rounds continue until nothing is left
-silently assumed. No pipeline.yml — dialogue-centric skills do not run
-under belt.
+Belt pipeline for the requirements stage. Structure, gates, and done
+criteria live in `pipeline.yml`; this file defines how to execute each
+phase. By default, question rounds continue until nothing is left
+silently assumed.
 
-## Step 1 — Resolve input
+## Phase: interview
+
+This phase has no `invoke` — execute these steps directly:
+
+### 1 — Resolve input
 
 Apply the first matching rule to the argument text:
 
@@ -32,14 +36,14 @@ Apply the first matching rule to the argument text:
 If the fetched content links to further tickets/PRs, fetch at most 2 of
 them (the most directly referenced). Do not crawl deeper.
 
-## Step 2 — Investigate the codebase
+### 2 — Investigate the codebase
 
 Grep/Read every identifier, module, and feature name in the resolved
 input. For unfamiliar areas spanning 10+ files, dispatch
 `belt-agent:explorer` subagents in parallel (focus: flow or patterns).
 A question answerable here MUST NOT be asked to the user.
 
-## Step 3 — Frontier interview
+### 3 — Frontier interview
 
 Ask the remaining human-decidable points (business goals, scope
 boundaries, priorities, non-functional targets) via the frontier
@@ -50,16 +54,7 @@ first), and defer any question that depends on an answer still open
 this round. Points the user explicitly defers are recorded under Open
 decisions.
 
-## Config: [requirements] rounds (belt.toml)
-
-    [requirements]
-    rounds = 0    # default; 0 = until the frontier is empty
-
-- Absent belt.toml or key → 0 (no cap; nothing left silently assumed).
-- `rounds = N` (N ≥ 1) — cap at N rounds; unresolved points default to
-  the recommended option and are recorded under Open decisions.
-
-## Step 4 — Write the document
+### 4 — Write the document
 
 Create `docs/requirements/<YYYY-MM-DD-topic>/requirements.md` (topic
 slug rules follow
@@ -76,11 +71,19 @@ decisions):
     ## Out-of-scope                — explicit exclusions
     ## Open decisions              — defaulted choices + known unknowns
 
-## Step 5 — Review
+## Config: [requirements] rounds (belt.toml)
 
-Invoke `/belt:spec-review` with the requirements.md path as the target
-and `docs/requirements/<topic>/review/` as the output directory (no
-belt run is active), and complete its triage.
+    [requirements]
+    rounds = 0    # default; 0 = until the frontier is empty
+
+- Absent belt.toml or key → 0 (no cap; nothing left silently assumed).
+- `rounds = N` (N ≥ 1) — cap at N rounds; unresolved points default to
+  the recommended option and are recorded under Open decisions.
+
+## Phase: review
+
+The invoke is declared in `pipeline.yml`; pass the requirements.md
+path as the review target. Complete the review's batched triage.
 
 Hand the file path to `/belt:feature-dev` (or `/belt:goal`) to start
 development from it.

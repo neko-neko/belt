@@ -55,8 +55,8 @@ branch `feature/2026-04-14-user-authentication`.
 | `design.md` | design | /belt:design (Phase: design) | feature runs |
 | `plan.md` | plan | /belt:plan (Phase: plan) | feature runs |
 | `scenarios.yml` | plan | /belt:plan (Phase: plan) | feature runs, always |
-| `rca-report.md` | rca | /systematic-debugging | bug runs |
-| `rca-scenarios.yml` | rca | /systematic-debugging | bug runs, always |
+| `rca-report.md` | rca | /diagnosing-bugs | bug runs |
+| `rca-scenarios.yml` | rca | /diagnosing-bugs | bug runs, always |
 | `fix-plan.md` | fix-plan | /writing-plans | bug runs |
 | `qa-report.md` | qa | /belt:qa (belt:qa-verifier) | always |
 

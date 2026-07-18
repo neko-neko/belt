@@ -1,0 +1,35 @@
+name: requirements
+version: 1
+description: "Requirements definition stage (interview -> review)"
+
+phases:
+  - id: interview
+    description: "Resolve input, investigate the codebase, run the frontier interview, and write requirements.md (see requirements SKILL.md, Phase: interview)"
+    produces:
+      - name: requirements_doc
+        path: "docs/requirements/*/requirements.md"
+        description: "Background / Goals / Functional & Non-functional requirements / Acceptance criteria / Out-of-scope / Open decisions"
+    gate:
+      - file_exists: "docs/requirements/*/requirements.md"
+    validate:
+      - "requirements.md has all 7 sections (Background / Goals / Functional requirements / Non-functional requirements / Acceptance criteria / Out-of-scope / Open decisions), none empty ('(none)' only under Open decisions)"
+      - "Every functional requirement and acceptance criterion is verifiable by a command, test, or observable behavior"
+      - "Requirements state outcomes, not implementation designs"
+    max_retries: 3
+
+  - id: review
+    description: "Spec review of requirements.md with batched triage"
+    invoke:
+      skill: /belt:spec-review
+    consumes:
+      - requirements_doc
+    produces:
+      - name: findings-spec
+        path: "belt://current/review/findings-spec.json"
+        description: "Consolidated spec review findings"
+    gate:
+      - file_exists: "belt://current/review/findings-spec.json"
+    validate:
+      - "Every critical/high finding in findings-spec.json is fixed or explicitly rejected by the user"
+    confirm: true
+    max_retries: 3

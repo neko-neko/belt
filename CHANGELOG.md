@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- `requirements/pipeline.yml` — `/belt:requirements` now runs under belt (interview → review); its spec-review invocation is declared in the pipeline
+- Frontier interview model (adapted from mattpocock/skills `batch-grill-me`, MIT) in authoring-principles §4; `[goal] rounds` / `[requirements] rounds` belt.toml keys (0 = until the frontier is empty)
+
+### Changed
+
+- **BREAKING**: design stage expands to `design/intake` → `design/design` → `design/design-review`; plan stage to `plan/plan` → `plan/plan-review` — spec-review invocations moved from SKILL.md prose to pipeline.yml `invoke:` declarations (feature-dev now expands to 10 leaves; confirms stay at the same four touchpoints)
+- diagnose `rca` phase invokes `/diagnosing-bugs` (mattpocock/skills) instead of `/systematic-debugging` (obra/superpowers)
+- design / plan / build / feature-dev / requirements SKILL.md no longer restate skill invocations declared in pipeline.yml
+
 ## [0.4.0] - 2026-07-16
 
 ### Added

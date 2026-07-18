@@ -286,7 +286,7 @@ the `agent-browser` CLI. Install these before the belt plugins that use them:
 | Dependency | Source | Required by |
 |---|---|---|
 | `/writing-plans` | [obra/superpowers](https://github.com/obra/superpowers) | `/belt:diagnose` `fix-plan` phase (via `/belt:bug-fix`) |
-| `/systematic-debugging` | obra/superpowers | `/belt:diagnose` `rca` phase (via `/belt:bug-fix`) |
+| `/diagnosing-bugs` | [mattpocock/skills](https://github.com/mattpocock/skills) | `/belt:diagnose` `rca` phase (via `/belt:bug-fix`) |
 | `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | `/belt:feature-dev` `integrate` phase, `/belt:bug-fix` `integrate` phase |
 | `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:qa` — always, as the `qa` stage of `/belt:feature-dev` / `/belt:bug-fix` and standalone (browser scenarios) |
 
@@ -301,6 +301,7 @@ the two belt plugins.
 
 # 1. Add external plugin dependencies
 /install-plugin obra/superpowers-marketplace superpowers
+/install-plugin mattpocock/skills skills
 /install-plugin max-sixty/worktrunk worktrunk
 /install-plugin vercel-labs/agent-browser agent-browser
 

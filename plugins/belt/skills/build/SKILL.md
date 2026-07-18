@@ -44,10 +44,10 @@ This phase has no `invoke` — execute these steps directly:
 
 ## Phase: code-review
 
-Invoke `/belt:code-review` (pass `--codex` if the codex arg is true).
-In pipeline mode its triage is autonomous: critical/high findings are
-fixed and committed, or recorded as deferred with a reason. Append the
-code-review entry to evidence.md including the deferred list.
+The invoke is declared in `pipeline.yml`. In pipeline mode its triage
+is autonomous: critical/high findings are fixed and committed, or
+recorded as deferred with a reason. Append the code-review entry to
+evidence.md including the deferred list.
 
 ## Red flags
 

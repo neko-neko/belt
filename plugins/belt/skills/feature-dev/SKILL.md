@@ -45,9 +45,10 @@ executing it:
 
 Ask the user once: A) `wt merge` or B) `gh pr create`, presenting in
 the same message the deferred findings, accepted FAILs, QA fix commits,
-and exploratory advisories collected in evidence.md. Invoke `/worktrunk`
-with the chosen mode. Then publish QA evidence per the `[qa] evidence`
-config (see `plugins/belt/skills/qa/SKILL.md`):
+and exploratory advisories collected in evidence.md. Pass the chosen
+mode as the argument to the invoke declared in `pipeline.yml`. Then
+publish QA evidence per the `[qa] evidence` config (see
+`plugins/belt/skills/qa/SKILL.md`):
 
 - PR route: push the QA evidence directory to the `qa-evidence` orphan
   branch under `<run-id>/`, then post one PR comment containing the

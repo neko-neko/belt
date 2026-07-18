@@ -18,9 +18,9 @@ live in `pipeline.yml`; this file defines how to execute each phase.
 
 ## Phase: intake
 
-Invoke `/belt:goal`, passing the user's original input (ticket id, URL,
-free text, or a requirements.md path) verbatim. The skill writes
-goal-sheet.md and evidence.md.
+The invoke is declared in `pipeline.yml`. Pass the user's original
+input (ticket id, URL, free text, or a requirements.md path) verbatim
+as the skill argument. The skill writes goal-sheet.md and evidence.md.
 
 ## Phase: design
 
@@ -37,11 +37,14 @@ This phase has no `invoke` — execute these steps directly:
      rejected alternatives in one line each
    No task list and no test strategy here — both live in plan.md
    (/belt:plan).
-4. Invoke `/belt:spec-review` with the design.md path as the target
-   (pass `--codex` if the codex arg is true) and complete its batched
-   triage.
-5. Append the design entry to evidence.md (format:
+4. Append the design entry to evidence.md (format:
    `plugins/belt-agent/references/authoring-principles.md`).
+
+## Phase: design-review
+
+The invoke is declared in `pipeline.yml`; pass the design.md path as
+the review target. Complete the review's batched triage, then append
+the design-review entry to evidence.md.
 
 ## Red flags
 

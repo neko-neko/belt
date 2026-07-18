@@ -2,14 +2,15 @@
 //! four-stage rewrite): design(sub) + plan(sub) + pre-execute-handover(sub)
 //! + build(sub) + qa(sub) + integrate(leaf).
 //!
-//! Shape contract (spec docs/specs/2026-07-07-four-stage-agentic-pipeline-design.md):
+//! Shape contract (spec docs/specs/2026-07-07-four-stage-agentic-pipeline-design.md,
+//! amended 2026-07-18: DRY invoke declarations — write/review phase split):
 //! - args = { codex: bool } only (e2e removed — QA is mandatory, D2)
 //! - 6 top-level phases: design/plan/build delegate with { codex },
 //!   pre-execute-handover and qa delegate with empty `with`,
 //!   integrate is an inline leaf (Invoker::Skill /worktrunk)
-//! - expansion flattens to exactly 8 namespaced leaves
+//! - expansion flattens to exactly 10 namespaced leaves
 //! - no leaf declares regate; no leaf carries a phase-level when
-//! - confirm leaves are exactly design/design, plan/plan,
+//! - confirm leaves are exactly design/design-review, plan/plan-review,
 //!   pre-execute-handover/checkpoint, integrate (D4)
 //! - the integrate leaf is byte-equivalent (as serde_json::Value) to the
 //!   bug-fix integrate leaf (D14 inline duplication + identity lock)
@@ -43,7 +44,9 @@ fn bug_fix_pipeline_path() -> PathBuf {
 const EXPECTED_LEAVES: &[&str] = &[
     "design/intake",
     "design/design",
+    "design/design-review",
     "plan/plan",
+    "plan/plan-review",
     "pre-execute-handover/checkpoint",
     "build/execute",
     "build/code-review",
@@ -52,8 +55,8 @@ const EXPECTED_LEAVES: &[&str] = &[
 ];
 
 const CONFIRM_LEAVES: &[&str] = &[
-    "design/design",
-    "plan/plan",
+    "design/design-review",
+    "plan/plan-review",
     "pre-execute-handover/checkpoint",
     "integrate",
 ];
@@ -164,7 +167,7 @@ fn top_level_args_are_codex_only() -> Result<(), BeltError> {
 }
 
 #[test]
-fn feature_dev_expands_to_eight_namespaced_leaves() {
+fn feature_dev_expands_to_ten_namespaced_leaves() {
     let expanded =
         expand_pipeline(&feature_dev_pipeline_path()).expect("feature-dev pipeline must expand");
     let ids: Vec<&str> = expanded.iter().map(|p| p.id.as_str()).collect();

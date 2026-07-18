@@ -335,3 +335,21 @@ docs/testing/cli-behavior/ 配下の CLI scenario 群 (別 schema 系統) には
 5. Linear 添付は linear cli / GraphQL API の upload 可否を plan 段階で実測し、不可なら
    コメント + evidence branch URL に degradation する実装へ切り替える (spec 上の想定は
    ネイティブ添付)。
+
+## Amendment 2026-07-18 — DRY invoke 宣言 (write/review phase 分割・requirements belt 化)
+
+skill 間連鎖の宣言を SKILL.md 散文から pipeline.yml の `invoke:` に集約する改訂。
+根拠: diagnose ステージが既に全 phase で invoke 宣言を実現しており、design / plan /
+build / feature-dev / requirements のみ SKILL.md 内に invoke 記述が残っていた。
+
+- **design**: `design` phase を `design` (執筆) + `design-review`
+  (`invoke: /belt:spec-review`, confirm) に分割。expansion は 10 leaves。
+- **plan**: 同様に `plan` + `plan-review` に分割。confirm leaves は
+  `design/design-review`, `plan/plan-review`, `pre-execute-handover/checkpoint`,
+  `integrate` の 4 点で不変 (D4 維持)。
+- **requirements**: pipeline.yml 新設 (`interview` → `review`)。dialogue-centric
+  無 pipeline の原則は goal (standalone) / docs にのみ残る。
+- **diagnose rca**: invoke を `/systematic-debugging` から `/diagnosing-bugs`
+  (mattpocock/skills) に置換。rca-supplement.md が成果物形式を引き続き担保。
+- 1 phase 1 invoke (`invoke: Option<Invoker>`) は設計として維持。複数 invoke が
+  必要な phase は分割で表現する。並列 invoke (--codex 同時実行) は skill 層の責務。

@@ -14,7 +14,7 @@ argument-hint: "[--codex]"
 
 Belt pipeline for the implementation planning stage. Structure, gates,
 and done criteria live in `pipeline.yml`; this file defines how to
-execute the single phase.
+execute each phase.
 
 ## Entry check
 
@@ -36,13 +36,18 @@ This phase has no `invoke` — execute these steps directly:
      its test
 3. Write `docs/features/<topic>/scenarios.yml` — at least one scenario
    per acceptance criterion, schema below.
-4. Invoke `/belt:spec-review` with the plan.md path as the target and
-   `findings-plan` as the output artifact (pass `--codex` if the codex
-   arg is true), and complete its triage.
-5. If a finding contests an approved design decision, do not edit
-   design.md — present the finding to the user as an objection to the
-   approved design; on acceptance, re-run the design stage standalone.
-6. Append the plan entry to evidence.md.
+4. Append the plan entry to evidence.md.
+
+## Phase: plan-review
+
+The invoke is declared in `pipeline.yml`; pass the plan.md path as the
+review target and `findings-plan` as the output artifact. Complete the
+review's batched triage, then append the plan-review entry to
+evidence.md.
+
+If a finding contests an approved design decision, do not edit
+design.md — present the finding to the user as an objection to the
+approved design; on acceptance, re-run the design stage standalone.
 
 ## scenarios.yml schema
 
