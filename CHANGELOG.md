@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - diagnose `rca` phase invokes `/diagnosing-bugs` (mattpocock/skills) instead of `/systematic-debugging` (obra/superpowers)
 - design / plan / build / feature-dev / requirements SKILL.md no longer restate skill invocations declared in pipeline.yml
 
+### Removed
+
+- Pipeline shape-lock tests (`feature_dev_refresh.rs`, `bug_fix_refresh.rs`, `review_skills_refresh.rs`) and their `common/narrative.rs` helper — locking pipeline.yml / plugin markdown content in Rust tests forced a test edit on every intentional pipeline change; `belt lint` remains the static check for pipeline files (`shared_filter_parity.rs` is kept: it has caught real drift twice)
+
 ## [0.4.0] - 2026-07-16
 
 ### Added

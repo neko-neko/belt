@@ -4,7 +4,7 @@ audit_template_version: v1
 
 # belt test audit template (v1)
 
-F2/F3 で belt の個別 test ファイルを audit する際の判定手順と reason label 集。F1 で pilot 検証済み (cli_test.rs / config_test.rs / feature_dev_refresh.rs)。
+F2/F3 で belt の個別 test ファイルを audit する際の判定手順と reason label 集。F1 で pilot 検証済み (cli_test.rs / config_test.rs; 当時の第 3 pilot feature_dev_refresh.rs は 2026-07-18 に shape-lock 廃止で削除)。
 
 ## Decision Tree (per test fn)
 
@@ -17,7 +17,7 @@ Q2: 同等の behavior を検証する他 test が存在するか？
  └── no → Q3
 Q3: この test は behavior でなく internal structure (private state / format / default 値) を assert しているか？
  ├── behavior assert → Q4
- ├── internal assert (shape lock: `*_refresh.rs` / `*_parity.rs` / `scenarios_contract.rs`) → judgement = kept without scenario ID (shape lock test は behavior scenario の対象外で、plugin/pipeline の構造自体を固定する役割)
+ ├── internal assert (shape lock: `*_parity.rs` / `scenarios_contract.rs`) → judgement = kept without scenario ID (shape lock test は behavior scenario の対象外で、plugin の共有文言/台帳整合を固定する役割。pipeline 構造 lock の `*_refresh.rs` は 2026-07-18 廃止)
  ├── internal assert (shape lock 以外) → judgement = implementation-coupling  (→ 削除 or 抽象化)
 Q4: assertion は trivial (自明な default 等) または tautology か？
  ├── yes → judgement = trivial-default-assertion または tautology  (→ 削除)
@@ -51,7 +51,6 @@ F1 の S1 探索で発見された統合候補 (file:fn 粒度):
 | `engine_test.rs::verify_verdict_*` | `belt-agent/tests/cli_test.rs::verify_*` | verify pass/fail semantics double |
 | `parser_test.rs::parse_pipeline_from_file` | `model_test.rs::parse_minimal_pipeline` | 誤記訂正 (F2b audit 2026-04-18): 実 fn は `parse_pipeline_from_file` (file-I/O + parse layer) で `model_test::parse_minimal_pipeline` (serde_saphyr 直接、model layer) と layer 分離された complementary test、redundant ではない。F2b では keep-both 判定 |
 | `view_test.rs::engine_enriched_status_*` | `belt-agent/tests/cli_test.rs::status_*` | view module API と CLI の double coverage |
-| `feature_dev_refresh.rs` × `bug_fix_refresh.rs` | narrative artifact pattern 4 組 | 同型、helper 共通化候補 |
 | `shared_criteria_parity.rs` × `shared_filter_parity.rs` | byte-identity lock pattern | 共通 helper 化候補 |
 | `write_yaml` / `repo_root` / `fixture_path` | 5+ 箇所 byte-identical | `tests/common/mod.rs` で統合候補 |
 
@@ -65,8 +64,7 @@ audit-report.md の frontmatter `audited_at` を読み、以下コマンドで p
 AUDITED_AT=$(yq '.audited_at' docs/features/2026-04-17-belt-test-foundation/audit-report.md)
 git log --since="$AUDITED_AT" --oneline -- \
   crates/belt/tests/cli_test.rs \
-  crates/belt-core/tests/config_test.rs \
-  crates/belt-core/tests/feature_dev_refresh.rs
+  crates/belt-core/tests/config_test.rs
 ```
 
 出力が非空なら F1 pilot 判定は stale。F2 着手時に pilot audit を再実施し audit-report.md を refresh する。

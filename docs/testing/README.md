@@ -3,7 +3,7 @@
 This directory is the belt project's **long-term test foundation**:
 
 - **CLI behavioral SSOT** — what belt / belt-agent / belt-core public API should do, expressed as Given/When/Then scenarios
-- **Lock ledger** — what shape-lock tests (`*_refresh.rs`, `shared_*_parity.rs`) protect
+- **Lock ledger** — what shape-lock tests (`shared_filter_parity.rs`) protect
 - **Audit operations meta** — template + reason labels for the F2/F3 test audit
 
 ## Boundary vs `docs/features/<topic>/`

@@ -1,4 +1,4 @@
-scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。Phase D engine URI-emit 1 = 111。Phase E lint::check_belt_runs_literal 4 = 115。残 shape-lock 4 file (bug_fix_refresh / review_skills_refresh / shared_criteria_parity / shared_filter_parity) の lock-ledger.md entry 追加は F2b scope"
+scope: "belt-core pure library public API. F1: config (6). F2a: engine (19) / view (15) / lint (15) / model (22) / gate (9) / error (3) / expander (4) / parser (4) / uri (5) / artifact_when (5) の 10 module + config absolute-path 復帰 1 = 103 scenarios 追加 (F2a 累計) + uri::Current 5 + gate URI-resolve 2 = 110。Phase D engine URI-emit 1 = 111。Phase E lint::check_belt_runs_literal 4 = 115。shape-lock は shared_filter_parity のみ (pipeline 構造 lock の *_refresh.rs は 2026-07-18 廃止)"
 scenarios:
   - id: belt-core-config-valid-toml-parses
     category: config
