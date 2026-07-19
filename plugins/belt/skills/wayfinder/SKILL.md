@@ -172,14 +172,14 @@ sources), and the completion condition (return the findings summary; ask
 nothing of the user). There is no user interaction during execution.
 When the subagent returns, the ORCHESTRATOR — not the subagent — posts
 the findings back onto the research ticket:
-`linear comment create <ticket-id> --body-file <path> --workspace neko-neko`.
+`linear issue comment add <ticket-id> --body-file <path> --workspace neko-neko`.
 
 ### Idempotent resolution order (fixed)
 
 For each resolved ticket, in this EXACT order:
 
 1. Post a resolution comment:
-   `linear comment create <ticket-id> --body-file <path> --workspace neko-neko`.
+   `linear issue comment add <ticket-id> --body-file <path> --workspace neko-neko`.
 2. Close the ticket
    (`linear issue update <ticket-id> --state <done-state> --workspace neko-neko`).
 3. Add its one-line entry `- [<ticket-id>] <≤100-char gist> (<link>)`
