@@ -1,0 +1,57 @@
+name: wayfinder
+version: 1
+description: "Experimental fog-clearing planning layer: chart a foggy effort as a shared Linear decision map, resolve its decision tickets across bounded sessions, and hand one graduated effort to /belt:requirements. Ports mattpocock/skills wayfinder (MIT)."
+
+phases:
+  - id: map
+    description: "Establish (or attach to) the Linear decision map for the destination; create the effort + decision sub-issues, wire native blocking relations, dispatch research tickets AFK, and write map-ref.md (see wayfinder SKILL.md, Phase: map)."
+    produces:
+      - name: map_ref
+        path: "docs/features/*/map-ref.md"
+        description: "Map issue id, destination slug, and effort + decision ticket ids — the scoping key for every downstream linear query."
+    gate:
+      - cmd: >-
+          mr="$(ls -1 docs/features/*/map-ref.md 2>/dev/null | head -1)";
+          test -n "$mr" || exit 1;
+          mid="$(sed -n 's/^- map_id:[[:space:]]*//p' "$mr" | head -1)";
+          test -n "$mid" || exit 1;
+          linear api 'query($id:String!){issue(id:$id){identifier labels{nodes{name}}}}'
+          --variable id="$mid" --workspace neko-neko 2>/dev/null
+          | grep -q 'wayfinder-map'
+      - file_exists: "docs/features/*/map-ref.md"
+    validate:
+      - "The map issue body has exactly five sections: Destination / Notes / Decisions so far / Not yet specified / Out of scope."
+      - "At least one wf:effort ticket exists as a sub-issue of the map."
+      - "Every created ticket carries exactly one of the wf:decision, wf:research, or wf:deep-hitl labels."
+    max_retries: 3
+
+  - id: resolve
+    description: "Cross-session decision-resolution loop: compute the frontier, resolve tickets (batched frontier interview, solo deep-HITL, AFK research), and re-check until one effort graduates (see wayfinder SKILL.md, Phase: resolve). max_retries: 0 makes each verify one loop iteration; the gate is the loop condition."
+    consumes:
+      - map_ref
+    gate:
+      - cmd: >-
+          mr="$(ls -1 docs/features/*/map-ref.md 2>/dev/null | head -1)";
+          test -n "$mr" || exit 1;
+          mid="$(sed -n 's/^- map_id:[[:space:]]*//p' "$mr" | head -1)";
+          test -n "$mid" || exit 1;
+          linear api 'query($id:String!){issue(id:$id){children{nodes{labels{nodes{name}} children{nodes{labels{nodes{name}} state{type}}}}}}}'
+          --variable id="$mid" --workspace neko-neko 2>/dev/null
+          | jq -e '[.data.issue.children.nodes[] | select(any(.labels.nodes[]; .name=="wf:effort")) | (.children.nodes | map(select(any(.labels.nodes[]; .name=="wf:decision")))) | select(length>=1) | all(.[]; .state.type=="completed" or .state.type=="canceled")] | any' >/dev/null
+    validate:
+      - "Each resolved decision ticket has, in fixed order, a resolution comment, a closed state, and a one-line entry under the map's Decisions so far section."
+      - "The graduated effort has at least one wf:decision child and all its wf:decision children are closed (completed or canceled)."
+      - "If the frontier emptied while open decision tickets remain, the session reported an explicit non-graduated stall status (naming any detected relation cycle) instead of looping."
+    max_retries: 0
+
+  - id: handoff
+    description: "Consolidate the graduated effort's resolved decisions into its Linear ticket description, invoke /belt:requirements with that effort's Linear id, and write handoff-ref.json (see wayfinder SKILL.md, Phase: handoff)."
+    consumes:
+      - map_ref
+    gate:
+      - file_exists: "belt://current/handoff-ref.json"
+    validate:
+      - "The graduated effort ticket's description consolidates its resolved decisions."
+      - "/belt:requirements produced docs/requirements/<topic>/requirements.md for the graduated effort."
+      - "handoff-ref.json records the graduated effort id and the produced requirements.md path."
+    max_retries: 3
