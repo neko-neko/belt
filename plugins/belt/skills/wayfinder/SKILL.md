@@ -29,14 +29,19 @@ Establish (or attach to) the shared Linear decision map, then write
 ### 1 — Confirm the labels exist
 
 The map uses five labels: `wayfinder-map`, `wf:effort`, `wf:decision`,
-`wf:research`, `wf:deep-hitl`. List existing labels with
-`linear label list --workspace neko-neko`.
+`wf:research`, `wf:deep-hitl`. List existing labels in the neko-neko
+workspace with
+`linear api 'query{issueLabels{nodes{name}}}' --workspace neko-neko`.
+(Do NOT use `linear label list --workspace neko-neko`: on `label list`,
+`--workspace` is a boolean "workspace-level labels only" filter, not a
+slug selector, so it cannot target neko-neko.)
 
 - If `linear issue create --label <name>` auto-creates an unknown label
   in this workspace → skip creation.
 - Otherwise → for each of the five that is missing, run
-  `linear label create <name> --workspace neko-neko` before creating any
-  issue.
+  `linear label create --name <name> --workspace neko-neko` before
+  creating any issue (`--name` is required; the label name is not a
+  positional argument).
 
 ### 2 — First run: create the map and its tickets
 
