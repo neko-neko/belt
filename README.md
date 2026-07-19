@@ -268,7 +268,7 @@ production tooling for quality-gated AI-driven development.
 | Plugin | Purpose |
 |---|---|
 | `belt-agent` | Foundation: Belt Protocol driver skill + 2 analysis agents (`explorer`, `implementer`) + shared references |
-| `belt` | User-invocable skills and their agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:diagnose`, `/belt:requirements`, `/belt:docs`, `/belt:goal`, `/belt:design`, `/belt:plan`, `/belt:build`, `/belt:qa`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`, plus the `qa-verifier` agent. Requires `belt-agent` |
+| `belt` | User-invocable skills and their agents: `/belt:feature-dev`, `/belt:bug-fix`, `/belt:diagnose`, `/belt:requirements`, `/belt:docs`, `/belt:goal`, `/belt:design`, `/belt:plan`, `/belt:build`, `/belt:qa`, `/belt:code-review` (2 reviewers), `/belt:spec-review` (1 reviewer), `/belt:handover`, `/belt:resume`, `/belt:wayfinder` (experimental), plus the `qa-verifier` agent. Requires `belt-agent` |
 
 `/belt:feature-dev` composes the stages design → plan → checkpoint →
 build → qa → integrate; `/belt:bug-fix` composes diagnose → checkpoint →
@@ -289,6 +289,10 @@ the `agent-browser` CLI. Install these before the belt plugins that use them:
 | `/diagnosing-bugs` | [mattpocock/skills](https://github.com/mattpocock/skills) | `/belt:diagnose` `rca` phase (via `/belt:bug-fix`) |
 | `/worktrunk` | [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) | `/belt:feature-dev` `integrate` phase, `/belt:bug-fix` `integrate` phase |
 | `agent-browser` CLI + `/agent-browser` skill | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `/belt:qa` — always, as the `qa` stage of `/belt:feature-dev` / `/belt:bug-fix` and standalone (browser scenarios) |
+| `linear-cli` `>= 2.0.0` — sub-issues (`issue create --parent`), the `issue relation` subcommand, the global `--workspace` flag, `issue query --json`, and raw GraphQL via `linear api` | `linear` CLI (Homebrew `linear`) | `/belt:wayfinder` (experimental) — Linear decision-map creation, frontier computation, resolution, and handoff |
+| `superpowers:brainstorming`, `domain-modeling`, `prototype` (deep-HITL resolution skills, already available in the environment) | [obra/superpowers](https://github.com/obra/superpowers) and bundled skills | `/belt:wayfinder` (experimental) — solo deep-HITL decision-resolution sessions, bound by each ticket's `## Method` line |
+
+`/belt:wayfinder` (experimental) ports **mattpocock/skills wayfinder v1.1** (MIT) — see [mattpocock/skills](https://github.com/mattpocock/skills); its batched frontier-interview model derives from the same repo's `batch-grill-me`.
 
 ### Install
 
@@ -329,6 +333,9 @@ After install:
 /belt:plan
 /belt:build
 /belt:qa
+
+# Chart a foggy effort as a Linear decision map (experimental; upstream of requirements)
+/belt:wayfinder
 
 # Write requirements or documentation
 /belt:requirements
