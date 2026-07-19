@@ -1,0 +1,53 @@
+# QA replay scenarios for the wayfinder-layer feature.
+# These are the deterministic static checks belt:qa-verifier runs autonomously.
+# Live behavioral acceptance (real Linear writes) is NOT here — it lives in
+# pilot-runbook.md as a user-driven acceptance run, because belt QA has no
+# per-scenario authorization gate and qa-verifier replays every scenario here.
+scenarios:
+  - id: lint-passes
+    kind: cli
+    given: "the authored wayfinder skill triad"
+    when: "belt lint plugins/belt/skills/wayfinder/pipeline.yml"
+    then: "exit code 0"
+
+  - id: pipeline-structure
+    kind: cli
+    given: "the authored pipeline.yml"
+    when: "for id in map resolve handoff; do grep -q \"id: $id\" plugins/belt/skills/wayfinder/pipeline.yml || exit 1; done; awk '/id: resolve/{f=1} f&&/max_retries: 0/{print; exit}' plugins/belt/skills/wayfinder/pipeline.yml | grep -q 'max_retries: 0'"
+    then: "exit 0 — all three phase ids are present and the resolve phase declares max_retries: 0"
+
+  - id: command-correctness
+    kind: cli
+    given: "the authored SKILL.md (design HIGH-finding command forms)"
+    when: "f=plugins/belt/skills/wayfinder/SKILL.md; grep -q 'blocked-by' $f && grep -q 'linear api' $f && grep -q 'belt://current/handoff-ref.json' $f && grep -q -- '--workspace neko-neko' $f && grep -q -- '--run' $f && ! grep -q 'blocks <blocker>' $f"
+    then: "exit 0 — blocked-by / linear api / handoff-ref.json / --workspace neko-neko / --run are all present and the inverted 'blocks <blocker>' form is absent"
+
+  - id: skill-config-rounds
+    kind: cli
+    given: "the authored SKILL.md"
+    when: "grep -Eq '\\[wayfinder\\]' plugins/belt/skills/wayfinder/SKILL.md && grep -Eq 'rounds' plugins/belt/skills/wayfinder/SKILL.md"
+    then: "exit 0 — the [wayfinder] rounds config (default 3) is documented"
+
+  - id: readme-declarations
+    kind: cli
+    given: "the edited README.md"
+    when: "grep -q 'wayfinder' README.md && grep -Eq 'linear-cli' README.md && grep -q '2.0.0' README.md && grep -q 'brainstorming' README.md && grep -q 'domain-modeling' README.md && grep -q 'prototype' README.md && grep -q 'mattpocock/skills wayfinder' README.md"
+    then: "exit 0 — each required token is present: the wayfinder entry, linear-cli >=2.0.0, the three deep-HITL skills, and the mattpocock/skills wayfinder attribution (each grep is a separate AND conjunct, not an alternation)"
+
+  - id: manifests-list-wayfinder
+    kind: cli
+    given: "the edited manifests"
+    when: "grep -q '/belt:wayfinder' plugins/belt/.claude-plugin/plugin.json && grep -q '/belt:wayfinder' .claude-plugin/marketplace.json"
+    then: "exit 0 — both manifests list /belt:wayfinder"
+
+  - id: git-hygiene
+    kind: cli
+    given: "the completed build on the feature branch"
+    when: "git diff --name-only main...HEAD | grep -E '^crates/|^plugins/belt/skills/(feature-dev|bug-fix|design|plan|build|qa|diagnose|goal|requirements|handover|resume|code-review|spec-review|docs)/|^plugins/.*/agents/'"
+    then: "no output (grep exits 1) — no change touches crates/ or any pre-existing skill/agent file"
+
+  - id: requirements-skill-untouched
+    kind: cli
+    given: "the completed build"
+    when: "git diff --name-only main...HEAD -- plugins/belt/skills/requirements/"
+    then: "empty output — the requirements skill is byte-unmodified"
